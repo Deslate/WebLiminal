@@ -149,21 +149,36 @@ fn surfaceHit(sid:u32,uv:vec2f)->Hit {
 
 // Metre-scale tile construction. Independent seeds stay attached to the world.
 struct TileProfile { height:f32, edge:f32, id:f32, bevel:f32, slope:vec2f };
-// One 250 mm setting-out module, datum y=0. Arches have 32 equal
-// voussoirs, an explicit cut-brick schedule with a joint at the crown.
+// Continuous setting-out chart: right jamb -> arch -> left jamb.
+// The 250 mm module starts at each spring. Two equal closing cuts on
+// each half absorb the remainder, avoiding a sliver and keeping a crown joint.
+fn archCourse(s:f32,r:f32)->vec3f {
+ let half=PI*r*.5;let full=max(0.,floor(half/.25)-1.);
+ let closing=(half-full*.25)*.5;let mirror=s>half;
+ let x=select(s,2.*half-s,mirror);var i=floor(x/.25);
+ var width=.25;var center=(i+.5)*.25;
+ if(x>=full*.25){i=full+floor((x-full*.25)/closing);width=closing;center=full*.25+(i-full+.5)*closing;}
+ if(mirror){center=2.*half-center;i=2.*(full+2.)-1.-i;}
+ return vec3f(i,center,width);
+}
 fn tileMode(h:Hit)->u32 {
  let shape=shapes[h.sid/9u];let face=h.sid%9u;
  if(shape.info.y!=1u){return 0u;}
- if(face==6u){return 1u;}
- let dx=h.p.x-(shape.lo.x+shape.hi.x)*.5;let dy=h.p.y-shape.params.y;
- if((face==4u||face==5u)&&dy>=0. && length(vec2f(dx,dy))<shape.params.x+.25){return 2u;}
+ if(face>=6u){return 1u;}
+ let q=h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
+ let radial=select(abs(q.x),length(q),q.y>=0.);
+ if((face==4u||face==5u)&&radial<shape.params.x+.25){return 2u;}
  return 0u;
 }
+fn archAlong(p:vec2f,r:f32)->f32 {
+ if(p.y<0.){return select(PI*r-p.y,p.y,p.x>=0.);}
+ return atan2(max(0.,p.y),p.x)*r;
+}
 fn tileUV(h:Hit)->vec2f {
- let mode=tileMode(h);let shape=shapes[h.sid/9u];let face=h.sid%9u;
- if(mode==1u){return vec2f(h.uv.x*surfaces[h.sid].metric.x,h.p.z);}
- if(mode==2u){let q=h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);return vec2f(atan2(q.y,q.x)*shape.params.x,length(q)-shape.params.x);}
-
+ let mode=tileMode(h);let shape=shapes[h.sid/9u];
+ let q=h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
+ if(mode==1u){return vec2f(archAlong(q,shape.params.x),h.p.z);}
+ if(mode==2u){return vec2f(archAlong(q,shape.params.x),select(abs(q.x),length(q),q.y>=0.)-shape.params.x);}
  if(abs(h.n.x)>.7){return h.p.zy;}
  if(abs(h.n.y)>.7){return h.p.xz;}
  return h.p.xy;
@@ -173,8 +188,11 @@ fn tileFrame(h:Hit)->mat3x3f {
  if(abs(h.n.x)>.7){t=vec3f(0,0,1);}
  if(abs(h.n.y)>.7){b=vec3f(0,0,1);}
  if(mode==1u){t=vec3f(h.n.y,-h.n.x,0);b=vec3f(0,0,1);}
- if(mode==2u){let q=normalize(h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y));t=vec3f(-q.y,q.x,0)*shape.params.x/length(h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y));b=vec3f(q,0);}
-
+ if(mode==2u){
+  let p=h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
+  if(p.y<0.){t=vec3f(0,sign(p.x),0);b=vec3f(sign(p.x),0,0);}
+  else{let q=normalize(p);t=vec3f(-q.y,q.x,0)*shape.params.x/length(p);b=vec3f(q,0);}
+ }
  return mat3x3f(t,b,h.n);
 }
 fn tileSeed(sid:u32,mode:u32)->f32 {
@@ -184,14 +202,18 @@ fn tileSeed(sid:u32,mode:u32)->f32 {
 }
 fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
   let shape=shapes[sid/9u];var size=vec2f(.25);
-  if(mode==1u||mode==2u){size.x=PI*shape.params.x/32.;}
-  let cell=floor(uv/size);
+  var cell=floor(uv/size);var center=(cell+.5)*size;
+  if(mode==1u||mode==2u){let course=archCourse(uv.x,shape.params.x);cell.x=course.x;center.x=course.y;size.x=course.z;}
+  // Convert face-band tangential distances to metres at the actual radius:
+  // radial joints keep the same physical grout width as flat-wall joints.
+  var stretch=1.;
+  if(mode==2u&&uv.x>=0.&&uv.x<=PI*shape.params.x){stretch=(shape.params.x+uv.y)/shape.params.x;}
   let seed=tileSeed(sid,mode);
   let id=hash2(cell+vec2f(seed*17.19,0));
   let r=vec4f(hash2(cell+vec2f(13.1+seed*31.,7.3)),hash2(cell+vec2f(28.7,9.1+seed*11.)),hash2(cell+vec2f(97.3+id*31.,43.7)),hash2(cell+vec2f(29.1,61.3+id*71.)));
-  let angle=0.;let local=uv-(cell+.5)*size;
+  let angle=0.;let local=(uv-center)*vec2f(stretch,1.);
   let rotation=mat2x2f(cos(angle),-sin(angle),sin(angle),cos(angle));let q=rotation*local;
-  let halfSize=size*.5-vec2f(.0028);
+  let halfSize=size*vec2f(stretch,1.)*.5-vec2f(.0028);
   let radius=.0012+.0012*id;
   let d=abs(q)-halfSize+radius;
   var edge=-(length(max(d,vec2f(0)))+min(max(d.x,d.y),0.)-radius);
@@ -200,6 +222,7 @@ fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
    if(sid%9u==4u||sid%9u==5u){
     let q=uv-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
     if(q.y>=0.){cut=length(q)-shape.params.x-.25-.0028;cutGradient=normalize(q);}
+    else {cut=abs(q.x)-shape.params.x-.25-.0028;cutGradient=vec2f(sign(q.x),0);}
 
    }
   }
@@ -225,6 +248,7 @@ fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
   if(cutEdge){ge=cutGradient;}
   let u=clamp(edge/bevel,0.,1.);
   var slope=transpose(rotation)*((r.xy-.5)*.009*shoulder+ge*(face+.004)*6.*u*(1.-u)/bevel);
+  slope.x*=stretch;
   if(miter){slope=miterGradient;}
   return TileProfile(height,edge,id,bevel,slope);
 }
@@ -260,11 +284,14 @@ fn reliefHit(ro:vec3f,rd:vec3f,h:Hit)->Hit {
 }
 fn jointVisibility(h:Hit,l:vec3f)->f32 {
   let detail=1.-smoothstep(2.5,4.,length(h.p-U.camera.xyz));if(detail<=0.||h.material==1u){return 1.;}
-  let f=tileFrame(h);let uv=tileUV(h);let mode=tileMode(h);let shape=shapes[h.sid/9u];var size=vec2f(.25);if(mode==1u||mode==2u){size.x=PI*shape.params.x/32.;}
-  // A point >10mm from every nominal joint cannot be on a <=2.8mm bevel.
-  // Prove the existing early-return condition before generating per-tile hashes.
-  let border=min(fract(uv/size),1.-fract(uv/size))*size;var clear=min(border.x,border.y);
-  if(mode==0u&&shape.info.y==1u&&(h.sid%9u==4u||h.sid%9u==5u)&&uv.y>=shape.params.y){clear=min(clear,length(uv-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y))-shape.params.x-.25);}
+  let f=tileFrame(h);let uv=tileUV(h);let mode=tileMode(h);let shape=shapes[h.sid/9u];
+  var border=min(fract(uv/.25),1.-fract(uv/.25))*.25;
+  if(mode==1u||mode==2u){let course=archCourse(uv.x,shape.params.x);border.x=course.z*.5-abs(uv.x-course.y);}
+  var clear=min(border.x,border.y);
+  if(mode==0u&&shape.info.y==1u&&(h.sid%9u==4u||h.sid%9u==5u)){
+   let q=uv-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
+   clear=min(clear,select(abs(q.x),length(q),q.y>=0.)-shape.params.x-.25);
+  }
   if(clear>.010){return 1.;}
   let profile=tileProfile(uv,h.sid,h.material,mode);if(profile.edge>profile.bevel+.0003){return 1.;}let start=profile.height;
   let dir=vec2f(dot(l,f[0]),dot(l,f[1]));let nl=dot(h.n,l);var visible=1.;

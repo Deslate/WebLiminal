@@ -37,10 +37,16 @@ test('diffuse probe offsets partition the buffer and exclude CSG voids',()=>{
 test('all arch spring lines meet the common 250 mm course datum',()=>{
  for(const s of g.shapes.filter(s=>s.kind===1))assert.equal(s.spring/.25,Math.round(s.spring/.25));
 });
-test('the 32-part symmetric arch cut schedule fits 250 mm stock at both radii',()=>{
+test('arch setting-out preserves full modules and symmetric non-sliver closing cuts',()=>{
  for(const s of g.shapes.filter(s=>s.kind===1)){
-  const widest=2*(s.radius+.25)*Math.sin(Math.PI/64);
-  assert(widest<=.25,`outer cut ${widest} exceeds tile stock`);
-  assert.equal(32%2,0,'the crown must lie on a joint');
+  const half=Math.PI*s.radius/2,full=Math.floor(half/.25)-1,cut=(half-full*.25)/2;
+  const widths=[...Array(full).fill(.25),cut,cut];const left=[...widths].reverse();
+  assert(cut>=.125&&cut<.25,'closing tiles must not be narrow slivers');
+  assert(Math.abs(widths.reduce((a,b)=>a+b,0)-half)<1e-12);
+  assert.deepEqual([...widths,...left].reverse(),[...widths,...left]);
+  assert(Math.abs(s.spring/.25-Math.round(s.spring/.25))<1e-12);
+  // Radial face wedges use 300mm stock: the 250mm inner module flares
+  // at the outer edge; never pretend these are cut from 250mm stock.
+  assert(2*(s.radius+.25)*Math.sin(.25/(2*s.radius))<.3);
  }
 });
