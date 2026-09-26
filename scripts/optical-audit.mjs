@@ -19,7 +19,7 @@ function wave(p, c) {
     a = [0.41, 0.26, 0.15, 0.085, 0.049, 0.026, 0.013, 0.007];
   let h = c.waterLevel,
     g = [0, 0];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 6; i++) {
     let ph =
         dot(p, dirs[i]) * k[i] +
         Math.sqrt(9.81 * k[i]) * c.waveTime +
@@ -27,17 +27,6 @@ function wave(p, c) {
       amp = a[i] * c.waveAmplitude;
     h += amp * Math.sin(ph);
     g = g.map((v, j) => v + amp * k[i] * Math.cos(ph) * dirs[i][j]);
-  }
-  for (let j = 0; j < 3; j++) {
-    let kk = 37.7 + j * 14.31,
-      dir = [Math.cos(j * 2.39 + 0.6), Math.sin(j * 2.39 + 0.6)],
-      amp = c.waveAmplitude * (0.021 - j * 0.005),
-      ph =
-        dot(p, dir) * kk +
-        Math.sqrt(9.81 * kk + 0.000072 * kk ** 3) * c.waveTime +
-        j * 7.9;
-    h += amp * Math.sin(ph);
-    g = g.map((v, i) => v + amp * kk * Math.cos(ph) * dir[i]);
   }
   return { h, n: norm([-g[0], 1, -g[1]]) };
 }

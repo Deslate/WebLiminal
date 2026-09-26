@@ -72,17 +72,17 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
         h = 0.01;
       }
       let density = 8;
-      if (i === 0 && face === 3) density = 40;
+      if (i === 0 && face === 3) density = 12;
       if (
         (i === 1 && face === 1) ||
         (i === 2 && face === 0) ||
         (i === 3 && face === 5) ||
         (i === 4 && face === 4)
       )
-        density = 40;
-      if (i >= 5 && i <= 8 && face === 2) density = 48;
-      if (s.kind === 1 && (face === 4 || face === 5 || face >= 6)) density = 40;
-      if (i >= 13) density = 28;
+        density = 12;
+      if (i >= 5 && i <= 8 && face === 2) density = 12;
+      if (s.kind === 1 && (face === 4 || face === 5 || face >= 6)) density = 12;
+      if (i >= 13) density = 12;
       const nx = Math.max(2, Math.ceil(w * density)),
         ny = Math.max(2, Math.ceil(h * density));
       surfaceList.push({

@@ -98,8 +98,7 @@ export async function createRenderer(canvas) {
       GPUBufferUsage.COPY_DST,
   });
   const config = {
-    autoConverge: true,
-    photonCount: 65536,
+    photonCount: 131072,
     ...level.optics,
     freeze: false,
     waveTime: 1.7,
@@ -215,12 +214,12 @@ export async function createRenderer(canvas) {
   }
   rebuild();
   resize(1512, 982, 0.63);
-  let stillFrames=0,autoStatic=false,stationaryTime=0,lastSun=1;
+  let autoStatic=false;
   function configure(patch) {
     const wasWidth = config.apertureWidth,
       wasDepth = config.apertureDepth;
     Object.assign(config, patch);
-    stillFrames=0;autoStatic=false;
+    autoStatic=false;
     config.photonCount=Math.max(32768,Math.min(262144,Math.round(config.photonCount/512)*512));
     config.waterLevel = Math.max(0.12, Math.min(1.05, config.waterLevel));
     config.waveAmplitude = Math.max(
@@ -239,18 +238,12 @@ export async function createRenderer(canvas) {
     activeJobs++;
     try {
       elapsed = time;
-      stillFrames = moving ? 0 : stillFrames + 1;
-      const settle = !config.freeze && config.autoConverge && stillFrames > 18;
-      if (settle !== autoStatic && !config.freeze) {
-        stationaryTime=lastWaveTime;sceneBatches=0;history=0;
-      }
-      autoStatic=settle;
-      if (Math.abs(sun-lastSun)>.001) {sceneBatches=0;history=0;}
-      lastSun=sun;
-      const staticExposure=config.freeze||autoStatic;
+      // v1.1: camera motion NEVER invalidates world-space lighting. The wave
+      // phase is fixed for this scene, in both camera and photon transport.
+      autoStatic=true;
+      const staticExposure=true;
       frame++;
-      sceneBatches++;
-      history = moving ? 1 : history + 1;
+      history++;
       const data = new ArrayBuffer(192),
         f = new Float32Array(data),
         u = new Uint32Array(data);
@@ -274,9 +267,7 @@ export async function createRenderer(canvas) {
         ],
         16,
       );
-      lastWaveTime = config.freeze
-        ? config.waveTime
-        : autoStatic ? stationaryTime : config.waveTime + time * 0.1;
+      lastWaveTime = config.waveTime;
       f.set(
         [
           lastWaveTime,
@@ -317,20 +308,24 @@ export async function createRenderer(canvas) {
           0,
         ]),
       );
-      const encoder = device.createCommandEncoder();
-      encoder.clearBuffer(buffers.flux);
-      encoder.clearBuffer(counters);
-      encoder.clearBuffer(pathAudit);
-      let pass = encoder.beginComputePass();
-      pass.setPipeline(pipelines[0]);
-      pass.setBindGroup(0, groups[0]);
-      pass.dispatchWorkgroups(config.photonCount / 64);
-      pass.end();
-      pass = encoder.beginComputePass();
-      pass.setPipeline(pipelines[1]);
-      pass.setBindGroup(0, groups[1]);
-      pass.dispatchWorkgroups(Math.ceil(geometry.totalCells / 128));
-      pass.end();
+      // Warm the light cache before showing the first camera frame. Camera
+      // movement and stopping do not rebuild it or blend camera histories.
+      if (sceneBatches===0) {
+        for(let batch=1;batch<=48;batch++) {
+          u[30]=batch;u[38]=batch;f[33]=1/batch;f[34]=1;
+          device.queue.writeBuffer(uniforms,0,data);
+          const warm=device.createCommandEncoder();
+          warm.clearBuffer(buffers.flux);warm.clearBuffer(counters);warm.clearBuffer(pathAudit);
+          let p=warm.beginComputePass();p.setPipeline(pipelines[0]);p.setBindGroup(0,groups[0]);p.dispatchWorkgroups(config.photonCount/64);p.end();
+          p=warm.beginComputePass();p.setPipeline(pipelines[1]);p.setBindGroup(0,groups[1]);p.dispatchWorkgroups(Math.ceil(geometry.totalCells/128));p.end();
+          device.queue.submit([warm.finish()]);
+        }
+        sceneBatches=48;
+      }
+      u[30]=sceneBatches;u[38]=sceneBatches;u[41]=1;f[34]=sun;
+      device.queue.writeBuffer(uniforms,0,data);
+      const encoder=device.createCommandEncoder();
+      let pass;
       pass = encoder.beginComputePass();
       pass.setPipeline(pipelines[2]);
       pass.setBindGroup(0, groups[2]);
@@ -425,6 +420,7 @@ export async function createRenderer(canvas) {
       return [...errors];
     },
     get autoStatic() { return autoStatic; },
+    get lightingBatches() { return sceneBatches; },
     get busy() {
       return activeJobs > 0;
     },

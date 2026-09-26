@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { auditOptics } from "./optical-audit.mjs";
 const output =
   process.env.EVIDENCE_DIR ||
-  "/Users/steven/Projects/workroom-v1-evidence/final";
+  "/Users/steven/Projects/workroom-v1.1-evidence/proof";
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
@@ -28,9 +28,9 @@ try {
   );
   const views = [];
   const base = {
-    photonCount: 65536,
+    photonCount: 131072,
     freeze: true,
-    targetSamples: 1024,
+    targetSamples: 8,
     waterLevel: 0.42,
     waveAmplitude: 0.052,
     apertureWidth: 4.8,
@@ -54,7 +54,7 @@ try {
       ...patch,
     });
     await page.waitForFunction(
-      () => window.__POOLROOMS_V1__.snapshot().samples >= 1024,
+      () => window.__POOLROOMS_V1__.snapshot().samples >= 8,
       {},
       { timeout: 180000 },
     );
@@ -65,14 +65,14 @@ try {
     const optics = auditOptics(raw);
     delete raw.paths;
     assert.equal(snapshot.runId, runId);
-    assert.equal(snapshot.samples, 1024);
-    assert.equal(raw.batches, 1024);
+    assert.equal(snapshot.samples, 8);
+    assert.equal(raw.batches, 48);
     assert.equal(raw.errors.length, 0);
     await page.screenshot({ path: `${output}/${name}.png` });
     const sha256 = createHash("sha256")
       .update(readFileSync(`${output}/${name}.png`))
       .digest("hex");
-    const frames = snapshot.frames.slice(20, -10).map((x) => x.ms),
+    const frames = snapshot.frames.slice(2).map((x) => x.ms),
       fps = (1000 * frames.length) / frames.reduce((a, b) => a + b, 0);
     delete snapshot.frames;
     const result = { name, runId, snapshot, raw, optics, fps, sha256 };
@@ -102,16 +102,16 @@ try {
   await page.evaluate((p) => window.__POOLROOMS_V1__.configure(p), {
     ...base,
     scale: 0.85,
-    targetSamples: 1024,
+    targetSamples: 8,
   });
   await page.waitForFunction(
-    () => window.__POOLROOMS_V1__.snapshot().samples >= 1024,
+    () => window.__POOLROOMS_V1__.snapshot().samples >= 8,
     {},
     { timeout: 180000 },
   );
   await page.screenshot({ path: `${output}/06-full-frame.png` });
   const full = await page.evaluate(() => window.__POOLROOMS_V1__.snapshot());
-  const fullDeltas=full.frames.slice(20,-10).map(f=>f.ms);full.captureFps=1000*fullDeltas.length/fullDeltas.reduce((a,b)=>a+b,0);delete full.frames;
+  const fullDeltas=full.frames.slice(2).map(f=>f.ms);full.captureFps=1000*fullDeltas.length/fullDeltas.reduce((a,b)=>a+b,0);delete full.frames;
   writeFileSync(
     `${output}/06-full-frame.json`,
     JSON.stringify(full, null, 2),

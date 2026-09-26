@@ -1,0 +1,194 @@
+{
+  "date": "2026-09-26T08:54:24.671Z",
+  "totalMotionFrames": 32,
+  "scenarios": [
+    {
+      "name": "turn-and-walk",
+      "count": 16,
+      "averageCaptureIntervalMs": 34.64475911458333,
+      "stopHashesIdentical": null,
+      "lightingBatches": [
+        null
+      ],
+      "resolutions": [
+        null
+      ]
+    },
+    {
+      "name": "dark-exposure-stress",
+      "count": 16,
+      "averageCaptureIntervalMs": 24.037190755208332,
+      "stopHashesIdentical": null,
+      "lightingBatches": [
+        null
+      ],
+      "resolutions": [
+        null
+      ]
+    }
+  ],
+  "isolatedPixelDefinition": "Luminance >=75/255, 8-neighbour average <50/255, centre > brightest neighbour +25/255. A heuristic for isolated one-pixel fireflies, NOT a general perceptual proof.",
+  "maximumIsolatedBrightPixels": 0,
+  "perFrame": [
+    {
+      "file": "turn-and-walk-00.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7391876528841905
+    },
+    {
+      "file": "turn-and-walk-01.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7433559359475856
+    },
+    {
+      "file": "turn-and-walk-02.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7478670298171316
+    },
+    {
+      "file": "turn-and-walk-03.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7525673768036294
+    },
+    {
+      "file": "turn-and-walk-04.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7580543701979547
+    },
+    {
+      "file": "turn-and-walk-05.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7633803974180756
+    },
+    {
+      "file": "turn-and-walk-06.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7696493227297708
+    },
+    {
+      "file": "turn-and-walk-07.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.776093357687044
+    },
+    {
+      "file": "turn-and-walk-08.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7861406103514047
+    },
+    {
+      "file": "turn-and-walk-09.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7928533712647765
+    },
+    {
+      "file": "turn-and-walk-10.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7995883576331642
+    },
+    {
+      "file": "turn-and-walk-11.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8063583659306673
+    },
+    {
+      "file": "turn-and-walk-12.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8130441868985657
+    },
+    {
+      "file": "turn-and-walk-13.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8196357180573066
+    },
+    {
+      "file": "turn-and-walk-14.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.826605755449951
+    },
+    {
+      "file": "turn-and-walk-15.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8338411513055097
+    },
+    {
+      "file": "dark-exposure-stress-00.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9336913652086768
+    },
+    {
+      "file": "dark-exposure-stress-01.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9256322805202643
+    },
+    {
+      "file": "dark-exposure-stress-02.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9102125292298409
+    },
+    {
+      "file": "dark-exposure-stress-03.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9034431944309744
+    },
+    {
+      "file": "dark-exposure-stress-04.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.891452898199334
+    },
+    {
+      "file": "dark-exposure-stress-05.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8864750697744588
+    },
+    {
+      "file": "dark-exposure-stress-06.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8820178557958599
+    },
+    {
+      "file": "dark-exposure-stress-07.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8780664392935269
+    },
+    {
+      "file": "dark-exposure-stress-08.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.874624187760644
+    },
+    {
+      "file": "dark-exposure-stress-09.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8768177728208278
+    },
+    {
+      "file": "dark-exposure-stress-10.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8808493356609446
+    },
+    {
+      "file": "dark-exposure-stress-11.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8826024526126359
+    },
+    {
+      "file": "dark-exposure-stress-12.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8857934891539779
+    },
+    {
+      "file": "dark-exposure-stress-13.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8815733466955463
+    },
+    {
+      "file": "dark-exposure-stress-14.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8636986928738456
+    },
+    {
+      "file": "dark-exposure-stress-15.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.849449482214248
+    }
+  ]
+}

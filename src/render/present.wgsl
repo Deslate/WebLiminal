@@ -12,7 +12,5 @@ fn linearToSRGB(c:vec3f)->vec3f{return select(c*12.92,1.055*pow(max(c,vec3f(0)),
   let color=vec3f(load(uv+ca).r,load(uv).g,load(uv-ca).b)*D.style.x;
   let vignette=1.-dot(uv-.5,uv-.5)*.24;
   var outColor=linearToSRGB(aces(color*vignette));
-  let grain=fract(sin(dot(o.position.xy,vec2f(12.9898,78.233))+D.style.z*71.3)*43758.5453)-.5;
-  outColor+=grain*(.006+intro*.032);
   return vec4f(outColor,1.);
 }

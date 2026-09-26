@@ -1,26 +1,26 @@
-# 此处无深水 · Poolrooms v1
+# 此处无深水 · Poolrooms v1.1
 
-零位图资源的 WebGPU Poolrooms。光子从天窗进入房间，在真实波面反射、折射、吸收，再形成墙面与池底照明。
+这一版优先消除移动时的采样斑点。相机改为确定性着色，水面同时追踪反射与折射；焦散和间接光来自运行时计算的世界空间光子缓存。零位图资产。
 
 ```sh
 npm ci
 npm run dev
 ```
 
-打开 **http://127.0.0.1:4173/**。WASD / 方向键移动，拖动环顾，Shift 加快，M 静音。新浏览器通常需要第一次按键/点击才能播放声音。需要支持 WebGPU 的桌面浏览器；没有用旧渲染路径做降级。
+打开 **http://127.0.0.1:4173/**。WASD / 方向键移动，拖动环顾，Shift 加快，M 静音。首次按键/点击后才可能播放声音；需要 WebGPU 桌面浏览器。
 
-相机静止后会固定波面时刻并逐渐收敛；移动时恢复动态波面。没有菜单、开始按钮、参数面板或 FPS UI。开场和声音保留；34.6 秒的异常现在通过改变太阳入射功率重新算光，不再降下一块旧版假墙。
+移动和静止使用同一路径，无相机历史累积、随机景深、随机釉面延续或胶片颗粒。4 个固定子像素样本与程序材质的面积覆盖抗锯齿保留接缝。光子缓存启动时预计算 48×131072 条路径，移动不清空。**水波相位固定，取消高频毛细波；当前并非持续动画水面。** 改水位、波幅或天窗参数会重新计算光照。
 
-- `src/render/`：共享几何求交、光子传播、密度估计、相机路径、镜头呈现。
-- `materials/porcelain.wgsl`：固定签名的程序化材质槽位。
-- `levels/poolrooms.json`：机位、边界、光学参数。
-- `src/collision.js`、`src/audio.js`：碰撞和合成音景。
-- `scripts/validate-content.mjs`：内容与零位图资源检查入口。
-- `scripts/proof-v1.mjs`：同次运行的三张防伪图与独立光路审计。
-- `scripts/verify-v1.mjs`：实际 GPU 完成帧率、首帧、输入、声音、控制台与网络验证。
+- `src/render/`：解析几何、光子传播与缓存、确定性相机、曝光呈现。
+- `materials/porcelain.wgsl`：程序化材质槽；小于像素的接缝与微细节做面积过滤。
+- `levels/`：纯数据关卡；`src/collision.js` / `src/audio.js`：碰撞与合成音景。
+- `scripts/validate-content.mjs`：内容及零位图校验。
+- `npm test` / `npm run build`：碰撞测试及静态构建。
+- `npm run verify`：首帧、GPU 完成帧率、实际键盘行走与控制台验证。
+- `npm run verify:motion`：五类持续移动的截图与停止后像素一致性检查。
+- `npm run verify:frames`：浏览器 compositor 每帧 PNG 抓取，含暗部提高曝光的压力场景。
+- `npm run proof`：同次运行的水位、开口、波高变化与光路审计。
 
-`npm run build` 生成可部署到 GitHub Pages 子目录的静态 `dist/`。无运行时 npm 依赖，无图像、模型、字体或音频外链。
+最新证据在仓库外 **`../workroom-v1.1-evidence/`**。旧 `../workroom-v1-evidence/` 只作历史记录。构建为相对路径的纯静态前端，无外链运行资源。
 
-截图必须放在仓库外。此次交付位于 **`../workroom-v1-evidence/final/`**：原状、水位改变、天窗收窄及 1920×1200 完整截图；另含平水控制、恢复原状复验、路径记录和 SHA-256 清单。前四轮渲染检查保留在其父目录。
-
-具体方法见 [光传输说明](docs/PHYSICS.md)，真实结果和未达成部分见 [验收记录](docs/ACCEPTANCE.md)。加内容前读 [AGENTS.md](AGENTS.md)。
+实测与覆盖范围见 [验收记录](docs/ACCEPTANCE.md)，算法和明确近似见 [渲染说明](docs/PHYSICS.md)。开发前读 [AGENTS.md](AGENTS.md)。

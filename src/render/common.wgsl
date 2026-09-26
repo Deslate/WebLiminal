@@ -38,10 +38,9 @@ fn wave(p:vec2f)->vec3f {
   let dirs=array<vec2f,8>(vec2f(.91,.41),vec2f(-.38,.925),vec2f(.71,-.704),vec2f(-.97,-.24),vec2f(.18,.984),vec2f(.839,.544),vec2f(-.61,.792),vec2f(.994,-.108));
   let ks=array<f32,8>(2.13,3.67,5.91,8.43,12.71,17.13,22.79,31.37);
   let amps=array<f32,8>(.41,.26,.15,.085,.049,.026,.013,.007);
-  for(var i=0u;i<8u;i++){let k=ks[i];let ph=dot(p,dirs[i])*k+sqrt(9.81*k)*U.state.x+f32(i*i)*1.719;let a=amps[i]*U.state.z;h+=a*sin(ph);grad+=a*k*cos(ph)*dirs[i];}
-  // Millimetre-scale capillary waves supply short-radius curvature as well as
-  // the long gravity waves. These change the actual interface, not its shading.
-  for(var j=0u;j<3u;j++) {let k=37.7+f32(j)*14.31;let dir=normalize(vec2f(cos(f32(j)*2.39+.6),sin(f32(j)*2.39+.6)));let a=U.state.z*(.021-f32(j)*.005);let ph=dot(p,dir)*k+sqrt(9.81*k+.000072*k*k*k)*U.state.x+f32(j)*7.9;h+=a*sin(ph);grad+=a*k*cos(ph)*dir;}
+  for(var i=0u;i<6u;i++){let k=ks[i];let ph=dot(p,dirs[i])*k+sqrt(9.81*k)*U.state.x+f32(i*i)*1.719;let a=amps[i]*U.state.z;h+=a*sin(ph);grad+=a*k*cos(ph)*dirs[i];}
+  // v1.1 excludes subpixel capillary curvature from the shared physical
+  // surface, rather than blurring its sharp refracted image after rendering.
   return vec3f(U.state.y+h,grad);
 }
 fn emptyHit()->Hit {return Hit(INF,vec3f(0),vec3f(0),vec2f(0),0u,0u);}
@@ -96,13 +95,25 @@ fn traceWater(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
   if(abs(rd.y)<.00001){return h;}
   let lo=(U.state.y-U.state.z*1.07-ro.y)/rd.y;let hi=(U.state.y+U.state.z*1.07-ro.y)/rd.y;
   if(max(lo,hi)<EPS||min(lo,hi)>maxT){return h;}
-  var t=(U.state.y-ro.y)/rd.y;
-  for(var i=0u;i<7u;i++){
-    let p=ro+rd*t;let w=wave(p.xz);let f=p.y-w.x;let deriv=rd.y-dot(w.yz,rd.xz);
-    t-=clamp(f/select(.0001,deriv,abs(deriv)>.0001),-.4,.4);
+  var a=max(EPS,min(lo,hi));var b=min(maxT,max(lo,hi));
+  if(a>=b){return h;}
+  var fa=(ro+rd*a).y-wave((ro+rd*a).xz).x;
+  let fb=(ro+rd*b).y-wave((ro+rd*b).xz).x;
+  if(fa*fb>0.){return h;}
+  var t=clamp((U.state.y-ro.y)/rd.y,a,b);
+  // Safeguarded Newton: never leave the root bracket, never discard a valid
+  // water hit merely because an unconstrained Newton iteration diverged.
+  for(var i=0u;i<24u;i++){
+    let p=ro+rd*t;let w=wave(p.xz);let f=p.y-w.x;
+    if(abs(f)<.00001){break;}
+    if(f*fa>0.){a=t;fa=f;}else{b=t;}
+    let deriv=rd.y-dot(w.yz,rd.xz);
+    var next=t-f/select(.0001,deriv,abs(deriv)>.0001);
+    if(next<=a||next>=b||i>10u){next=(a+b)*.5;}
+    t=next;
   }
-  let p=ro+rd*t;
-  if(t>EPS&&t<maxT&&p.x>-7.&&p.x<7.&&p.z>-17.&&p.z<10.&&abs(p.y-wave(p.xz).x)<.002){h=Hit(t,p,normalize(vec3f(-wave(p.xz).y,1.,-wave(p.xz).z)),vec2f(0),0u,9u);}
+  let p=ro+rd*t;let w=wave(p.xz);
+  if(t>EPS&&t<maxT&&p.x>-7.&&p.x<7.&&p.z>-17.&&p.z<10.){h=Hit(t,p,normalize(vec3f(-w.y,1.,-w.z)),vec2f(0),0u,9u);}
   return h;
 }
 fn trace(ro:vec3f,rd:vec3f,maxT:f32)->Hit {var h=traceSolid(ro,rd,maxT);let w=traceWater(ro,rd,h.t);if(w.t<h.t){h=w;}return h;}

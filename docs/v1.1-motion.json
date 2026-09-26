@@ -1,0 +1,371 @@
+{
+  "date": "2026-09-26T08:51:37.190Z",
+  "firstFrameMs": 1066.9000000059605,
+  "totalMotionFrames": 60,
+  "scenarios": [
+    {
+      "name": "slow-pan",
+      "count": 12,
+      "averageCaptureIntervalMs": 451.3363636352799,
+      "stopHashesIdentical": true,
+      "lightingBatches": [
+        48
+      ],
+      "resolutions": [
+        "1440x936"
+      ]
+    },
+    {
+      "name": "fast-turn",
+      "count": 12,
+      "averageCaptureIntervalMs": 360.4454545459964,
+      "stopHashesIdentical": true,
+      "lightingBatches": [
+        48
+      ],
+      "resolutions": [
+        "1440x936"
+      ]
+    },
+    {
+      "name": "dark-room",
+      "count": 12,
+      "averageCaptureIntervalMs": 212.22727272727272,
+      "stopHashesIdentical": true,
+      "lightingBatches": [
+        48
+      ],
+      "resolutions": [
+        "1440x936"
+      ]
+    },
+    {
+      "name": "water-ceiling",
+      "count": 12,
+      "averageCaptureIntervalMs": 314.2909090898254,
+      "stopHashesIdentical": true,
+      "lightingBatches": [
+        48
+      ],
+      "resolutions": [
+        "1440x936"
+      ]
+    },
+    {
+      "name": "diagonal-walk",
+      "count": 12,
+      "averageCaptureIntervalMs": 388.1636363647201,
+      "stopHashesIdentical": true,
+      "lightingBatches": [
+        48
+      ],
+      "resolutions": [
+        "1440x936"
+      ]
+    }
+  ],
+  "isolatedPixelDefinition": "Luminance >=75/255, 8-neighbour average <50/255, centre > brightest neighbour +25/255. A heuristic for isolated one-pixel fireflies, NOT a general perceptual proof.",
+  "maximumIsolatedBrightPixels": 0,
+  "perFrame": [
+    {
+      "file": "slow-pan-00.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6353361835795645
+    },
+    {
+      "file": "slow-pan-01.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6281836280563368
+    },
+    {
+      "file": "slow-pan-02.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6323061132124269
+    },
+    {
+      "file": "slow-pan-03.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6434673326221187
+    },
+    {
+      "file": "slow-pan-04.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6672553044752637
+    },
+    {
+      "file": "slow-pan-05.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7010238526277223
+    },
+    {
+      "file": "slow-pan-06.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7344509369713036
+    },
+    {
+      "file": "slow-pan-07.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7677837315057274
+    },
+    {
+      "file": "slow-pan-08.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8008174926453949
+    },
+    {
+      "file": "slow-pan-09.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8332525134969127
+    },
+    {
+      "file": "slow-pan-10.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8583342762314249
+    },
+    {
+      "file": "slow-pan-11.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.876850100755396
+    },
+    {
+      "file": "fast-turn-00.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8819734048858285
+    },
+    {
+      "file": "fast-turn-01.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "fast-turn-02.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "fast-turn-03.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "fast-turn-04.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "fast-turn-05.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "fast-turn-06.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8888343354993049
+    },
+    {
+      "file": "fast-turn-07.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6278105098115282
+    },
+    {
+      "file": "fast-turn-08.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "fast-turn-09.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "fast-turn-10.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "fast-turn-11.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-00.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-01.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-02.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-03.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-04.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-05.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-06.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-07.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-08.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-09.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-10.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "dark-room-11.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9966432827939956
+    },
+    {
+      "file": "water-ceiling-00.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9786440317244798
+    },
+    {
+      "file": "water-ceiling-01.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8764486955678402
+    },
+    {
+      "file": "water-ceiling-02.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6281863220508842
+    },
+    {
+      "file": "water-ceiling-03.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.5063140497203633
+    },
+    {
+      "file": "water-ceiling-04.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.5708230961540534
+    },
+    {
+      "file": "water-ceiling-05.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6219483776764836
+    },
+    {
+      "file": "water-ceiling-06.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6362709996874967
+    },
+    {
+      "file": "water-ceiling-07.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6322737852778586
+    },
+    {
+      "file": "water-ceiling-08.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.6164189538680374
+    },
+    {
+      "file": "water-ceiling-09.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.5666628950743003
+    },
+    {
+      "file": "water-ceiling-10.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.5086665804588412
+    },
+    {
+      "file": "water-ceiling-11.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.5729533723423744
+    },
+    {
+      "file": "diagonal-walk-00.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.723697857735536
+    },
+    {
+      "file": "diagonal-walk-01.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7576819254517829
+    },
+    {
+      "file": "diagonal-walk-02.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.7833078750848609
+    },
+    {
+      "file": "diagonal-walk-03.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8169208450522096
+    },
+    {
+      "file": "diagonal-walk-04.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8299954740891604
+    },
+    {
+      "file": "diagonal-walk-05.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8239737227771851
+    },
+    {
+      "file": "diagonal-walk-06.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8228260811000119
+    },
+    {
+      "file": "diagonal-walk-07.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8277634996066768
+    },
+    {
+      "file": "diagonal-walk-08.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8651480619403227
+    },
+    {
+      "file": "diagonal-walk-09.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.8972510479638789
+    },
+    {
+      "file": "diagonal-walk-10.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9400148439099559
+    },
+    {
+      "file": "diagonal-walk-11.png",
+      "isolatedBrightPixels": 0,
+      "darkPixelFraction": 0.9572557355143914
+    }
+  ]
+}

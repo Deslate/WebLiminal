@@ -15,7 +15,7 @@ let dragging = false,
   frameMs = [],
   completed = 0,
   firstFrame = null,
-  scale = Math.min(.8,1024/innerWidth),
+  scale = Math.min(1,1440/innerWidth),
   paused = false,
   holdTime = false,
   targetSamples = 0;
@@ -75,7 +75,6 @@ addEventListener("visibilitychange", () => {
   previous = performance.now();
 });
 let lastCompleted = performance.now(),
-  eventStarted = false,
   lastView = "",
   lastResize = 0,
   lastSimulation = performance.now();
@@ -116,7 +115,6 @@ async function tick(now) {
   let anomaly = 0;
   if (!holdTime && elapsed > 34.6 && elapsed < 43) {
     anomaly = Math.min(1, (elapsed - 34.6) / 1.4, (43 - elapsed) / 2.4);
-    eventStarted = true;
   }
   sound.update(elapsed, norm > 0, anomaly);
   const did = await renderer.render(view, elapsed, moving, 1 - anomaly * 0.94);
@@ -167,6 +165,9 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       samples: renderer.samples,
       config: renderer.config,
       staticExposure: renderer.autoStatic,
+      lightingBatches: renderer.lightingBatches,
+      cameraHistory: false,
+      cameraSamplesPerPixel: 4,
       errors: renderer.errors,
       audio: sound.inspect(),
       validPosition: canStand(view.x, view.z, ROOM, renderer.solids),
@@ -186,6 +187,8 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       frameMs = [];
       paused = false;
     },
+    // Evidence automation changes the actual camera, without rebuilding light.
+    setView(patch) { Object.assign(view, patch); },
     audit: () => renderer.audit(),
   },
 });

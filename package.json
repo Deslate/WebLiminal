@@ -1,7 +1,7 @@
 {
   "name": "poolrooms-v1",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -10,7 +10,9 @@
     "validate": "node scripts/validate-content.mjs",
     "test": "node --test scripts/collision.test.mjs",
     "verify": "node scripts/verify-v1.mjs",
-    "proof": "node scripts/proof-v1.mjs"
+    "proof": "node scripts/proof-v1.mjs",
+    "verify:motion": "node scripts/verify-motion.mjs",
+    "verify:frames": "node scripts/capture-motion-frames.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.55.1",

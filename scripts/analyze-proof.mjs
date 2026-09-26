@@ -2,7 +2,7 @@
 import {readFileSync,writeFileSync} from 'node:fs';
 import {inflateSync} from 'node:zlib';
 import {resolve} from 'node:path';
-const dir=process.env.EVIDENCE_DIR||resolve('../workroom-v1-evidence/final');
+const dir=process.env.EVIDENCE_DIR||resolve('../workroom-v1.1-evidence/proof');
 function png(file){
  const b=readFileSync(file);let offset=8,width,height,channels;const chunks=[];
  while(offset<b.length){const n=b.readUInt32BE(offset),type=b.toString('ascii',offset+4,offset+8),body=b.subarray(offset+8,offset+8+n);if(type==='IHDR'){width=body.readUInt32BE(0);height=body.readUInt32BE(4);if(body[8]!==8||![2,6].includes(body[9]))throw Error('Expected RGB/RGBA8 PNG');channels=body[9]===6?4:3;}if(type==='IDAT')chunks.push(body);offset+=n+12;}
@@ -23,5 +23,5 @@ for(const name of ['02-water-level','03-skylight-opening','04-flat-wave-control'
 }
 const report={pairedReflectedPaths:shift.length,meanReceiverShiftMetres:shift.reduce((a,b)=>a+b,0)/shift.length,maxReceiverShiftMetres:Math.max(...shift),imageDifferences:differences};
 writeFileSync(`${dir}/difference-analysis.json`,JSON.stringify(report,null,2));
-writeFileSync('docs/v1-proof-summary.json',JSON.stringify({manifest:JSON.parse(readFileSync(`${dir}/manifest.json`)),difference:report},null,2));
+writeFileSync('docs/v1.1-proof-summary.json',JSON.stringify({manifest:JSON.parse(readFileSync(`${dir}/manifest.json`)),difference:report},null,2));
 console.log(JSON.stringify(report,null,2));
