@@ -72,7 +72,7 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
         h = 0.01;
       }
       let density = 12;
-      if (i === 0 && face === 3) density = 24;
+      if (i === 0 && face === 3) density = 48;
       if (
         (i === 1 && face === 1) ||
         (i === 2 && face === 0) ||
@@ -103,10 +103,13 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
   let probeCount=0;const probeSurfaces=[];
   surfaceList.forEach((s, i) => {
     su.set([s.offset, s.nx, s.ny, probeCount], i * 8);
-    const probes=Math.ceil(s.nx/4)*Math.ceil(s.ny/4);
+    // Preserve the previous 6/m diffuse-probe density while resolving direct
+    // water flux at 48/m on the floor. No extra indirect-light budget.
+    const stride=i===3?8:4;
+    const probes=Math.ceil(s.nx/stride)*Math.ceil(s.ny/stride);
     for(let j=0;j<probes;j++){
       const shape=shapes[Math.floor(i/9)],face=i%9;
-      const nx=Math.ceil(s.nx/4),ny=Math.ceil(s.ny/4),u=(j%nx+.5)/nx,v=(Math.floor(j/nx)+.5)/ny;
+      const nx=Math.ceil(s.nx/stride),ny=Math.ceil(s.ny/stride),u=(j%nx+.5)/nx,v=(Math.floor(j/nx)+.5)/ny;
       const d=shape.hi.map((p,k)=>p-shape.lo[k]);
       const px=face<2?shape[face===1?'hi':'lo'][0]:shape.lo[0]+u*d[0];
       const py=face<2||face>=4?shape.lo[1]+v*d[1]:shape[face===3?'hi':'lo'][1];
@@ -115,7 +118,7 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
       probeSurfaces.push(i|(Number(valid)<<16));
     }
     probeCount+=probes;
-    sf.set([s.width, s.height, s.area, 0], i * 8 + 4);
+    sf.set([s.width, s.height, s.area, stride], i * 8 + 4);
     const shape=shapes[Math.floor(i/9)], face=i%9;
     cellSurfaces.fill(i | (4 << 16), s.offset, s.offset + s.nx * s.ny);
     if(shape.kind===1 && face<6){

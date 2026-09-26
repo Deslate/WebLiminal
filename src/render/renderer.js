@@ -431,7 +431,7 @@ export async function createRenderer(canvas) {
       activeJobs--;
     }
   }
-  async function audit() {
+  async function audit(options={}) {
     await device.queue.onSubmittedWorkDone();
     const read = device.createBuffer({
       size: 32,
@@ -457,7 +457,23 @@ export async function createRenderer(canvas) {
     );
     pathsRead.unmap();
     pathsRead.destroy();
+    let floor=null;
+    if(options.floor){
+      // Read the actual transported irradiance, before materials, refraction
+      // and tone mapping. Diagnostics only; never used to draw the image.
+      const su=new Uint32Array(geometry.surfaces),sf=new Float32Array(geometry.surfaces);
+      const offset=su[24],nx=su[25],ny=su[26],size=nx*ny*16;
+      const readFloor=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});
+      const encFloor=device.createCommandEncoder();encFloor.copyBufferToBuffer(buffers.liveField,offset*16,readFloor,0,size);device.queue.submit([encFloor.finish()]);await readFloor.mapAsync(GPUMapMode.READ);
+      const values=new Float32Array(readFloor.getMappedRange());let sum=[0,0,0],peak=0,positive=0;const roi=[];
+      for(let y=0;y<ny;y++)for(let x=0;x<nx;x++){
+        const i=(y*nx+x)*4,rgb=Array.from(values.subarray(i,i+3));for(let c=0;c<3;c++)sum[c]+=rgb[c]*sf[30];peak=Math.max(peak,values[i+3]);if(values[i+3]>0)positive++;
+        const px=-7+(x+.5)*14/nx,pz=-17+(y+.5)*27/ny;if(px>=2&&px<4&&pz>=-1.5&&pz<.5)roi.push(...rgb);
+      }
+      floor={sid:3,dimensions:[nx,ny],cellArea:sf[30],integratedRGB:sum,peak,positive,roi:{bounds:[2,4,-1.5,.5],rgb:roi}};readFloor.unmap();readFloor.destroy();
+    }
     return {
+      floor,
       paths,
       emitted: numbers[0],
       waterIntersections: numbers[1],

@@ -205,6 +205,6 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
     },
     // Evidence automation changes the actual camera, without rebuilding light.
     setView(patch) { Object.assign(view, patch); },
-    audit: () => renderer.audit(),
+    audit: (options) => renderer.audit(options),
   },
 });

@@ -7,8 +7,8 @@ const level=JSON.parse(readFileSync(new URL('../levels/poolrooms.json',import.me
 const source=readFileSync(new URL('../src/render/geometry.js',import.meta.url),'utf8').replace('import level from "../../levels/poolrooms.json";',`const level=${JSON.stringify(level)};`);
 const {makeGeometry}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const g=makeGeometry();const words=new Uint32Array(g.surfaces),floats=new Float32Array(g.surfaces);
-test('main floor has at most 4.2 cm irradiance cell spacing',()=>{
- const sid=3;assert(floats[sid*8+4]/words[sid*8+1]<=.042);assert(floats[sid*8+5]/words[sid*8+2]<=.042);
+test('main floor has at most 2.1 cm irradiance cell spacing',()=>{
+ const sid=3;assert(floats[sid*8+4]/words[sid*8+1]<=.021);assert(floats[sid*8+5]/words[sid*8+2]<=.021);
 });
 test('arch receiver area excludes the opening instead of treating it as black wall',()=>{
  for(const shapeId of [9,10,11,12])for(const face of [4,5]){
@@ -25,7 +25,7 @@ test('unbroken receiving planes preserve full physical area',()=>{
 test('diffuse probe offsets partition the buffer and exclude CSG voids',()=>{
  let end=0,invalid=0;
  for(let sid=0;sid<g.surfaceCount;sid++){
-  const offset=words[sid*8+3],nx=Math.ceil(words[sid*8+1]/4),ny=Math.ceil(words[sid*8+2]/4);
+  const offset=words[sid*8+3],nx=Math.ceil(words[sid*8+1]/floats[sid*8+7]),ny=Math.ceil(words[sid*8+2]/floats[sid*8+7]);
   assert.equal(offset,end);
   for(const packed of g.probeSurfaces.subarray(offset,offset+nx*ny)){
    assert.equal(packed&65535,sid);assert((packed>>>16)<=1);if(!(packed>>>16))invalid++;
@@ -47,4 +47,11 @@ test('arch setting-out preserves full modules and symmetric non-sliver closing c
   assert(Math.abs(s.spring/.25-Math.round(s.spring/.25))<1e-12);
 
  }
+});
+
+test('floor refinement preserves the previous indirect probe budget',()=>{
+ assert.equal(g.probeCount,73225);
+ const stride=floats[3*8+7];
+ assert.equal(words[3*8+1]/stride/14,6);
+ assert.equal(words[3*8+2]/stride/27,6);
 });

@@ -1,7 +1,7 @@
 import {chromium} from '@playwright/test';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.10-evidence/final';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.11-evidence/final';mkdirSync(out,{recursive:true});
 const before=process.env.BEFORE==='1';const b=await chromium.launch({channel:'chrome',headless:true});
 try{const p=await b.newPage({viewport:{width:1512,height:982}});const errors=[];p.on('console',m=>{if(m.type()==='error')errors.push(m.text())});p.on('pageerror',e=>errors.push(e.message));
 if(before){const source=execFileSync('git',['show','d1f2d7f:src/render/common.wgsl'],{encoding:'utf8'});await p.route(/\/common\.wgsl\?/,r=>r.fulfill({contentType:'application/javascript',body:`export default ${JSON.stringify(source)};`}));}

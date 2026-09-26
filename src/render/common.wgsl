@@ -40,7 +40,9 @@ fn wave(p:vec2f)->vec3f {
   var h=0.;var grad=vec2f(0.);
   let dirs=array<vec2f,10>(vec2f(.91,.41),vec2f(-.38,.925),vec2f(.71,-.704),vec2f(-.97,-.24),vec2f(.18,.984),vec2f(.839,.544),vec2f(-.61,.792),vec2f(.994,-.108),vec2f(.39,-.921),vec2f(-.84,-.542));
   let ks=array<f32,10>(1.17,2.03,3.19,5.37,8.71,13.43,19.7,27.1,35.3,43.7);
-  let amps=array<f32,10>(.45,.25,.12,.07,.043,.023,.013,.009,.006,.003);
+  // Millimetre-scale capillary ripples carry enough curvature to focus at
+  // shallow pool depth. Keep the total displacement within the 1.07 envelope.
+  let amps=array<f32,10>(.28,.25,.12,.07,.043,.023,.07,.05,.034,.024);
   let rates=array<f32,10>(.19,.23,.17,.26,.31,.28,.4,.43,.37,.46);
   for(var i=0u;i<10u;i++){
     let k=ks[i];let ph=dot(p,dirs[i])*k+sqrt(9.81*k)*rates[i]*U.state.x+f32(i*i)*1.719;

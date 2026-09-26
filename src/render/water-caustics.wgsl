@@ -80,9 +80,10 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
 fn waterHorizontal(@builtin(global_invocation_id) gid:vec3u) {
   let idx=gid.x;if(idx>=U.counts.x){return;}
   let s=surfaces[cellSurface[idx]&65535u];let local=idx-s.info.x;let xy=vec2i(i32(local%s.info.y),i32(local/s.info.y));var sum=vec3f(0);var weight=0.;
-  for(var x=-3;x<=3;x++){
+  let radius=select(3,1,s.metric.w>4.);
+  for(var x=-3;x<=3;x++){if(abs(x)>radius){continue;}
     let q=xy+vec2i(x,0);if(q.x<0||q.x>=i32(s.info.y)){continue;}
-    let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);let w=f32(4-abs(x));let coverage=f32(cellSurface[j]>>16u)*.25;
+    let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);let w=f32(radius+1-abs(x));let coverage=f32(cellSurface[j]>>16u)*.25;
     sum+=vec3f(f32(atomicLoad(&liveFlux[j].r)),f32(atomicLoad(&liveFlux[j].g)),f32(atomicLoad(&liveFlux[j].b)))*w;weight+=coverage*w;
   }
   liveRows[idx]=vec4f(sum,weight);
@@ -91,9 +92,10 @@ fn waterHorizontal(@builtin(global_invocation_id) gid:vec3u) {
 fn waterResolve(@builtin(global_invocation_id) gid:vec3u) {
   let idx=gid.x;if(idx>=U.counts.x){return;}
   let s=surfaces[cellSurface[idx]&65535u];let local=idx-s.info.x;let xy=vec2i(i32(local%s.info.y),i32(local/s.info.y));var sum=vec3f(0);var weight=0.;
-  for(var y=-3;y<=3;y++){
+  let radius=select(3,1,s.metric.w>4.);
+  for(var y=-3;y<=3;y++){if(abs(y)>radius){continue;}
     let q=xy+vec2i(0,y);if(q.y<0||q.y>=i32(s.info.z)){continue;}
-    let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);let w=f32(4-abs(y));let v=liveRows[j];sum+=v.rgb*w;weight+=v.a*w;
+    let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);let w=f32(radius+1-abs(y));let v=liveRows[j];sum+=v.rgb*w;weight+=v.a*w;
   }
   let e=sum/(max(weight,1.)*FLUX_SCALE*s.metric.z);liveField[idx]=vec4f(e,dot(e,vec3f(.2126,.7152,.0722)));
 }

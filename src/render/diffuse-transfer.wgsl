@@ -12,14 +12,14 @@ struct TransferLink { weight:vec4f, source:vec4u };
 fn storeLink(slot:u32,h:Hit,rd:vec3f,throughput:vec3f,viaWater:bool) {
   if(h.t>=INF){links[slot]=TransferLink(vec4f(0),vec4u(0));return;}
   let s=surfaces[h.sid];let xy=min(vec2u(h.uv*vec2f(s.info.yz)),s.info.yz-1u);let cell=s.info.x+xy.y*s.info.y+xy.x;
-  let dims=(s.info.yz+3u)/4u;let q=min(vec2u(h.uv*vec2f(dims)),dims-1u);let probe=s.info.w+q.y*dims.x+q.x;
+  let dims=(s.info.yz+u32(s.metric.w)-1u)/u32(s.metric.w);let q=min(vec2u(h.uv*vec2f(dims)),dims-1u);let probe=s.info.w+q.y*dims.x+q.x;
   let m=surfaceMaterial(h);let weight=m.albedo*throughput*(1.-schlick(abs(dot(h.n,rd)),m.coat))/32.;
   links[slot]=TransferLink(vec4f(weight,0),vec4u(cell,probe,0,0));
 }
 @compute @workgroup_size(64)
 fn bakeTransfer(@builtin(global_invocation_id) gid:vec3u) {
   let idx=gid.x;if(idx>=U.live.w){return;}
-  let packed=probeSurface[idx];let sid=packed&65535u;let s=surfaces[sid];let dims=(s.info.yz+3u)/4u;let local=idx-s.info.w;
+  let packed=probeSurface[idx];let sid=packed&65535u;let s=surfaces[sid];let dims=(s.info.yz+u32(s.metric.w)-1u)/u32(s.metric.w);let local=idx-s.info.w;
   let h=surfaceHit(sid,(vec2f(f32(local%dims.x),f32(local/dims.x))+.5)/vec2f(dims));
   for(var i=0u;i<32u;i++){
     let slot=idx+i*2u*U.live.w;links[slot]=TransferLink(vec4f(0),vec4u(0));links[slot+U.live.w]=TransferLink(vec4f(0),vec4u(0));
