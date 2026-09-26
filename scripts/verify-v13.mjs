@@ -1,7 +1,7 @@
 import {chromium} from '@playwright/test';
 import {mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
 import assert from 'node:assert/strict';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.3-evidence/final';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.4-evidence/regression';mkdirSync(out,{recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
 try{
 const page=await browser.newPage({viewport:{width:1512,height:982},deviceScaleFactor:1});const errors=[];
@@ -18,12 +18,12 @@ async function frame(time,pose,moving,file){
  return {time,view:r.view,...r.dynamics,file};
 }
 for(const [name,pose] of Object.entries(poses)){
- await page.evaluate(async p=>{await window.__POOLROOMS_V1__.configure({freeze:true,grain:0,lightBatches:32,targetSamples:1,view:p});},pose);
+ await page.evaluate(async p=>{await window.__POOLROOMS_V1__.configure({pause:true,freeze:true,grain:0,lightBatches:32,targetSamples:1,view:p});},pose);
  for(let i=0;i<15;i++)await frame(12+i/30,pose,true);
  const moving=await frame(12.5,pose,true,`${name}-moving.png`);
  // Equal-phase comparison of actual production budgets: 32 moving / 128 settled.
  // A separate equal-budget frame isolates just the continuous estimator blend.
- await page.evaluate(async p=>{await window.__POOLROOMS_V1__.configure({freeze:true,grain:0,lightBatches:128,targetSamples:1,view:p});},pose);
+ await page.evaluate(async p=>{await window.__POOLROOMS_V1__.configure({pause:true,freeze:true,grain:0,lightBatches:128,targetSamples:1,view:p});},pose);
  const equalBudget=await frame(12.5,pose,true,`${name}-moving-equal-budget.png`);
  const transition=[];
  for(let i=1;i<=30;i++)transition.push(await frame(12.5+i/30,pose,false,name==='spawn'?`stop-${String(i).padStart(3,'0')}.png`:undefined));
@@ -31,7 +31,7 @@ for(const [name,pose] of Object.entries(poses)){
  assert.equal(moving.quality,0);assert.equal(stopped.quality,1);meta.pairs.push({name,moving,equalBudget,stopped,transition});console.log('Compared',name);
 }
 if(!process.env.PAIRS_ONLY){
-await page.evaluate(async p=>{await window.__POOLROOMS_V1__.configure({freeze:false,grain:.004,lightBatches:32,targetSamples:1,view:p});},spawn);
+await page.evaluate(async p=>{await window.__POOLROOMS_V1__.configure({pause:true,freeze:false,grain:.004,lightBatches:32,targetSamples:1,view:p});},spawn);
 mkdirSync(`${out}/sequence`,{recursive:true});
 for(let i=0;i<360;i++){
  const t=i/30;let pose={...spawn};let moving=true;

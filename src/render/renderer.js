@@ -1,4 +1,5 @@
 import common from "./common.wgsl?raw";
+import photonPorcelain from "../../materials/photon-porcelain.wgsl?raw";
 import porcelain from "../../materials/porcelain.wgsl?raw";
 import level from "../../levels/poolrooms.json";
 import photons from "./photons.wgsl?raw";
@@ -33,7 +34,7 @@ export async function createRenderer(canvas) {
   context.configure({ device, format, alphaMode: "opaque" });
   const module = (label, code) => device.createShaderModule({ label, code });
   const shaderModules = [
-    module("photon transport", common + porcelain + photons),
+    module("photon transport", common + photonPorcelain + photons),
     module("world irradiance estimate", common + resolve),
     module("camera transport", common + porcelain + camera),
     module("lens and film", present),
@@ -102,7 +103,7 @@ export async function createRenderer(canvas) {
       GPUBufferUsage.COPY_DST,
   });
   const config = {
-    photonCount: 131072,
+    photonCount: 49152,
     lightBatches: 32,
     ...level.optics,
     freeze: false,
@@ -228,7 +229,7 @@ export async function createRenderer(canvas) {
   }
   rebuild();
   resize(1512, 982, 0.63);
-  let autoStatic=false;
+  let autoStatic=false, frameCost=null;
   function configure(patch) {
     const wasWidth = config.apertureWidth,
       wasDepth = config.apertureDepth;
@@ -254,6 +255,7 @@ export async function createRenderer(canvas) {
     try {
       const dt=lastRenderTime===null?0:Math.max(0,Math.min(.05,time-lastRenderTime));lastRenderTime=time;
       quality=Math.max(0,Math.min(1,quality+(moving?-dt/.35:dt/.8)));
+      const costStart=performance.now();
       elapsed = time;
       // Camera motion never selects a stochastic mode or pauses water.
       autoStatic=true;
@@ -349,6 +351,8 @@ export async function createRenderer(canvas) {
         if(lastWaveTime>cacheTimes[cacheOrder[1]]+.001)cacheLateFrames++;
         for(let j=0;j<(quality>0?(dt>.025?12:8):(dt>.025?3:2))&&futureBatches<(quality>0?128:lightBatches());j++)photonBatch(cacheOrder[2],cacheTimes[cacheOrder[2]],++futureBatches);
       }
+      if(config.profile)await device.queue.onSubmittedWorkDone();
+      const lightingDone=performance.now();
       const a=cacheTimes[cacheOrder[0]],b=cacheTimes[cacheOrder[1]];
       const uBlend=config.freeze?0:Math.max(0,Math.min(1,(lastWaveTime-a)/(b-a)));
       lightBlend=uBlend*uBlend*(3-2*uBlend);
@@ -378,6 +382,7 @@ export async function createRenderer(canvas) {
       draw.end();
       device.queue.submit([encoder.finish()]);
       await device.queue.onSubmittedWorkDone();
+      if(config.profile)frameCost={lighting:lightingDone-costStart,camera:performance.now()-lightingDone};
       return true;
     } finally {
       activeJobs--;
@@ -454,7 +459,7 @@ export async function createRenderer(canvas) {
     },
     get autoStatic() { return autoStatic; },
     get lightingBatches() { return sceneBatches; },
-    get dynamics() {return {cacheSamples:cacheOrder.map(i=>cacheSamples[i]),quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,skySamples:64,waveTime:lastWaveTime,lightTimes:cacheOrder.map(i=>cacheTimes[i]),lightBlend,cacheVersion,cacheLateFrames,futureBatches};},
+    get dynamics() {return {frameCost,cacheSamples:cacheOrder.map(i=>cacheSamples[i]),quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,skySamples:64,waveTime:lastWaveTime,lightTimes:cacheOrder.map(i=>cacheTimes[i]),lightBlend,cacheVersion,cacheLateFrames,futureBatches};},
     get busy() {
       return activeJobs > 0;
     },

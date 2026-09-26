@@ -1,11 +1,11 @@
 import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
 import {png,writePng} from './png.mjs';
-const dir=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.3-evidence/final';
+const dir=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.4-evidence/regression';
 const manifest=JSON.parse(readFileSync(`${dir}/capture.json`));mkdirSync(`${dir}/sheets`,{recursive:true});
 const luminance=im=>{const a=new Float32Array(im.width*im.height);for(let i=0;i<a.length;i++)a[i]=.2126*im.pixels[i*im.channels]+.7152*im.pixels[i*im.channels+1]+.0722*im.pixels[i*im.channels+2];return a;};
 const regions={whole:[0,0,1512,982],ceiling:[580,28,850,130],darkWall:[130,320,310,270],floor:[60,780,640,150]};
 function difference(a,b,roi){let sum=0,sq=0,max=0,n=0;const [x,y,w,h]=roi;for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++){let d=Math.abs(a[j*1512+i]-b[j*1512+i]);sum+=d;sq+=d*d;max=Math.max(max,d);n++;}return {mae:sum/n,rmse:Math.sqrt(sq/n),max};}
-const comparisons=[];const refPath='/Users/steven/Projects/workroom-v1.3-evidence/reference/256-batches.png';
+const comparisons=[];const refPath=process.env.REFERENCE_PATH||'/Users/steven/Projects/workroom-v1.4-evidence/reference/256-batches.png';
 const ref=existsSync(refPath)?luminance(png(refPath)):null;
 for(const p of manifest.pairs){const a=luminance(png(`${dir}/${p.moving.file}`)),b=luminance(png(`${dir}/${p.stopped.file}`));const r={name:p.name,qualityAfterSeconds:p.transition.find(x=>x.quality===1)?.time-p.moving.time,regions:{}};for(const [name,roi] of Object.entries(regions)){r.regions[name]={change:difference(a,b,roi)};if(ref&&p.name==='spawn'){r.regions[name].movingErrorToReference=difference(a,ref,roi);r.regions[name].stoppedErrorToReference=difference(b,ref,roi);}}comparisons.push(r);}
 let previous=luminance(png(`${dir}/spawn-moving-equal-budget.png`));const transition=[];

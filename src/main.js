@@ -120,7 +120,7 @@ async function tick(now) {
   const did = await renderer.render(view, elapsed, moving, 1 - anomaly * 0.94);
   if (did) {
     const done = performance.now();
-    if (ready) {
+    if (ready && lastCompleted !== null) {
       frameMs.push({ t: elapsed, ms: done - lastCompleted });
       if (frameMs.length > 12000) frameMs.shift();
     }
@@ -186,7 +186,8 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       if (holdTime) elapsed = 12;
       renderer.configure(parameters);
       frameMs = [];
-      paused = false;
+      lastCompleted = null;
+      paused = parameters.pause ?? false;
     },
     // Capture the exact production renderer at consecutive specified times.
     // This pauses scheduling, NOT wave evolution: the supplied time advances it.

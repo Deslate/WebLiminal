@@ -145,3 +145,77 @@ fn surfaceHit(sid:u32,uv:vec2f)->Hit {
   else {p=vec3f((s.lo.x+s.hi.x)*.5+select(-s.params.x,s.params.x,face==8u),uv.y*s.params.y,s.lo.z+uv.x*d.z);n.x=select(1.,-1.,face==8u);}
   return Hit(0.,p,n,uv,sid,s.info.x);
 }
+
+// Metre-scale tile construction. Independent seeds stay attached to the world.
+struct TileProfile { height:f32, edge:f32, id:f32, bevel:f32, slope:vec2f };
+fn tileUV(h:Hit)->vec2f {
+  if(h.sid%9u==6u){return h.uv*surfaces[h.sid].metric.xy;}
+  if(abs(h.n.x)>.7){return h.p.zy;}
+  if(abs(h.n.y)>.7){return h.p.xz;}
+  return h.p.xy;
+}
+fn tileFrame(h:Hit)->mat3x3f {
+  var t=vec3f(1,0,0);var b=vec3f(0,1,0);
+  if(abs(h.n.x)>.7){t=vec3f(0,0,1);}
+  if(abs(h.n.y)>.7){b=vec3f(0,0,1);}
+  if(h.sid%9u==6u){t=vec3f(h.n.y,-h.n.x,0);b=vec3f(0,0,1);}
+  return mat3x3f(t,b,h.n);
+}
+fn tileProfile(uv:vec2f,sid:u32,material:u32)->TileProfile {
+  let size=select(.25,.30,material==2u);let cell=floor(uv/size);
+  let id=hash2(cell+vec2f(f32(sid)*17.19,0));
+  let r=vec4f(hash2(cell+vec2f(13.1+f32(sid)*31.,7.3)),hash2(cell+vec2f(28.7,9.1+f32(sid)*11.)),hash2(cell+vec2f(97.3+id*31.,43.7)),hash2(cell+vec2f(29.1,61.3+id*71.)));
+  let angle=(r.x-.5)*.009;let local=uv-(cell+.5)*size-(r.yz-.5)*.001;
+  let rotation=mat2x2f(cos(angle),-sin(angle),sin(angle),cos(angle));let q=rotation*local;
+  let halfSize=vec2f(size*.5)-vec2f(.0028+.0012*r.z,.0028+.0012*r.w);
+  let radius=.0012+.0012*id;
+  let d=abs(q)-halfSize+radius;
+  let edge=-(length(max(d,vec2f(0)))+min(max(d.x,d.y),0.)-radius);
+  let bevel=.0012+.0016*r.y;
+  let shoulder=smoothstep(0.,bevel,edge);
+  let tilt=dot(q,(r.xy-.5)*.009);
+  let face=.001+(id-.5)*.0018+tilt;
+  // Grout bed is four millimetres behind the mounting plane, not painted black.
+  let height=mix(-.004,face,shoulder);
+  var ge=-sign(q)*select(vec2f(0,1),vec2f(1,0),d.x>d.y);
+  if(any(d>vec2f(0))){ge=-sign(q)*normalize(max(d,vec2f(0)));}
+  let u=clamp(edge/bevel,0.,1.);
+  let slope=transpose(rotation)*((r.xy-.5)*.009*shoulder+ge*(face+.004)*6.*u*(1.-u)/bevel);
+  return TileProfile(height,edge,id,bevel,slope);
+}
+fn reliefHit(ro:vec3f,rd:vec3f,h:Hit)->Hit {
+  if(h.t>=INF || h.material==1u || h.material==9u){return h;}
+  let lod=1.-smoothstep(2.5,4.,h.t);if(lod<=0.){return h;}
+  let nv=dot(rd,h.n);if(abs(nv)<.025){return h;}
+  let frame=tileFrame(h);let uv=tileUV(h);let uvRay=vec2f(dot(rd,frame[0]),dot(rd,frame[1]));
+  let span=.006/abs(nv);var a=max(EPS,h.t-span);let end=h.t+span;
+  // Conservative signed-height stepping: the rounded shoulder's slope <= 10.
+  let bound=abs(nv)+10.*length(uvRay);var t=a;
+  // Interior rays intersect an independently tilted plane exactly. Only the
+  // narrow rounded shoulder needs conservative height-field stepping.
+  let center=tileProfile(uv,h.sid,h.material);
+  if(center.edge>center.bevel+span*length(uvRay)){
+    t=h.t+center.height*lod/(nv-dot(center.slope,uvRay)*lod);
+  }
+  for(var i=0u;i<128u;i++){
+    let off=t-h.t;let f=off*nv-tileProfile(uv+uvRay*off,h.sid,h.material).height*lod;
+    if(f<.000015){
+      var result=h;result.t=t;result.p=ro+rd*t;
+      if(h.sid%9u==6u){result.uv=h.uv+uvRay*off/surfaces[h.sid].metric.xy;}
+      else {let shape=shapes[h.sid/9u];let q=(result.p-shape.lo.xyz)/(shape.hi.xyz-shape.lo.xyz);result.uv=q.xy;if(h.sid%9u<2u){result.uv=q.zy;}if(h.sid%9u==2u||h.sid%9u==3u){result.uv=q.xz;}if(h.sid%9u>=7u){result.uv=vec2f(q.z,result.p.y/shape.params.y);}}
+      return result;
+    }
+    t+=max(.000012,f/bound*.85);if(t>end){break;}
+  }
+  return h;
+}
+fn jointVisibility(h:Hit,l:vec3f)->f32 {
+  let detail=1.-smoothstep(2.5,4.,length(h.p-U.camera.xyz));if(detail<=0.||h.material==1u){return 1.;}
+  let f=tileFrame(h);let uv=tileUV(h);let profile=tileProfile(uv,h.sid,h.material);if(profile.edge>profile.bevel+.0003){return 1.;}let start=profile.height;
+  let dir=vec2f(dot(l,f[0]),dot(l,f[1]));let nl=dot(h.n,l);var visible=1.;
+  for(var i=1u;i<=32u;i++){
+    let t=f32(i)*.0004;let obstacle=tileProfile(uv+dir*t,h.sid,h.material).height;
+    visible=min(visible,smoothstep(-.00012,.00020,start+nl*t-obstacle+.00012));
+  }
+  return mix(1.,visible,detail);
+}
