@@ -217,6 +217,8 @@ fn jointVisibility(h:Hit,l:vec3f)->f32 {
   for(var i=1u;i<=32u;i++){
     let t=f32(i)*.0004;let obstacle=tileProfile(uv+dir*t,h.sid,h.material).height;
     visible=min(visible,smoothstep(-.00012,.00020,start+nl*t-obstacle+.00012));
+    // min() cannot recover from zero: remaining occlusion steps are redundant.
+    if(visible==0.){break;}
   }
   return mix(1.,visible,detail);
 }

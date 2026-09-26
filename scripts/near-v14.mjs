@@ -1,5 +1,5 @@
 import {chromium} from '@playwright/test';import {writeFileSync,mkdirSync} from 'node:fs';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.5-evidence/final';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.6-evidence/final';mkdirSync(out,{recursive:true});
 const b=await chromium.launch({channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1512,height:982}});const errors=[];p.on('console',m=>{if(m.type()==='error')errors.push(m.text())});await p.goto(process.env.VERIFY_URL||'http://127.0.0.1:4173');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs);
 const views={wall30cm:{x:6.7,y:1.62,z:5,yaw:-1.57,pitch:0},oblique30cm:{x:6.7,y:1.62,z:5,yaw:-.8,pitch:-.10},reflection30cm:{x:6.7,y:1.62,z:5,yaw:-.55,pitch:.08},pillar30cm:{x:2.35,y:1.62,z:-2.55,yaw:0,pitch:0},room:{x:-3.6,y:1.62,z:8,yaw:-.29,pitch:.028}};
 const report={views:{},errors};

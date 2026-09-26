@@ -9,6 +9,7 @@ import camera from "./camera.wgsl?raw";
 import waterCaustics from "./water-caustics.wgsl?raw";
 import composeLight from "./compose-light.wgsl?raw";
 import diffuseTransfer from "./diffuse-transfer.wgsl?raw";
+import reflectionFilter from "./reflection-filter.wgsl?raw";
 import present from "./present.wgsl?raw";
 import { makeGeometry } from "./geometry.js";
 
@@ -45,6 +46,7 @@ export async function createRenderer(canvas) {
     module("current water flux", common + waterCaustics),
     module("instant diffuse transfer", common + photonPorcelain + diffuseTransfer),
     module("assemble current lighting",common+composeLight),
+    module("continuous reflection footprint",common+reflectionFilter),
   ];
   const infos = await Promise.all(
     shaderModules.map((m) => m.getCompilationInfo()),
@@ -85,6 +87,7 @@ export async function createRenderer(canvas) {
     ...["emitWater","waterHorizontal","waterResolve"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[5],entryPoint}})),
     ...["bakeTransfer","propagate"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[6],entryPoint}})),
     device.createComputePipelineAsync({label:"compose current light",layout:"auto",compute:{module:shaderModules[7],entryPoint:"compose"}}),
+    ...["horizontalReflection","verticalReflection"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[8],entryPoint}})),
   ]);
   const uniforms = device.createBuffer({
     label: "physical parameters",
@@ -124,6 +127,7 @@ export async function createRenderer(canvas) {
     focalLength: 28,
     fNumber: 5.6,
     reflectionCone: .018,
+    reflectionFilter:1,
     grain: .004,
   };
   let geometry,
@@ -140,7 +144,8 @@ export async function createRenderer(canvas) {
     activeJobs = 0;
   const lightBatches=()=>config.lightBatches;
   let lastPhotonTime=0,quality=0,lastRenderTime=null,frameCost=null;
-  let composeGroup;
+  let composeGroup,reflectionHorizontalGroup,reflectionVerticalGroup;
+  let reflectionBuffer,reflectionGuideBuffer,reflectionRowsBuffer;
   let resolveGroups=[],skyGroup,horizontalGroup,liveEmitGroup,liveHorizontalGroup,liveResolveGroup,flatResolveGroup,bakeGroup,propagateGroups=[];
   let liveTime=0,liveFrames=0;
   const buffer = (label, data, usage = GPUBufferUsage.STORAGE) => {
@@ -177,13 +182,15 @@ export async function createRenderer(canvas) {
       null,
       bindings(pipelines[2], [
         ...shared,
-        [3,buffers.combined],[4,imageBuffer],[8,buffers.sky],
+        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],
       ]),
       bindings(pipelines[3], [
         [0, imageBuffer],
         [1, displayUniform],
       ]),
     ];
+    reflectionHorizontalGroup=bindings(pipelines[12],[[0,uniforms],[3,reflectionBuffer],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer]]);
+    reflectionVerticalGroup=bindings(pipelines[13],[[0,uniforms],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer],[6,imageBuffer]]);
     resolveGroups=[0].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface],[6,buffers[`fine${i}`]],[7,buffers.rows]]));
     horizontalGroup=bindings(pipelines[5],[[0,uniforms],[2,buffers.surfaces],[3,buffers.flux],[5,buffers.cellSurface],[7,buffers.rows]]);
     skyGroup=bindings(pipelines[4],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.cellSurface],[4,buffers.sky]]);
@@ -246,6 +253,9 @@ export async function createRenderer(canvas) {
       size: width * height * 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
+    for(const b of [reflectionBuffer,reflectionGuideBuffer,reflectionRowsBuffer])if(b)b.destroy();
+    const reflectionStorage=()=>device.createBuffer({size:width*height*16,usage:GPUBufferUsage.STORAGE});
+    reflectionBuffer=reflectionStorage();reflectionGuideBuffer=reflectionStorage();reflectionRowsBuffer=reflectionStorage();
     history = 0;
     regroup();
   }
@@ -376,7 +386,7 @@ export async function createRenderer(canvas) {
       // No keyframes. Every water-light buffer is replaced at this frame's exact
       // phase before camera rays are submitted. The static field carries the mean-water diffuse solution.
       f[20]=lastWaveTime;u[30]=sceneBatches;u[38]=sceneBatches;u[41]=1;f[34]=1;
-      f.set([0,config.reflectionCone,quality*quality*(3-2*quality),0],44);
+      f.set([0,config.reflectionCone,quality*quality*(3-2*quality),config.reflectionFilter],44);
       device.queue.writeBuffer(uniforms,0,data);
       const waterEncoder=device.createCommandEncoder();waterEncoder.clearBuffer(buffers.liveFlux);waterEncoder.clearBuffer(counters);waterEncoder.clearBuffer(pathAudit);
       compute(waterEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
@@ -397,6 +407,8 @@ export async function createRenderer(canvas) {
       pass.setBindGroup(0, groups[2]);
       pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
       pass.end();
+      compute(encoder,pipelines[12],reflectionHorizontalGroup,width*height);
+      compute(encoder,pipelines[13],reflectionVerticalGroup,width*height);
       const draw = encoder.beginRenderPass({
         colorAttachments: [
           {
