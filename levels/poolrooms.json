@@ -1,0 +1,11 @@
+{
+  "id": "poolrooms-001",
+  "bounds": { "minX": -10, "maxX": 10, "minZ": -35, "maxZ": 15 },
+  "spawn": { "x": 2.2, "z": 9.5, "yaw": 0.07, "pitch": 0.025 },
+  "ceiling": 7.4,
+  "waterHeight": 0.18,
+  "portalRows": [-3, -14, -25],
+  "bays": [-6.65, 0, 6.65],
+  "moment": { "start": 34.6, "duration": 8.4 },
+  "material": "ivory-tile"
+}

@@ -1,0 +1,18 @@
+{
+  "event": {
+    "start": 39,
+    "end": 42,
+    "samples": 180,
+    "fps": 60.00200006666886,
+    "maxFrameMs": 16.80000000000291,
+    "over50ms": 0
+  },
+  "walking": {
+    "start": 47,
+    "end": 49,
+    "samples": 120,
+    "fps": 60.0,
+    "maxFrameMs": 16.80000000000291,
+    "over50ms": 0
+  }
+}

@@ -1,0 +1,252 @@
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+canvas:active {
+  cursor: grabbing;
+}
+#experience {
+  position: fixed;
+  inset: 0;
+  visibility: hidden;
+}
+.film {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(25, 40, 28, 0.028) 0,
+    rgba(25, 40, 28, 0.028) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  box-shadow: inset 0 0 17vw rgba(18, 41, 31, 0.25);
+}
+.tracking {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: linear-gradient(
+    transparent 48%,
+    #ffffef33 49%,
+    #4b736433 50%,
+    transparent 51%
+  );
+  opacity: 0;
+  animation: tracking 2.6s linear both;
+}
+.tape {
+  position: fixed;
+  top: 14%;
+  left: 7%;
+  right: 7%;
+  display: flex;
+  justify-content: space-between;
+  font-size: clamp(18px, 2.1vw, 32px);
+  letter-spacing: 0.08em;
+  text-shadow:
+    2px 0 #7d9e89,
+    -2px 1px #e6d7b0;
+  z-index: 6;
+  animation: tape 2.6s steps(1) both;
+  pointer-events: none;
+}
+.tape i {
+  font-size: 0.7em;
+  font-style: normal;
+}
+.archive {
+  position: fixed;
+  top: 34px;
+  left: 40px;
+  right: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  opacity: 0.8;
+  z-index: 5;
+  pointer-events: none;
+  text-shadow: 0 1px 8px #29493855;
+}
+.record {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.record b {
+  width: 5px;
+  height: 5px;
+  background: #e0a58c;
+  border-radius: 50%;
+}
+.record #timecode {
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.caption {
+  position: fixed;
+  left: 6.5%;
+  bottom: 16%;
+  z-index: 5;
+  pointer-events: none;
+  text-shadow: 0 2px 20px #1d403655;
+  animation: title 12s ease both;
+}
+.index {
+  font-size: 9px;
+  letter-spacing: 0.23em;
+  opacity: 0.75;
+}
+.caption h1 {
+  font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif;
+  font-size: clamp(30px, 4vw, 60px);
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  margin: 18px 0 12px;
+}
+.caption p {
+  font-size: 10px;
+  letter-spacing: 0.55em;
+  margin: 0;
+  opacity: 0.85;
+}
+footer {
+  position: fixed;
+  bottom: 30px;
+  left: 40px;
+  right: 40px;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  z-index: 5;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  color: #f7ffebae;
+  pointer-events: none;
+  text-shadow: 0 1px 8px #234236;
+}
+.coordinates em {
+  font-style: normal;
+  margin: 0 13px;
+  opacity: 0.45;
+}
+#hint {
+  transition: opacity 2s;
+}
+.exploring #hint {
+  opacity: 0.35;
+}
+.exploring .caption {
+  opacity: 0 !important;
+  transition: opacity 2s;
+}
+#audio-status {
+  position: fixed;
+  right: 40px;
+  bottom: 54px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #fffde5a0;
+  z-index: 5;
+  pointer-events: none;
+  text-shadow: 0 1px 8px #234236;
+}
+.moment .record b {
+  background: #e9ebd0;
+}
+.moment .coordinates {
+  opacity: 0.45;
+}
+@keyframes tracking {
+  0% {
+    opacity: 0.75;
+    transform: translateY(-35%);
+  }
+  15% {
+    transform: translateY(24%);
+    opacity: 0.45;
+  }
+  17% {
+    transform: translateY(-10%);
+  }
+  35% {
+    transform: translateY(36%);
+    opacity: 0.22;
+  }
+  65% {
+    transform: translateY(-22%);
+    opacity: 0.2;
+  }
+  100% {
+    transform: translateY(20%);
+    opacity: 0;
+  }
+}
+@keyframes tape {
+  0% {
+    opacity: 0.8;
+  }
+  13% {
+    opacity: 0.2;
+  }
+  17% {
+    opacity: 0.9;
+  }
+  85% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes title {
+  0%,
+  15% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  28%,
+  70% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 700px) {
+  .archive {
+    top: 22px;
+    left: 22px;
+    right: 22px;
+  }
+  .archive-label {
+    font-size: 8px;
+  }
+  footer {
+    left: 22px;
+    right: 22px;
+    bottom: 22px;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .coordinates {
+    font-size: 8px;
+  }
+  #audio-status {
+    right: 22px;
+    bottom: 24px;
+  }
+  .caption {
+    bottom: 22%;
+  }
+}
