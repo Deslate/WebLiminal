@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { auditOptics } from "./optical-audit.mjs";
 const output =
   process.env.EVIDENCE_DIR ||
-  "/Users/steven/Projects/workroom-v1.11-evidence/final/proof";
+  "/Users/steven/Projects/workroom-v1.12-evidence/final/proof";
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {

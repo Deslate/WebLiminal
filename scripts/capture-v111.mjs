@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {chromium} from '@playwright/test';
 import {mkdirSync,writeFileSync} from 'node:fs';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.11-evidence/final';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.12-evidence/final';mkdirSync(out,{recursive:true});
 const b=await chromium.launch({channel:'chrome',headless:true});
 try{const p=await b.newPage({viewport:{width:1512,height:982}});const errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('console',m=>{if(m.type()==='error')errors.push(m.text())});await p.goto(process.env.VERIFY_URL||'http://127.0.0.1:4173');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs);
 const view={x:3,y:1.62,z:.8,yaw:0,pitch:-.9};const report={};

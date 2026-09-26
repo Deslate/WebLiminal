@@ -91,7 +91,7 @@ export async function createRenderer(canvas) {
   ]);
   const uniforms = device.createBuffer({
     label: "physical parameters",
-    size: 208,
+    size: 400,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const displayUniform = device.createBuffer({
@@ -130,6 +130,7 @@ export async function createRenderer(canvas) {
     reflectionFilter:1,
     grain: .004,
   };
+  let wakes=[];
   let geometry,
     buffers = {},
     groups = [],
@@ -263,6 +264,7 @@ export async function createRenderer(canvas) {
   resize(1512, 982, 0.63);
   let autoStatic=false;
   function configure(patch) {
+    wakes=(patch.wakes||[]).slice(-12);
     const wasWidth = config.apertureWidth,
       wasDepth = config.apertureDepth;
     Object.assign(config, patch);
@@ -296,7 +298,7 @@ export async function createRenderer(canvas) {
       const staticExposure=true;
       frame++;
       history++;
-      const data = new ArrayBuffer(208),
+      const data = new ArrayBuffer(400),
         f = new Float32Array(data),
         u = new Uint32Array(data);
       const sy = Math.sin(view.yaw),
@@ -320,6 +322,8 @@ export async function createRenderer(canvas) {
         16,
       );
       lastWaveTime = config.waveTime + (config.freeze ? 0 : time);
+      const smooth=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
+      const wakeEnvelope=wakes.reduce((sum,w)=>{const age=lastWaveTime-w.time-config.waveTime;return sum+(age>0&&age<4.5?Math.abs(w.amplitude)*smooth(0,.16,age)*(1-smooth(3.4,4.5,age))*Math.exp(-.6*age):0);},0);
       f.set(
         [
           lastWaveTime,
@@ -329,6 +333,7 @@ export async function createRenderer(canvas) {
         ],
         20,
       );
+      for(let i=0;i<wakes.length;i++){const w=wakes[i];f.set([w.x,w.z,w.time+config.waveTime,w.amplitude],52+i*4);}
       f.set(geometry.aperture, 24);
       u.set([width, height, sceneBatches, geometry.shapes.length], 28);
       f.set(
@@ -377,16 +382,17 @@ export async function createRenderer(canvas) {
         const baseBudget=config.freeze?lightBatches():128;
         for(let b=1;b<=baseBudget;b++)photonBatch(0,lastWaveTime,b);
         const bakeEncoder=device.createCommandEncoder();compute(bakeEncoder,pipelines[9],bakeGroup,geometry.probeCount,64);device.queue.submit([bakeEncoder.finish()]);
+        const activeWakes=f.slice(52);f.fill(0,52);
         f[22]=0;device.queue.writeBuffer(uniforms,0,data);
         const flatEncoder=device.createCommandEncoder();flatEncoder.clearBuffer(buffers.liveFlux);flatEncoder.clearBuffer(counters);flatEncoder.clearBuffer(pathAudit);
         compute(flatEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
         compute(flatEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);compute(flatEncoder,pipelines[8],flatResolveGroup,geometry.totalCells);
-        device.queue.submit([flatEncoder.finish()]);f[22]=config.waveAmplitude;
+        device.queue.submit([flatEncoder.finish()]);f[22]=config.waveAmplitude;f.set(activeWakes,52);
       }
       // No keyframes. Every water-light buffer is replaced at this frame's exact
       // phase before camera rays are submitted. The static field carries the mean-water diffuse solution.
       f[20]=lastWaveTime;u[30]=sceneBatches;u[38]=sceneBatches;u[41]=1;f[34]=1;
-      f.set([0,config.reflectionCone,quality*quality*(3-2*quality),config.reflectionFilter],44);
+      f.set([wakeEnvelope,config.reflectionCone,quality*quality*(3-2*quality),config.reflectionFilter],44);
       device.queue.writeBuffer(uniforms,0,data);
       const waterEncoder=device.createCommandEncoder();waterEncoder.clearBuffer(buffers.liveFlux);waterEncoder.clearBuffer(counters);waterEncoder.clearBuffer(pathAudit);
       compute(waterEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
@@ -472,7 +478,13 @@ export async function createRenderer(canvas) {
       }
       floor={sid:3,dimensions:[nx,ny],cellArea:sf[30],integratedRGB:sum,peak,positive,roi:{bounds:[2,4,-1.5,.5],rgb:roi}};readFloor.unmap();readFloor.destroy();
     }
+    const receivers={};
+    for(const sid of options.receivers||[]){
+      const u=new Uint32Array(geometry.surfaces),o=sid*8,nx=u[o+1],ny=u[o+2],size=nx*ny*16;
+      const rb=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const e=device.createCommandEncoder();e.copyBufferToBuffer(buffers.liveField,u[o]*16,rb,0,size);device.queue.submit([e.finish()]);await rb.mapAsync(GPUMapMode.READ);receivers[sid]={nx,ny,irradiance:Array.from(new Float32Array(rb.getMappedRange()))};rb.unmap();rb.destroy();
+    }
     return {
+      receivers,
       floor,
       paths,
       emitted: numbers[0],
@@ -480,7 +492,7 @@ export async function createRenderer(canvas) {
       indirectDeposits: numbers[2],
       waterCausticDeposits: numbers[3],
       aboveWaterCausticDeposits: numbers[4],
-      config: { ...config },
+      config: { ...config,wakes:wakes.map(w=>({...w,time:w.time+config.waveTime})) },
       waveTime: lastPhotonTime,
       cameraWaveTime: lastWaveTime,
       waterLight:{time:liveTime,frames:liveFrames,keyframes:false},
@@ -499,6 +511,8 @@ export async function createRenderer(canvas) {
   }
   return {
     render,
+    addWake(w){wakes.push(w);wakes=wakes.slice(-12);},
+    get wakes(){return wakes.map(w=>({...w}));},
     configure,
     resize,
     audit,

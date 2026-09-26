@@ -1,3 +1,5 @@
+import {createWakeTrail} from "./wake-trail.js";
+const wakeTrail=createWakeTrail();
 import level from "../levels/poolrooms.json";
 import { createRenderer } from "./render/renderer.js";
 import { ROOM } from "./render/geometry.js";
@@ -66,7 +68,7 @@ canvas.addEventListener("pointermove", (e) => {
   if (dragging) {
     view.yaw -= e.movementX * 0.002;
     view.pitch = Math.max(
-      -0.9,
+      -1.45,
       Math.min(0.9, view.pitch - e.movementY * 0.002),
     );
   }
@@ -98,6 +100,7 @@ async function tick(now) {
     Number(keys.has("KeyA") || keys.has("ArrowLeft"));
   const norm = Math.hypot(f, s);
   const speed = keys.has("ShiftLeft") ? 2.4 : 1.6;
+  const beforeMove={x:view.x,z:view.z};
   if (norm) {
     f /= norm;
     s /= norm;
@@ -109,6 +112,8 @@ async function tick(now) {
       renderer.solids,
     );
   }
+  const contact=wakeTrail.advance(beforeMove,view,elapsed,renderer.config.waterLevel);
+  if(contact)renderer.addWake(contact);
   const sig = [view.x, view.z, view.yaw, view.pitch].join(",");
   const moving = sig !== lastView;
   lastView = sig;
@@ -174,6 +179,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       cameraHistory: false,
       cameraSamplesPerPixel: {opaque:2,water:4,edges:8},
       dynamics: renderer.dynamics,
+      wakes:renderer.wakes,
       errors: renderer.errors,
       audio: sound.inspect(),
       validPosition: canStand(view.x, view.z, ROOM, renderer.solids),
@@ -189,6 +195,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       targetSamples = parameters.targetSamples || 0;
       holdTime = parameters.freeze ?? holdTime;
       if (holdTime) elapsed = 12;
+      wakeTrail.reset();
       renderer.configure(parameters);
       frameMs = [];
       lastCompleted = null;

@@ -1,6 +1,6 @@
 import {execFileSync} from 'node:child_process';
 import {chromium} from '@playwright/test';import {mkdirSync,writeFileSync} from 'node:fs';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.11-evidence/final';mkdirSync(out,{recursive:true});const b=await chromium.launch({channel:'chrome',headless:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.12-evidence/final';mkdirSync(out,{recursive:true});const b=await chromium.launch({channel:'chrome',headless:true});
 function stats(a){let s=a.map(v=>v.ms).sort((a,b)=>a-b),t=0,bins=[];for(const f of a){let i=Math.floor(t/1000);(bins[i]??=[]).push(f.ms);t+=f.ms;}return {fps:a.length*1000/t,p95:s[Math.floor(s.length*.95)],max:s.at(-1),minOneSecond:Math.min(...bins.slice(0,-1).map(v=>1000*v.length/v.reduce((a,b)=>a+b))),frames:a.length};}
 try{const p=await b.newPage({viewport:{width:1512,height:982}});if(process.env.BEFORE==='1'){
 for(const name of ['common','water-caustics','diffuse-transfer','compose-light']){const source=execFileSync('git',['show',`bac0189:src/render/${name}.wgsl`],{encoding:'utf8'});await p.route(new RegExp('/'+name+'\\.wgsl\\?'),r=>r.fulfill({contentType:'application/javascript',body:`export default ${JSON.stringify(source)};`}));}

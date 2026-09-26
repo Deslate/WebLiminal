@@ -1,6 +1,6 @@
 import {chromium} from '@playwright/test';
 import {writeFileSync,mkdirSync,copyFileSync} from 'node:fs';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.11-evidence/final';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.12-evidence/final';mkdirSync(out,{recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
 try {
  const context=await browser.newContext({viewport:{width:1512,height:982},recordVideo:{dir:`${out}/raw-video`,size:{width:1512,height:982}}});

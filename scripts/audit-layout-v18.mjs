@@ -1,7 +1,7 @@
 // Execute the production WGSL course function on GPU, compare to independently
 // assembled physical boundary lists (both radii, mirrors, springs and crown).
 import {chromium} from '@playwright/test';import{readFileSync,writeFileSync,mkdirSync}from'node:fs';import assert from'node:assert/strict';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.11-evidence/final';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.12-evidence/final';mkdirSync(out,{recursive:true});
 const common=readFileSync('src/render/common.wgsl','utf8');const fn=common.slice(common.indexOf('fn archCourse('),common.indexOf('fn tileMode('));
 const tests=[];
 for(const r of [1.78,2.1]){const half=Math.PI*r/2,n=Math.floor(half/.25)-1,cut=(half-n*.25)/2;const widths=[...Array(n).fill(.25),cut,cut,cut,cut,...Array(n).fill(.25)];let a=0;
