@@ -23,7 +23,7 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
   add([xmin, 5.8, -17], [xmax, 6.1, zmin], 1);
   add([xmin, 5.8, zmax], [xmax, 6.1, 10], 1);
   for (const cx of [-4.67, 0, 4.67]) {
-    add([cx - 2.335, 0, -3.65], [cx + 2.335, 5.8, -2.85], 0, 1, 1.78, 2.45);
+    add([cx - 2.335, 0, -3.65], [cx + 2.335, 5.8, -2.85], 0, 1, 1.78, 2.5);
     for (const sign of [-1, 1]) {
       const a = cx + sign * 1.78,
         b = cx + sign * 2.335;

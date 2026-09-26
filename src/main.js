@@ -135,15 +135,20 @@ async function tick(now) {
     if (completed % 15 === 0)
       document.getElementById("timecode").textContent =
         `00:${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(Math.floor(elapsed) % 60).padStart(2, "0")}`;
-    if (!holdTime && frameMs.length > 60 && done - lastResize > 4000) {
+    if (!holdTime && frameMs.length > 60 && done - lastResize > 900) {
       const samples = frameMs
         .slice(-60)
         .map((f) => f.ms)
         .sort((a, b) => a - b);
-      if (samples[30] > 34.5 && scale > 0.36) {
+      if (samples[30] > 28.5 && scale > 0.36) {
         scale = Math.max(0.36, scale - 0.07);
         resize();
         lastResize = done;
+      } else if(samples[30] < 20 && scale < Math.min(1,1280/innerWidth)) {
+        // Recover detail after leaving a costly inspection view. Hysteresis
+        // avoids chasing individual frame spikes or oscillating every frame.
+        scale=Math.min(Math.min(1,1280/innerWidth),scale+.025);
+        resize();lastResize=done;
       }
     }
   }
@@ -167,7 +172,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       staticExposure: renderer.autoStatic,
       lightingBatches: renderer.lightingBatches,
       cameraHistory: false,
-      cameraSamplesPerPixel: 4,
+      cameraSamplesPerPixel: {opaque:2,water:4,edges:8},
       dynamics: renderer.dynamics,
       errors: renderer.errors,
       audio: sound.inspect(),

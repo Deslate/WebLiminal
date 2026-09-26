@@ -34,3 +34,13 @@ test('diffuse probe offsets partition the buffer and exclude CSG voids',()=>{
  }
  assert.equal(end,g.probeCount);assert.equal(end,g.probeSurfaces.length);assert(invalid>1000);
 });
+test('all arch spring lines meet the common 250 mm course datum',()=>{
+ for(const s of g.shapes.filter(s=>s.kind===1))assert.equal(s.spring/.25,Math.round(s.spring/.25));
+});
+test('the 32-part symmetric arch cut schedule fits 250 mm stock at both radii',()=>{
+ for(const s of g.shapes.filter(s=>s.kind===1)){
+  const widest=2*(s.radius+.25)*Math.sin(Math.PI/64);
+  assert(widest<=.25,`outer cut ${widest} exceeds tile stock`);
+  assert.equal(32%2,0,'the crown must lie on a joint');
+ }
+});

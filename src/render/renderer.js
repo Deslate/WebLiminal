@@ -245,8 +245,8 @@ export async function createRenderer(canvas) {
   function resize(w, h, scale = 1) {
     width = Math.max(256, Math.round((w * scale) / 8) * 8);
     height = Math.max(192, Math.round((h * scale) / 8) * 8);
-    canvas.width = Math.round(w);
-    canvas.height = Math.round(h);
+    if(canvas.width!==Math.round(w))canvas.width = Math.round(w);
+    if(canvas.height!==Math.round(h))canvas.height = Math.round(h);
     if (imageBuffer) imageBuffer.destroy();
     imageBuffer = device.createBuffer({
       label: "camera radiance accumulation",

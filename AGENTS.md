@@ -1,8 +1,8 @@
-# Poolrooms v1.6 — contributor instructions
+# Poolrooms v1.7 — contributor instructions
 
-Read the requested version in BRIEF.md. This delivery implements v1.6 single-image reflections and preserves current-time lighting and v1.4 materials. Do not configure or push remotes. Preserve unrelated `.flops/` user data.
+Read the requested version in BRIEF.md. This delivery implements v1.7 construction-aware tile layout and preserves current-time lighting and single-image reflections. Do not configure or push remotes. Preserve unrelated `.flops/` user data.
 
-- Zero bitmap source/deployment assets. Evidence goes outside this repository under `../workroom-v1.6-evidence/`.
+- Zero bitmap source/deployment assets. Evidence goes outside this repository under `../workroom-v1.7-evidence/`.
 - Preserve continuous ten-wave water, transported caustics, deterministic camera branches and subtle film grain. Never freeze water to stabilize lighting.
 - Camera frames remain independent. Do not blur image history or introduce random camera sampling.
 - Grout uses actual primary-ray height-field intersections and local visibility. Do not replace the relief with painted seams. Secondary/photon area-average approximations are documented in docs/PHYSICS.md.

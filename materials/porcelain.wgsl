@@ -3,7 +3,7 @@
 fn filteredMaterial(h:Hit)->Material {
   let uv=tileUV(h);let n=h.n;
   if(h.material==1u){return Material(vec3f(.71,.69,.62)*(.86+.14*noise(uv*.61)),.7,n,.025);}
-  let t=tileProfile(uv,h.sid,h.material);
+  let t=tileProfile(uv,h.sid,h.material,tileMode(h));
   let footprint=clamp(length(U.camera.xyz-h.p)*U.lens.y/f32(U.render.y)/max(abs(dot(n,normalize(U.camera.xyz-h.p))),.2),.00012,.06);
   let seam=1.-smoothstep(-footprint,t.bevel+footprint,t.edge);
   var color=mix(vec3f(.57,.59,.49),vec3f(.80,.78,.66),t.id*.65+.18);
@@ -17,11 +17,11 @@ fn surfaceMaterial(h:Hit)->Material {
   if(h.material==1u){return Material(vec3f(.71,.69,.62)*(.86+.14*fbm(uv*.61)),.7,n,.025);}
   let distance=length(U.camera.xyz-h.p);
   if(distance>=5.){return filteredMaterial(h);}
-  let t=tileProfile(uv,h.sid,h.material);let f=tileFrame(h);
+  let t=tileProfile(uv,h.sid,h.material,tileMode(h));let f=tileFrame(h);
   let footprint=select(.0001,clamp(distance*U.lens.y/f32(U.render.y)/max(abs(dot(n,normalize(U.camera.xyz-h.p))),.15),.00006,.06),U.sampling.y==1u);
   let detail=1.-smoothstep(.0007,.005,footprint);
   let seam=1.-smoothstep(-footprint,t.bevel+footprint,t.edge);
-  let seed=vec2f(t.id*173.1,f32(h.sid)*13.71);
+  let seed=vec2f(t.id*173.1,tileSeed(h.sid,tileMode(h))*13.71);
   var color=mix(vec3f(.57,.59,.49),vec3f(.80,.78,.66),t.id*.65+.18);
   if(h.material==2u){color=mix(vec3f(.37,.55,.47),vec3f(.52,.65,.57),t.id);}
   let mineral=smoothstep(.43,.70,fbm(uv*4.7+seed))*exp(-max(0.,t.edge)/.025);

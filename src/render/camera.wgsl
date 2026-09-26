@@ -109,8 +109,8 @@ fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->CameraLayers {
 fn camera(@builtin(global_invocation_id) gid:vec3u) {
   if(gid.x>=U.render.x||gid.y>=U.render.y){return;}
   let idx=gid.y*U.render.x+gid.x;var c=vec3f(0);var reflected=vec3f(0);var guide=vec4f(0);var lo=vec3f(1e6);var hi=vec3f(0);
-  let offsets=array<vec2f,8>(vec2f(.25,.25),vec2f(.75,.25),vec2f(.25,.75),vec2f(.75,.75),vec2f(.125,.625),vec2f(.625,.875),vec2f(.875,.375),vec2f(.375,.125));
-  var count=4u;
+  let offsets=array<vec2f,8>(vec2f(.25,.25),vec2f(.75,.75),vec2f(.25,.75),vec2f(.75,.25),vec2f(.125,.625),vec2f(.625,.875),vec2f(.875,.375),vec2f(.375,.125));
+  var count=2u;
   // One shading path for ordinary and edge samples; no temporal jitter/history.
   for(var i=0u;i<count;i++){
     let pixel=(vec2f(gid.xy)+offsets[i])/vec2f(U.render.xy);
@@ -119,7 +119,14 @@ fn camera(@builtin(global_invocation_id) gid:vec3u) {
     let layers=radiance(U.camera.xyz,rd,i%4u);let value=layers.base+layers.reflection;c+=layers.base;reflected+=layers.reflection;
     if(i==0u){guide=layers.guide;}
     lo=min(lo,value);hi=max(hi,value);
-    if(i==3u && max(max(hi.x-lo.x,hi.y-lo.y),hi.z-lo.z)>.7){count=8u;}
+    let contrast=max(max(hi.x-lo.x,hi.y-lo.y),hi.z-lo.z);
+    if(i==1u){
+      // Smooth opaque interiors need less quadrature than a dielectric image.
+      // Preserve water's four samples and spend eight on contrast boundaries.
+      if(guide.x==10000.||layers.guide.x==10000.){count=4u;}
+      if(contrast>.3||guide.x!=layers.guide.x){count=8u;}
+    }
+    if(i==3u && contrast>.3){count=8u;}
   }
   image[idx]=vec4f(c/f32(count),1.);
   reflectionLayer[idx]=vec4f(reflected/f32(count),1.);reflectionGuide[idx]=guide;
