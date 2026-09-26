@@ -1,8 +1,9 @@
 @group(0) @binding(3) var<storage,read> irradiance: array<vec4f>;
 @group(0) @binding(4) var<storage,read_write> image: array<vec4f>;
+@group(0) @binding(5) var<storage,read> irradianceNext: array<vec4f>;
 fn photonEstimate(h:Hit)->vec4f {
   let s=surfaces[h.sid];let p=h.uv*vec2f(s.info.yz)-.5;let b=vec2i(floor(p));let f=fract(p);var result=vec4f(0);
-  for(var y=0;y<2;y++){for(var x=0;x<2;x++){let q=clamp(b+vec2i(x,y),vec2i(0),vec2i(s.info.yz)-1);let idx=s.info.x+u32(q.y)*s.info.y+u32(q.x);result+=irradiance[idx]*select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1);}}
+  for(var y=0;y<2;y++){for(var x=0;x<2;x++){let q=clamp(b+vec2i(x,y),vec2i(0),vec2i(s.info.yz)-1);let idx=s.info.x+u32(q.y)*s.info.y+u32(q.x);result+=mix(irradiance[idx],irradianceNext[idx],U.lighting.x)*select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1);}}
   return result;
 }
 // Deterministic finite quadrature: no per-frame or per-pixel random decisions.
@@ -43,13 +44,18 @@ fn shadeSolid(ro:vec3f,rd:vec3f,underwater:bool)->vec3f {
   let tr=exp(-.004*h.t);
   return c*tr+vec3f(.065,.085,.09)*(1.-tr);
 }
-fn radiance(ro:vec3f,rd:vec3f)->vec3f {
+fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->vec3f {
   let h=trace(ro,rd,INF);
   if(h.material!=9u){return shadeSolid(ro,rd,false);}
   let n=h.n;let f=fresnel(-dot(rd,n),1.,1.333);
   let reflected=reflect(rd,n);let transmitted=refract(rd,n,1./1.333);
   // Evaluate BOTH physical branches; no Bernoulli choice and no history reset.
-  let a=shadeSolid(h.p+reflected*EPS*3.,reflected,false);
+  // Four deterministic cone directions, distributed over the four spatial
+  // samples. Roughness affects only reflection, never the whole frame.
+  let offsets=array<vec2f,4>(vec2f(-.707,-.707),vec2f(.707,-.707),vec2f(-.707,.707),vec2f(.707,.707));
+  let radius=U.lighting.y*(.65+.35*(1.-abs(rd.y)));
+  let cone=normalize(reflected+basis(reflected)*vec3f(offsets[sampleIndex]*radius,0));
+  let a=shadeSolid(h.p+reflected*EPS*3.,cone,false);
   let b=shadeSolid(h.p+transmitted*EPS*3.,transmitted,true)/(1.333*1.333);
   return (a*f+b*(1.-f))*exp(-.004*h.t);
 }
@@ -63,7 +69,7 @@ fn camera(@builtin(global_invocation_id) gid:vec3u) {
     let pixel=(vec2f(gid.xy)+offset)/vec2f(U.render.xy);
     let sensor=(pixel*2.-1.)*vec2f(U.lens.x,-1.);
     let rd=normalize(U.forward.xyz+U.right.xyz*sensor.x*U.lens.y+U.up.xyz*sensor.y*U.lens.y);
-    c+=radiance(U.camera.xyz,rd)*.25;
+    c+=radiance(U.camera.xyz,rd,i)*.25;
   }
   image[idx]=vec4f(c,1.);
 }

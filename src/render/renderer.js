@@ -107,6 +107,8 @@ export async function createRenderer(canvas) {
     focusDistance: 10,
     focalLength: 28,
     fNumber: 5.6,
+    reflectionCone: .018,
+    grain: .004,
   };
   let geometry,
     buffers = {},
@@ -120,6 +122,10 @@ export async function createRenderer(canvas) {
     elapsed = 0,
     lastWaveTime = 0,
     activeJobs = 0;
+  const LIGHT_STEP=.4, LIGHT_BATCHES=16;
+  let cacheOrder=[0,1,2],cacheTimes=[0,0,0],futureBatches=0,
+      cacheVersion=0,cacheLateFrames=0,lastPhotonTime=0,lightBlend=0;
+  let resolveGroups=[];
   const buffer = (label, data, usage = GPUBufferUsage.STORAGE) => {
     const b = device.createBuffer({
       label,
@@ -155,12 +161,13 @@ export async function createRenderer(canvas) {
         [0, uniforms],
         [2, buffers.surfaces],
         [3, buffers.flux],
-        [4, buffers.irradiance],
+        [4, buffers[`irradiance${cacheOrder[2]}`]],
         [5, buffers.cellSurface],
       ]),
       bindings(pipelines[2], [
         ...shared,
-        [3, buffers.irradiance],
+        [3, buffers[`irradiance${cacheOrder[0]}`]],
+        [5, buffers[`irradiance${cacheOrder[1]}`]],
         [4, imageBuffer],
       ]),
       bindings(pipelines[3], [
@@ -168,6 +175,7 @@ export async function createRenderer(canvas) {
         [1, displayUniform],
       ]),
     ];
+    resolveGroups=[0,1,2].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[3,buffers.flux],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface]]));
   }
   function rebuild() {
     for (const b of Object.values(buffers)) b.destroy();
@@ -189,7 +197,7 @@ export async function createRenderer(canvas) {
         GPUBufferUsage.COPY_DST |
         GPUBufferUsage.COPY_SRC,
     });
-    buffers.irradiance = device.createBuffer({
+    for(let i=0;i<3;i++) buffers[`irradiance${i}`] = device.createBuffer({
       label: "progressive world-space irradiance",
       size: geometry.totalCells * 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -238,8 +246,7 @@ export async function createRenderer(canvas) {
     activeJobs++;
     try {
       elapsed = time;
-      // v1.1: camera motion NEVER invalidates world-space lighting. The wave
-      // phase is fixed for this scene, in both camera and photon transport.
+      // Camera motion never selects a stochastic mode or pauses water.
       autoStatic=true;
       const staticExposure=true;
       frame++;
@@ -267,7 +274,7 @@ export async function createRenderer(canvas) {
         ],
         16,
       );
-      lastWaveTime = config.waveTime;
+      lastWaveTime = config.waveTime + (config.freeze ? 0 : time);
       f.set(
         [
           lastWaveTime,
@@ -304,25 +311,39 @@ export async function createRenderer(canvas) {
           0,
           config.exposure,
           time,
-          staticExposure ? 0 : frame,
-          0,
+          lastWaveTime,
+          config.grain,
         ]),
       );
-      // Warm the light cache before showing the first camera frame. Camera
-      // movement and stopping do not rebuild it or blend camera histories.
-      if (sceneBatches===0) {
-        for(let batch=1;batch<=48;batch++) {
-          u[30]=batch;u[38]=batch;f[33]=1/batch;f[34]=1;
-          device.queue.writeBuffer(uniforms,0,data);
-          const warm=device.createCommandEncoder();
-          warm.clearBuffer(buffers.flux);warm.clearBuffer(counters);warm.clearBuffer(pathAudit);
-          let p=warm.beginComputePass();p.setPipeline(pipelines[0]);p.setBindGroup(0,groups[0]);p.dispatchWorkgroups(config.photonCount/64);p.end();
-          p=warm.beginComputePass();p.setPipeline(pipelines[1]);p.setBindGroup(0,groups[1]);p.dispatchWorkgroups(Math.ceil(geometry.totalCells/128));p.end();
-          device.queue.submit([warm.finish()]);
-        }
-        sceneBatches=48;
+      const photonBatch=(slot,phase,batch)=>{
+        // Common random numbers across time: only optical geometry changes,
+        // never the population of photon samples. Build into an unseen slot.
+        f[20]=phase;u[30]=batch;u[38]=batch;u[41]=0;f[33]=1/batch;f[34]=1;
+        device.queue.writeBuffer(uniforms,0,data);
+        const enc=device.createCommandEncoder();enc.clearBuffer(buffers.flux);
+        enc.clearBuffer(counters);enc.clearBuffer(pathAudit);
+        let p=enc.beginComputePass();p.setPipeline(pipelines[0]);p.setBindGroup(0,groups[0]);p.dispatchWorkgroups(config.photonCount/64);p.end();
+        p=enc.beginComputePass();p.setPipeline(pipelines[1]);p.setBindGroup(0,resolveGroups[slot]);p.dispatchWorkgroups(Math.ceil(geometry.totalCells/128));p.end();
+        device.queue.submit([enc.finish()]);sceneBatches++;lastPhotonTime=phase;
+      };
+      if(sceneBatches===0){
+        cacheOrder=[0,1,2];cacheTimes=[lastWaveTime,lastWaveTime+LIGHT_STEP,lastWaveTime+2*LIGHT_STEP];futureBatches=0;cacheLateFrames=0;cacheVersion=0;regroup();
+        for(let slot=0;slot<2;slot++)for(let b=1;b<=LIGHT_BATCHES;b++)photonBatch(slot,config.freeze?lastWaveTime:cacheTimes[slot],b);
       }
-      u[30]=sceneBatches;u[38]=sceneBatches;u[41]=1;f[34]=sun;
+      if(!config.freeze){
+        if(lastWaveTime>=cacheTimes[cacheOrder[1]] && futureBatches===LIGHT_BATCHES){
+          cacheOrder=[cacheOrder[1],cacheOrder[2],cacheOrder[0]];
+          cacheTimes[cacheOrder[2]]=cacheTimes[cacheOrder[1]]+LIGHT_STEP;
+          futureBatches=0;cacheVersion++;regroup();
+        }
+        if(lastWaveTime>cacheTimes[cacheOrder[1]]+.001)cacheLateFrames++;
+        for(let j=0;j<2&&futureBatches<LIGHT_BATCHES;j++)photonBatch(cacheOrder[2],cacheTimes[cacheOrder[2]],++futureBatches);
+      }
+      const a=cacheTimes[cacheOrder[0]],b=cacheTimes[cacheOrder[1]];
+      const uBlend=config.freeze?0:Math.max(0,Math.min(1,(lastWaveTime-a)/(b-a)));
+      lightBlend=uBlend*uBlend*(3-2*uBlend);
+      f[20]=lastWaveTime;u[30]=sceneBatches;u[38]=sceneBatches;u[41]=1;f[34]=sun;
+      f.set([lightBlend,config.reflectionCone,0,0],44);
       device.queue.writeBuffer(uniforms,0,data);
       const encoder=device.createCommandEncoder();
       let pass;
@@ -386,7 +407,9 @@ export async function createRenderer(canvas) {
       waterCausticDeposits: numbers[3],
       aboveWaterCausticDeposits: numbers[4],
       config: { ...config },
-      waveTime: lastWaveTime,
+      waveTime: lastPhotonTime,
+      cameraWaveTime: lastWaveTime,
+      cache: {times:cacheOrder.map(i=>cacheTimes[i]),version:cacheVersion,lateFrames:cacheLateFrames,blend:lightBlend,preparedBatches:futureBatches},
       batches: sceneBatches,
       totalEmittedSinceReset: sceneBatches * config.photonCount,
       atlasCells: geometry.totalCells,
@@ -421,6 +444,7 @@ export async function createRenderer(canvas) {
     },
     get autoStatic() { return autoStatic; },
     get lightingBatches() { return sceneBatches; },
+    get dynamics() {return {waveTime:lastWaveTime,lightTimes:cacheOrder.map(i=>cacheTimes[i]),lightBlend,cacheVersion,cacheLateFrames,futureBatches};},
     get busy() {
       return activeJobs > 0;
     },

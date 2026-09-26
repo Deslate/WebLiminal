@@ -14,6 +14,7 @@ struct Uniforms {
   settings: vec4f, // history weight, photon history weight, sunlight multiplier, diagnostic
   counts: vec4u, // total cells, surfaces, batch number, fixed seed
   sampling: vec4u, // photon paths this batch; divisible by 512
+  lighting: vec4f, // cache interpolation, rough reflection cone, reserved
 };
 struct Shape { lo: vec4f, hi: vec4f, info: vec4u, params: vec4f };
 struct Surface { info: vec4u, metric: vec4f };
@@ -33,14 +34,17 @@ fn basis(n:vec3f)->mat3x3f {let a=select(vec3f(0,1,0),vec3f(1,0,0),abs(n.y)>.9);
 fn cosineDirection(n:vec3f,seed:ptr<function,u32>)->vec3f {let r=sqrt(rnd(seed));let a=2.*PI*rnd(seed);return basis(n)*vec3f(r*cos(a),r*sin(a),sqrt(max(0.,1.-r*r)));}
 fn fresnel(cosIn:f32,etaI:f32,etaT:f32)->f32 {let c=clamp(abs(cosIn),0.,1.);let sinT=etaI/etaT*sqrt(max(0.,1.-c*c));if(sinT>=1.){return 1.;}let ct=sqrt(1.-sinT*sinT);let rp=(etaT*c-etaI*ct)/(etaT*c+etaI*ct);let rs=(etaI*c-etaT*ct)/(etaI*c+etaT*ct);return .5*(rp*rp+rs*rs);}
 fn wave(p:vec2f)->vec3f {
-  // A height field and its analytic derivatives. Both photon and camera rays intersect it.
+  // Three scale bands, each with its own dispersion rate. Deterministic in
+  // world position and continuous seconds; no camera-dependent wave phase.
   var h=0.;var grad=vec2f(0.);
-  let dirs=array<vec2f,8>(vec2f(.91,.41),vec2f(-.38,.925),vec2f(.71,-.704),vec2f(-.97,-.24),vec2f(.18,.984),vec2f(.839,.544),vec2f(-.61,.792),vec2f(.994,-.108));
-  let ks=array<f32,8>(2.13,3.67,5.91,8.43,12.71,17.13,22.79,31.37);
-  let amps=array<f32,8>(.41,.26,.15,.085,.049,.026,.013,.007);
-  for(var i=0u;i<6u;i++){let k=ks[i];let ph=dot(p,dirs[i])*k+sqrt(9.81*k)*U.state.x+f32(i*i)*1.719;let a=amps[i]*U.state.z;h+=a*sin(ph);grad+=a*k*cos(ph)*dirs[i];}
-  // v1.1 excludes subpixel capillary curvature from the shared physical
-  // surface, rather than blurring its sharp refracted image after rendering.
+  let dirs=array<vec2f,10>(vec2f(.91,.41),vec2f(-.38,.925),vec2f(.71,-.704),vec2f(-.97,-.24),vec2f(.18,.984),vec2f(.839,.544),vec2f(-.61,.792),vec2f(.994,-.108),vec2f(.39,-.921),vec2f(-.84,-.542));
+  let ks=array<f32,10>(1.17,2.03,3.19,5.37,8.71,13.43,19.7,27.1,35.3,43.7);
+  let amps=array<f32,10>(.45,.25,.12,.07,.043,.023,.013,.009,.006,.003);
+  let rates=array<f32,10>(.19,.23,.17,.26,.31,.28,.4,.43,.37,.46);
+  for(var i=0u;i<10u;i++){
+    let k=ks[i];let ph=dot(p,dirs[i])*k+sqrt(9.81*k)*rates[i]*U.state.x+f32(i*i)*1.719;
+    let a=amps[i]*U.state.z;h+=a*sin(ph);grad+=a*k*cos(ph)*dirs[i];
+  }
   return vec3f(U.state.y+h,grad);
 }
 fn emptyHit()->Hit {return Hit(INF,vec3f(0),vec3f(0),vec2f(0),0u,0u);}

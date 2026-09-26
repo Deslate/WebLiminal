@@ -15,7 +15,7 @@ let dragging = false,
   frameMs = [],
   completed = 0,
   firstFrame = null,
-  scale = Math.min(1,1440/innerWidth),
+  scale = Math.min(1,1280/innerWidth),
   paused = false,
   holdTime = false,
   targetSamples = 0;
@@ -168,6 +168,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       lightingBatches: renderer.lightingBatches,
       cameraHistory: false,
       cameraSamplesPerPixel: 4,
+      dynamics: renderer.dynamics,
       errors: renderer.errors,
       audio: sound.inspect(),
       validPosition: canStand(view.x, view.z, ROOM, renderer.solids),
@@ -186,6 +187,15 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       renderer.configure(parameters);
       frameMs = [];
       paused = false;
+    },
+    // Capture the exact production renderer at consecutive specified times.
+    // This pauses scheduling, NOT wave evolution: the supplied time advances it.
+    async renderEvidence(time, pose) {
+      paused=true;
+      while(renderer.busy)await new Promise(r=>setTimeout(r,1));
+      Object.assign(view,pose);
+      await renderer.render(view,time,true,1);
+      return {png:canvas.toDataURL('image/png'),dynamics:renderer.dynamics,view:{...view}};
     },
     // Evidence automation changes the actual camera, without rebuilding light.
     setView(patch) { Object.assign(view, patch); },
