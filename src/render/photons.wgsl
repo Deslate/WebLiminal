@@ -30,7 +30,12 @@ fn photons(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_id
   atomicAdd(&groupCounts[0],1u);
   var underwater=false;var touchedWater=false;var diffuseBounces=0u;var recorded=false;var received=false;let recordThis=i%256u==128u;let ai=(i/256u)*8u;
   for(var bounce=0u;bounce<12u;bounce++) {
-    let h=trace(ro,rd,INF);if(h.t>=INF){break;}
+    var h=traceSolid(ro,rd,INF);
+    if(U.sampling.z==1u){
+      let t=(U.state.y-ro.y)/rd.y;let p=ro+rd*t;
+      if(t>EPS&&t<h.t&&p.x>-7.&&p.x<7.&&p.z>-17.&&p.z<10.){h=Hit(t,p,vec3f(0,1,0),vec2f(0),0u,9u);}
+    }else{h=trace(ro,rd,INF);}
+    if(h.t>=INF){break;}
     if(underwater){power*=waterTransmittance(h.t);}else{power*=exp(-.004*h.t);}
     if(h.material==9u){
       atomicAdd(&groupCounts[1],1u);touchedWater=true;
@@ -49,7 +54,7 @@ fn photons(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_id
     let m=surfaceMaterial(h);let n=select(-m.normal,m.normal,dot(rd,m.normal)<0.);
     // First direct diffuse hit is handled by next-event estimation in camera paths.
     // LS+D and all subsequent indirect paths are measured here in world space.
-    if(bounce>0u){deposit(h,power*(1.-schlick(abs(dot(rd,n)),m.coat)),touchedWater&&diffuseBounces==0u);}
+    if(bounce>0u && !(U.sampling.z==1u && touchedWater && diffuseBounces==0u)){deposit(h,power*(1.-schlick(abs(dot(rd,n)),m.coat)),touchedWater&&diffuseBounces==0u);}
     let v=-rd;let fres=schlick(max(dot(v,n),0.),m.coat);let ps=clamp(fres,.08,.8);
     if(rnd(&seed)<ps){
       let outgoing=sampleGGX(n,v,m.roughness,&seed);let no=max(dot(n,outgoing),0.);let nv=max(dot(n,v),0.);

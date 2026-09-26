@@ -1,5 +1,5 @@
 import {chromium} from '@playwright/test';import {writeFileSync,mkdirSync} from 'node:fs';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.4-evidence/final';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.5-evidence/final';mkdirSync(out,{recursive:true});
 const b=await chromium.launch({channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1512,height:982}});const errors=[];p.on('console',m=>{if(m.type()==='error')errors.push(m.text())});await p.goto(process.env.VERIFY_URL||'http://127.0.0.1:4173');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs);
 const views={wall30cm:{x:6.7,y:1.62,z:5,yaw:-1.57,pitch:0},oblique30cm:{x:6.7,y:1.62,z:5,yaw:-.8,pitch:-.10},reflection30cm:{x:6.7,y:1.62,z:5,yaw:-.55,pitch:.08},pillar30cm:{x:2.35,y:1.62,z:-2.55,yaw:0,pitch:0},room:{x:-3.6,y:1.62,z:8,yaw:-.29,pitch:.028}};
 const report={views:{},errors};
@@ -13,6 +13,6 @@ await p.waitForTimeout(7000);const staticView=await p.evaluate(()=>window.__POOL
 await p.evaluate(()=>{window.v14MotionStart=performance.now();function step(){const t=(performance.now()-window.v14MotionStart)/1000;window.__POOLROOMS_V1__.setView({z:5-.25*Math.sin(t),yaw:-1.57+.15*Math.sin(t*.8)});window.v14RAF=requestAnimationFrame(step)}step()});
 await p.waitForTimeout(5000);await p.evaluate(()=>cancelAnimationFrame(window.v14RAF));const moving=await p.evaluate(()=>window.__POOLROOMS_V1__.snapshot());
 function stats(frames){const d=frames.map(f=>f.ms).sort((a,b)=>a-b);return {frames:d.length,fps:1000*d.length/d.reduce((a,b)=>a+b,0),p95:d[Math.floor(d.length*.95)],max:d.at(-1),minimumOneSecondFps:Math.min(...Array.from({length:Math.max(1,Math.floor(frames.reduce((a,f)=>a+f.ms,0)/1000))},(_,i)=>{let elapsed=0;const bin=frames.filter(f=>{elapsed+=f.ms;return elapsed>i*1000&&elapsed<=(i+1)*1000});return 1000*bin.length/bin.reduce((a,f)=>a+f.ms,0)}))};}
-report.nearPerformance={static:stats(staticView.frames.slice(-90)),moving:stats(moving.frames.slice(-90)),staticResolution:staticView.internal,movingResolution:moving.internal,cacheLateFrames:moving.dynamics.cacheLateFrames};writeFileSync(`${out}/near.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report));
-if(errors.length||report.nearPerformance.static.fps<30||report.nearPerformance.moving.fps<30||moving.dynamics.cacheLateFrames)throw Error('Near-wall validation failed');
+report.nearPerformance={static:stats(staticView.frames.slice(-90)),moving:stats(moving.frames.slice(-90)),staticResolution:staticView.internal,movingResolution:moving.internal,lightFrames:moving.dynamics.lightFrames,phaseError:Math.abs(moving.dynamics.causticTime-moving.dynamics.waveTime)};writeFileSync(`${out}/near.json`,JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+if(errors.length||report.nearPerformance.static.fps<30||report.nearPerformance.moving.fps<30||moving.dynamics.causticTime!==moving.dynamics.waveTime)throw Error('Near-wall validation failed');
 }finally{await b.close()}

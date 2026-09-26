@@ -87,9 +87,9 @@ export function auditOptics(audit) {
         ),
       );
     }
-    const expectedWeight = refl ? f / a[27] : (1 - f) / (1 - a[27]);
+    const expectedWeight = a[27] < 0 ? (refl ? f : 1-f) : (refl ? f / a[27] : (1 - f) / (1 - a[27]));
     for (let j = 0; j < 3; j++)
-      if (a[24 + j] > 0.001)
+      if (a[24 + j] > 1e-8)
         max.fluxWeight = Math.max(
           max.fluxWeight,
           Math.abs(a[28 + j] / a[24 + j] - expectedWeight),
@@ -119,7 +119,7 @@ export function auditOptics(audit) {
       receiver,
       receiverSurface: a[23],
       fluxBefore: a.slice(24, 27),
-      branchProbability: refl ? a[27] : 1 - a[27],
+      branchProbability: a[27] < 0 ? 1 : (refl ? a[27] : 1 - a[27]),
       fluxAfter: a.slice(28, 31),
     });
   }

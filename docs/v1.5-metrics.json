@@ -1,0 +1,122 @@
+{
+  "date": "2026-09-26T16:18:54.793Z",
+  "browser": "153.0.8010.53",
+  "adapter": null,
+  "firstFrameMs": 1102.2000000178814,
+  "static": {
+    "from": 5,
+    "to": 17,
+    "frames": 591,
+    "averageFps": 49.252873084214315,
+    "minimumOneSecondFps": 46.396841066140176,
+    "p95FrameMs": 25.099999994039536,
+    "maxFrameMs": 30.599999994039536,
+    "framesOver50ms": 0
+  },
+  "moving": {
+    "from": 20,
+    "to": 22,
+    "frames": 102,
+    "averageFps": 51.06894307284394,
+    "minimumOneSecondFps": 50.49994950035451,
+    "p95FrameMs": 23.599999994039536,
+    "maxFrameMs": 27.5,
+    "framesOver50ms": 0
+  },
+  "internalResolution": [
+    1280,
+    832
+  ],
+  "near": {
+    "static": {
+      "frames": 90,
+      "fps": 45.509708738001244,
+      "p95": 23.099999994039536,
+      "max": 23.299999982118607,
+      "minimumOneSecondFps": 45.58346839601236
+    },
+    "moving": {
+      "frames": 90,
+      "fps": 45.027016209457294,
+      "p95": 23.400000005960464,
+      "max": 24.19999998807907,
+      "minimumOneSecondFps": 44.18557943309226
+    },
+    "staticResolution": [
+      1280,
+      832
+    ],
+    "movingResolution": [
+      1280,
+      832
+    ],
+    "lightFrames": 536,
+    "phaseError": 0
+  },
+  "baselineCommit": "e27c3e9",
+  "baselineCurrent": {
+    "static": {
+      "from": 5,
+      "to": 17,
+      "frames": 426,
+      "averageFps": 35.528126433426465,
+      "minimumOneSecondFps": 34.017008504252125,
+      "p95FrameMs": 36.70000001788139,
+      "maxFrameMs": 42.29999998211861,
+      "framesOver50ms": 0
+    },
+    "moving": {
+      "from": 20,
+      "to": 22,
+      "frames": 103,
+      "averageFps": 51.551551551551555,
+      "minimumOneSecondFps": 50.11526511035123,
+      "p95FrameMs": 24.5,
+      "maxFrameMs": 27.5,
+      "framesOver50ms": 0
+    }
+  },
+  "opticalResiduals": {
+    "snell": 2.0986879534223846e-07,
+    "reflection": 1.27121221105142e-07,
+    "fresnel": 1.3647159888274807e-08,
+    "fluxWeight": 8.233217974051854e-08,
+    "heightMetres": 8.140145513202413e-08,
+    "normal": 2.8241646683052624e-07
+  },
+  "historyIndependent": {
+    "wall": true,
+    "dark": true
+  },
+  "storageLayoutPixelIdentical": true,
+  "video": {
+    "path": "/Users/steven/Projects/workroom-v1.5-evidence/final/wall-caustics-continuous.webm",
+    "frames": 541,
+    "fps": 25,
+    "seconds": 21.64,
+    "maximumSceneIsolatedBrightPixels": 0
+  },
+  "budget": {
+    "frameCost": null,
+    "baseBatches": 32,
+    "quality": 1,
+    "gridCells": 1152154,
+    "probeCount": 73225,
+    "skySamples": 64,
+    "waveTime": 1.7,
+    "causticTime": 1.7,
+    "diffuseTime": 1.7,
+    "lightFrames": 61,
+    "lightKeyframes": false,
+    "sunPackets": 147456,
+    "skyPackets": 131072,
+    "diffuseLinks": 4686400,
+    "diffuseIterations": 4
+  },
+  "limitations": [
+    "Mean-water diffuse background + finite-direction current delta transport",
+    "Central solar direction and four-point sky quadrature on water",
+    "Finite spatial caustic kernel",
+    "Finite-cone glaze reflections unchanged; not all-device or all-view guarantee"
+  ]
+}

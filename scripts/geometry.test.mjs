@@ -22,3 +22,15 @@ test('arch receiver area excludes the opening instead of treating it as black wa
 test('unbroken receiving planes preserve full physical area',()=>{
  for(const sid of [3,10,18,32,40]){const offset=words[sid*8],n=words[sid*8+1]*words[sid*8+2];assert(g.cellSurfaces.subarray(offset,offset+n).every(p=>(p>>>16)===4));}
 });
+test('diffuse probe offsets partition the buffer and exclude CSG voids',()=>{
+ let end=0,invalid=0;
+ for(let sid=0;sid<g.surfaceCount;sid++){
+  const offset=words[sid*8+3],nx=Math.ceil(words[sid*8+1]/4),ny=Math.ceil(words[sid*8+2]/4);
+  assert.equal(offset,end);
+  for(const packed of g.probeSurfaces.subarray(offset,offset+nx*ny)){
+   assert.equal(packed&65535,sid);assert((packed>>>16)<=1);if(!(packed>>>16))invalid++;
+  }
+  end+=nx*ny;
+ }
+ assert.equal(end,g.probeCount);assert.equal(end,g.probeSurfaces.length);assert(invalid>1000);
+});

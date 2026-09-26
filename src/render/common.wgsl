@@ -14,7 +14,8 @@ struct Uniforms {
   settings: vec4f, // history weight, photon history weight, sunlight multiplier, diagnostic
   counts: vec4u, // total cells, surfaces, batch number, fixed seed
   sampling: vec4u, // photon paths this batch; divisible by 512
-  lighting: vec4f, // cache interpolation, rough reflection cone, quality blend, reserved
+  lighting: vec4f, // rough reflection cone and quality blend; x unused in v1.5
+  live: vec4u, // sun grid width, sky grid width/height, diffuse probe count
 };
 struct Shape { lo: vec4f, hi: vec4f, info: vec4u, params: vec4f };
 struct Surface { info: vec4u, metric: vec4f };

@@ -100,8 +100,21 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
     sf = new Float32Array(surfaces),
     su = new Uint32Array(surfaces),
     cellSurfaces = new Uint32Array(totalCells);
+  let probeCount=0;const probeSurfaces=[];
   surfaceList.forEach((s, i) => {
-    su.set([s.offset, s.nx, s.ny, 0], i * 8);
+    su.set([s.offset, s.nx, s.ny, probeCount], i * 8);
+    const probes=Math.ceil(s.nx/4)*Math.ceil(s.ny/4);
+    for(let j=0;j<probes;j++){
+      const shape=shapes[Math.floor(i/9)],face=i%9;
+      const nx=Math.ceil(s.nx/4),ny=Math.ceil(s.ny/4),u=(j%nx+.5)/nx,v=(Math.floor(j/nx)+.5)/ny;
+      const d=shape.hi.map((p,k)=>p-shape.lo[k]);
+      const px=face<2?shape[face===1?'hi':'lo'][0]:shape.lo[0]+u*d[0];
+      const py=face<2||face>=4?shape.lo[1]+v*d[1]:shape[face===3?'hi':'lo'][1];
+      const xx=px-(shape.lo[0]+shape.hi[0])/2,yy=py-shape.spring;
+      const valid=!(shape.kind===1&&face<6&&Math.abs(xx)<shape.radius&&(yy<0||xx*xx+yy*yy<shape.radius*shape.radius));
+      probeSurfaces.push(i|(Number(valid)<<16));
+    }
+    probeCount+=probes;
     sf.set([s.width, s.height, s.area, 0], i * 8 + 4);
     const shape=shapes[Math.floor(i/9)], face=i%9;
     cellSurfaces.fill(i | (4 << 16), s.offset, s.offset + s.nx * s.ny);
@@ -127,6 +140,7 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
     surfaces,
     cellSurfaces,
     totalCells,
+    probeCount,probeSurfaces:new Uint32Array(probeSurfaces),
     surfaceCount: surfaceList.length,
     aperture: [xmin, xmax, zmin, zmax],
   };
