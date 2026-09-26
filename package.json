@@ -1,7 +1,7 @@
 {
   "name": "poolrooms-v1",
   "private": true,
-  "version": "0.1.9",
+  "version": "0.1.10",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -11,18 +11,19 @@
     "test": "node --test scripts/*.test.mjs",
     "verify": "node scripts/verify-v1.mjs",
     "proof": "node scripts/proof-v1.mjs",
-    "verify:motion": "node scripts/verify-v17.mjs",
-    "verify:frames": "node scripts/verify-v17.mjs",
-    "verify:analyze": "python scripts/analyze-v17.py ../workroom-v1.9-evidence/final/synchrony",
+    "verify:motion": "node scripts/verify-v110.mjs",
+    "verify:frames": "node scripts/verify-v110.mjs",
+    "verify:analyze": "python scripts/analyze-v17.py ../workroom-v1.10-evidence/final/synchrony",
     "verify:reference": "node scripts/reference-v13.mjs",
-    "verify:near": "node scripts/capture-v19.mjs",
+    "verify:near": "node scripts/capture-v110.mjs",
     "verify:record": "node scripts/record-v17.mjs",
-    "verify:deadlines": "node scripts/verify-v17.mjs",
+    "verify:deadlines": "node scripts/verify-v110.mjs",
     "verify:reflection": "node scripts/capture-v16.mjs",
     "verify:reflection-performance": "node scripts/performance-reflections-v16.mjs",
     "verify:construction": "node scripts/performance-v18.mjs",
-    "verify:seams": "node scripts/sequence-v19.mjs",
-    "verify:layout": "node scripts/audit-layout-v18.mjs"
+    "verify:seams": "node scripts/sequence-v110.mjs",
+    "verify:layout": "node scripts/audit-layout-v18.mjs",
+    "verify:joint": "node scripts/audit-joint-v110.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.55.1",

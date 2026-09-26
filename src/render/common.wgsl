@@ -148,6 +148,7 @@ fn surfaceHit(sid:u32,uv:vec2f)->Hit {
 }
 
 // Metre-scale tile construction. Independent seeds stay attached to the world.
+const GROUT_HALF_WIDTH:f32=.0028;
 struct TileProfile { height:f32, edge:f32, id:f32, bevel:f32, slope:vec2f };
 // Continuous setting-out chart: right jamb -> arch -> left jamb.
 // The 250 mm module starts at each spring. Two equal closing cuts on
@@ -191,6 +192,19 @@ fn tileSeed(sid:u32,mode:u32)->f32 {
  if(shape.info.y==1u&&(face==4u||face==5u)&&mode==0u){return round(select(shape.lo.z,shape.hi.z,face==5u)*4.)*19.+f32(face);}
  return f32(sid);
 }
+// Distance inward from the two independently tiled faces at an opening.
+// Each face leaves half of the ordinary 5.6mm joint in the unfolded chart.
+fn openingJoint(uv:vec2f,sid:u32,mode:u32)->vec3f {
+ let shape=shapes[sid/9u];let face=sid%9u;
+ if(shape.info.y!=1u){return vec3f(1e6,0,0);}
+ if(mode==0u&&(face==4u||face==5u)){
+  let p=uv-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
+  if(p.y<0.){return vec3f(abs(p.x)-shape.params.x,sign(p.x),0);}
+  return vec3f(length(p)-shape.params.x,normalize(p));
+ }
+ if(mode==1u){return vec3f(min(uv.y-shape.lo.z,shape.hi.z-uv.y),0,select(1.,-1.,uv.y>(shape.lo.z+shape.hi.z)*.5));}
+ return vec3f(1e6,0,0);
+}
 fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
   let shape=shapes[sid/9u];var size=vec2f(.25);
   var cell=floor(uv/size);var center=(cell+.5)*size;
@@ -200,33 +214,29 @@ fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
   let r=vec4f(hash2(cell+vec2f(13.1+seed*31.,7.3)),hash2(cell+vec2f(28.7,9.1+seed*11.)),hash2(cell+vec2f(97.3+id*31.,43.7)),hash2(cell+vec2f(29.1,61.3+id*71.)));
   let angle=0.;let local=uv-center;
   let rotation=mat2x2f(cos(angle),-sin(angle),sin(angle),cos(angle));let q=rotation*local;
-  let halfSize=size*.5-vec2f(.0028);
+  let halfSize=size*.5-vec2f(GROUT_HALF_WIDTH);
   let radius=.0012+.0012*id;
   let d=abs(q)-halfSize+radius;
   var edge=-(length(max(d,vec2f(0)))+min(max(d.x,d.y),0.)-radius);
+  let joint=openingJoint(uv,sid,mode);let openingEdge=joint.x-GROUT_HALF_WIDTH;
+  let atOpening=openingEdge<edge;edge=min(edge,openingEdge);
   let bevel=.0012+.0016*r.y;
   let shoulder=smoothstep(0.,bevel,edge);
   let tilt=dot(q,(r.xy-.5)*.009);
   let face=.001+(id-.5)*.0018+tilt;
-  // Grout bed is four millimetres behind the mounting plane, not painted black.
-  var height=mix(-.004,face,shoulder);
-  // Two adjacent faces evaluate the SAME 45-degree cut plane at the arris.
-  // Their horizontal grout beds remain continuous; no overlapping tile ends.
-  var miterDistance=1e6;var miterGradient=vec2f(0);
-  // Ordinary wall tiles are cut by the existing opening. Keep only the
-  // millimetre-scale 45-degree arris; no outer band or radial grout chart.
-  if(mode==0u&&shape.info.y==1u&&(sid%9u==4u||sid%9u==5u)){
-   let p=uv-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
-   miterDistance=select(abs(p.x),length(p),p.y>=0.)-shape.params.x;
-   miterGradient=select(vec2f(sign(p.x),0),normalize(p),p.y>=0.);
-  }
-  if(mode==1u){miterDistance=min(uv.y-shape.lo.z,shape.hi.z-uv.y);miterGradient=vec2f(0,select(1.,-1.,uv.y>(shape.lo.z+shape.hi.z)*.5));}
-  let miter=miterDistance-.001<height;height=min(height,miterDistance-.001);
+  // Flat joints retain their 4mm bed. At a 90-degree edge the two
+  // independent beds recede 1.8mm per face (~4mm from tile tips along
+  // the bisector), so opposing shoulders do not hide the grout bottom.
+  // Join ordinary cross-joints continuously into the corner bed.
+  let bedT=clamp((joint.x-GROUT_HALF_WIDTH)/.0052,0.,1.);
+  let bed=mix(-.0018,-.004,bedT*bedT*(3.-2.*bedT));
+  var height=mix(bed,face,shoulder);
   var ge=-sign(q)*select(vec2f(0,1),vec2f(1,0),d.x>d.y);
   if(any(d>vec2f(0))){ge=-sign(q)*normalize(max(d,vec2f(0)));}
+  if(atOpening){ge=joint.yz;}
   let u=clamp(edge/bevel,0.,1.);
-  var slope=transpose(rotation)*((r.xy-.5)*.009*shoulder+ge*(face+.004)*6.*u*(1.-u)/bevel);
-  if(miter){slope=miterGradient;}
+  var slope=transpose(rotation)*((r.xy-.5)*.009*shoulder+ge*(face-bed)*6.*u*(1.-u)/bevel);
+  slope+=joint.yz*(-.0022/.0052)*6.*bedT*(1.-bedT)*(1.-shoulder);
   return TileProfile(height,edge,id,bevel,slope);
 }
 fn reliefAt(ro:vec3f,rd:vec3f,h:Hit,t:f32,uvRay:vec2f)->Hit {let off=t-h.t;
@@ -264,7 +274,7 @@ fn jointVisibility(h:Hit,l:vec3f)->f32 {
   let f=tileFrame(h);let uv=tileUV(h);let mode=tileMode(h);let shape=shapes[h.sid/9u];
   var border=min(fract(uv/.25),1.-fract(uv/.25))*.25;
   if(mode==1u){let course=archCourse(uv.x,shape.params.x);border.x=course.z*.5-abs(uv.x-course.y);}
-  var clear=min(border.x,border.y);
+  var clear=min(min(border.x,border.y),openingJoint(uv,h.sid,mode).x);
   if(clear>.010){return 1.;}
   let profile=tileProfile(uv,h.sid,h.material,mode);if(profile.edge>profile.bevel+.0003){return 1.;}let start=profile.height;
   let dir=vec2f(dot(l,f[0]),dot(l,f[1]));let nl=dot(h.n,l);var visible=1.;
