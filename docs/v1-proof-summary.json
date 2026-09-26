@@ -1,0 +1,287 @@
+{
+  "manifest": {
+    "runId": "706e0e2f-a52b-4478-a9e4-13e745306dfd",
+    "browser": "153.0.8010.53",
+    "cases": [
+      {
+        "name": "01-original",
+        "runId": "706e0e2f-a52b-4478-a9e4-13e745306dfd",
+        "config": {
+          "autoConverge": true,
+          "photonCount": 65536,
+          "waterLevel": 0.42,
+          "waveAmplitude": 0.052,
+          "apertureWidth": 4.8,
+          "apertureDepth": 5.8,
+          "exposure": 0.85,
+          "freeze": true,
+          "waveTime": 1.7,
+          "seed": 7819301,
+          "diagnostic": 0,
+          "focusDistance": 10,
+          "focalLength": 28,
+          "fNumber": 5.6,
+          "targetSamples": 1024,
+          "scale": 0.8
+        },
+        "view": {
+          "x": -3.6,
+          "y": 1.62,
+          "z": 8,
+          "yaw": -0.29,
+          "pitch": 0.028
+        },
+        "samples": 1024,
+        "fps": 18.906651028535975,
+        "sha256": "19c002b62b4f12912c3054d1deb1579d076fcd90e40ac30098de07e19752cef3",
+        "opticalResiduals": {
+          "snell": 4.798469231959146e-7,
+          "reflection": 1.1924701781573788e-7,
+          "fresnel": 1.8525675181402246e-8,
+          "fluxWeight": 1.4544457083154327e-7,
+          "heightMetres": 4.0109160176493575e-7,
+          "normal": 0.000004721213688340525
+        },
+        "emittedPhotons": 67108864
+      },
+      {
+        "name": "02-water-level",
+        "runId": "706e0e2f-a52b-4478-a9e4-13e745306dfd",
+        "config": {
+          "autoConverge": true,
+          "photonCount": 65536,
+          "waterLevel": 0.86,
+          "waveAmplitude": 0.052,
+          "apertureWidth": 4.8,
+          "apertureDepth": 5.8,
+          "exposure": 0.85,
+          "freeze": true,
+          "waveTime": 1.7,
+          "seed": 7819301,
+          "diagnostic": 0,
+          "focusDistance": 10,
+          "focalLength": 28,
+          "fNumber": 5.6,
+          "targetSamples": 1024,
+          "scale": 0.8
+        },
+        "view": {
+          "x": -3.6,
+          "y": 1.62,
+          "z": 8,
+          "yaw": -0.29,
+          "pitch": 0.028
+        },
+        "samples": 1024,
+        "fps": 25.58342050074261,
+        "sha256": "635790a218a34e4290488ae1ddac550c4ed5d5a4a5b73db54d9fa60e9e5be07b",
+        "opticalResiduals": {
+          "snell": 0.000001277835433591279,
+          "reflection": 1.3959421285569817e-7,
+          "fresnel": 2.3082203697011305e-8,
+          "fluxWeight": 1.3698893042146665e-7,
+          "heightMetres": 4.2192589311262907e-7,
+          "normal": 0.000003259026429204559
+        },
+        "emittedPhotons": 67108864
+      },
+      {
+        "name": "03-skylight-opening",
+        "runId": "706e0e2f-a52b-4478-a9e4-13e745306dfd",
+        "config": {
+          "autoConverge": true,
+          "photonCount": 65536,
+          "waterLevel": 0.42,
+          "waveAmplitude": 0.052,
+          "apertureWidth": 1.6,
+          "apertureDepth": 5.8,
+          "exposure": 0.85,
+          "freeze": true,
+          "waveTime": 1.7,
+          "seed": 7819301,
+          "diagnostic": 0,
+          "focusDistance": 10,
+          "focalLength": 28,
+          "fNumber": 5.6,
+          "targetSamples": 1024,
+          "scale": 0.8
+        },
+        "view": {
+          "x": -3.6,
+          "y": 1.62,
+          "z": 8,
+          "yaw": -0.29,
+          "pitch": 0.028
+        },
+        "samples": 1024,
+        "fps": 29.467536745400352,
+        "sha256": "02df56453eb3ad087910fb5adfc3f5b47c327e903e318457a93e598868a8d9f8",
+        "opticalResiduals": {
+          "snell": 2.1825962581711877e-7,
+          "reflection": 1.1051226267433378e-7,
+          "fresnel": 1.7259788959167466e-8,
+          "fluxWeight": 1.5145182885589747e-7,
+          "heightMetres": 4.27281329706819e-7,
+          "normal": 0.0000038129523562135947
+        },
+        "emittedPhotons": 67108864
+      },
+      {
+        "name": "04-flat-wave-control",
+        "runId": "706e0e2f-a52b-4478-a9e4-13e745306dfd",
+        "config": {
+          "autoConverge": true,
+          "photonCount": 65536,
+          "waterLevel": 0.42,
+          "waveAmplitude": 0.001,
+          "apertureWidth": 4.8,
+          "apertureDepth": 5.8,
+          "exposure": 0.85,
+          "freeze": true,
+          "waveTime": 1.7,
+          "seed": 7819301,
+          "diagnostic": 0,
+          "focusDistance": 10,
+          "focalLength": 28,
+          "fNumber": 5.6,
+          "targetSamples": 1024,
+          "scale": 0.8
+        },
+        "view": {
+          "x": -3.6,
+          "y": 1.62,
+          "z": 8,
+          "yaw": -0.29,
+          "pitch": 0.028
+        },
+        "samples": 1024,
+        "fps": 33.602014090515645,
+        "sha256": "49aac1c3807d41c71ba50eef27f873e392822d553976943bd6e2bade99caab34",
+        "opticalResiduals": {
+          "snell": 0.0000022737947740214537,
+          "reflection": 1.2520311964969721e-7,
+          "fresnel": 1.8321055630932115e-8,
+          "fluxWeight": 1.458527030262502e-7,
+          "heightMetres": 4.040507913805058e-7,
+          "normal": 8.869875424996707e-8
+        },
+        "emittedPhotons": 67108864
+      },
+      {
+        "name": "05-restored-original",
+        "runId": "706e0e2f-a52b-4478-a9e4-13e745306dfd",
+        "config": {
+          "autoConverge": true,
+          "photonCount": 65536,
+          "waterLevel": 0.42,
+          "waveAmplitude": 0.052,
+          "apertureWidth": 4.8,
+          "apertureDepth": 5.8,
+          "exposure": 0.85,
+          "freeze": true,
+          "waveTime": 1.7,
+          "seed": 7819301,
+          "diagnostic": 0,
+          "focusDistance": 10,
+          "focalLength": 28,
+          "fNumber": 5.6,
+          "targetSamples": 1024,
+          "scale": 0.8
+        },
+        "view": {
+          "x": -3.6,
+          "y": 1.62,
+          "z": 8,
+          "yaw": -0.29,
+          "pitch": 0.028
+        },
+        "samples": 1024,
+        "fps": 31.395834123756273,
+        "sha256": "19c002b62b4f12912c3054d1deb1579d076fcd90e40ac30098de07e19752cef3",
+        "opticalResiduals": {
+          "snell": 4.798469231959146e-7,
+          "reflection": 1.1924701781573788e-7,
+          "fresnel": 1.8525675181402246e-8,
+          "fluxWeight": 1.4544457083154327e-7,
+          "heightMetres": 4.0109160176493575e-7,
+          "normal": 0.000004721213688340525
+        },
+        "emittedPhotons": 67108864
+      }
+    ],
+    "full": {
+      "runId": "706e0e2f-a52b-4478-a9e4-13e745306dfd",
+      "view": {
+        "x": -3.6,
+        "y": 1.62,
+        "z": 8,
+        "yaw": -0.29,
+        "pitch": 0.028
+      },
+      "elapsed": 12,
+      "firstFrameMs": 1405.7000000029802,
+      "completedFrames": 6159,
+      "internal": [
+        1632,
+        1024
+      ],
+      "samples": 1024,
+      "config": {
+        "autoConverge": true,
+        "photonCount": 65536,
+        "waterLevel": 0.42,
+        "waveAmplitude": 0.052,
+        "apertureWidth": 4.8,
+        "apertureDepth": 5.8,
+        "exposure": 0.85,
+        "freeze": true,
+        "waveTime": 1.7,
+        "seed": 7819301,
+        "diagnostic": 0,
+        "focusDistance": 10,
+        "focalLength": 28,
+        "fNumber": 5.6,
+        "targetSamples": 1024,
+        "scale": 0.85
+      },
+      "staticExposure": false,
+      "errors": [],
+      "audio": {
+        "state": "suspended",
+        "muted": false,
+        "rms": 0
+      },
+      "validPosition": true,
+      "captureFps": 21.727868286273086
+    },
+    "errors": [],
+    "identicalRestoredImage": true
+  },
+  "difference": {
+    "pairedReflectedPaths": 102,
+    "meanReceiverShiftMetres": 1.335034984509502,
+    "maxReceiverShiftMetres": 3.3123112200283877,
+    "imageDifferences": {
+      "02-water-level": {
+        "wholeImageMeanAbsoluteRGBDifference": 11.536005625,
+        "aboveWaterWallMeanAbsoluteRGBDifference": 5.144079427083334,
+        "identicalPixelsEverywhere": false
+      },
+      "03-skylight-opening": {
+        "wholeImageMeanAbsoluteRGBDifference": 36.943791041666664,
+        "aboveWaterWallMeanAbsoluteRGBDifference": 38.431973524305555,
+        "identicalPixelsEverywhere": false
+      },
+      "04-flat-wave-control": {
+        "wholeImageMeanAbsoluteRGBDifference": 5.376370208333333,
+        "aboveWaterWallMeanAbsoluteRGBDifference": 3.3331905381944447,
+        "identicalPixelsEverywhere": false
+      },
+      "05-restored-original": {
+        "wholeImageMeanAbsoluteRGBDifference": 0,
+        "aboveWaterWallMeanAbsoluteRGBDifference": 0,
+        "identicalPixelsEverywhere": true
+      }
+    }
+  }
+}

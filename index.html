@@ -12,12 +12,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23c2dace'/%3E%3Cpath d='M8 26V13a8 8 0 0 1 16 0v13' fill='none' stroke='%23647263' stroke-width='3'/%3E%3C/svg%3E"
     />
-    <link
-      rel="preload"
-      as="image"
-      href="./first-frame.jpg"
-      fetchpriority="high"
-    />
+
     <link rel="stylesheet" href="/src/style.css" />
     <title>此处无深水 · STILL WATER</title>
     <style>
@@ -36,35 +31,9 @@
         font-family: "Courier New", monospace;
         color: #ffffe9;
       }
-      #first-frame {
-        position: fixed;
-        inset: 0;
-        background: linear-gradient(
-          162deg,
-          #fffce2 0%,
-          #e0e5c9 35%,
-          #9dbaab 56%,
-          #50867d 100%
-        );
-        background-size: cover;
-        background-position: center;
-      }
-      #first-frame img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      }
     </style>
   </head>
   <body>
-    <div id="first-frame" aria-hidden="true">
-      <img
-        src="./first-frame.jpg"
-        alt=""
-        fetchpriority="high"
-        decoding="sync"
-      />
-    </div>
     <main
       id="experience"
       aria-label="Poolrooms，可用 WASD 或方向键移动，拖动鼠标环顾，M 静音。"
@@ -88,7 +57,7 @@
     </div>
     <footer>
       <span class="coordinates"
-        >DEPTH &nbsp; 0.18 M <em>／</em> OCCUPANCY &nbsp; 00</span
+        >DEPTH &nbsp; 0.42 M <em>／</em> OCCUPANCY &nbsp; 00</span
       ><span id="hint"
         >W A S D &nbsp; 移动 &nbsp; · &nbsp; 拖动环顾 &nbsp; · &nbsp; M
         声音</span
