@@ -9,7 +9,7 @@ const page=await browser.newPage({viewport:{width:1512,height:982},deviceScaleFa
 page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{messages.push({type:m.type(),text:m.text()});if(['error','warning'].includes(m.type()))errors.push(m.text());});page.on('request',r=>requests.push(r.url()));page.on('requestfailed',r=>errors.push(r.url()));
 const cdp=await page.context().newCDPSession(page);await cdp.send('Network.enable');await cdp.send('Network.setCacheDisabled',{cacheDisabled:true});
 const url=process.env.VERIFY_URL||'http://127.0.0.1:4173';console.log('Browser ready',url);await page.goto(url);await page.bringToFront();await page.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs!=null);
-const initial=await page.evaluate(()=>window.__POOLROOMS_V1__.snapshot());assert(initial.firstFrameMs<=3000);
+const initial=await page.evaluate(()=>window.__POOLROOMS_V1__.snapshot());assert(initial.firstFrameMs<=3000);assert.equal(initial.errors.length,0);
 await page.keyboard.press('Space'); // normal user gesture, no autoplay bypass
 await page.waitForTimeout(18000);
 const staticResult=await page.evaluate(()=>window.__POOLROOMS_V1__.snapshot());assert(staticResult.staticExposure);console.log('Static sample',JSON.stringify({frames:staticResult.completedFrames,samples:staticResult.samples,internal:staticResult.internal}));assert(staticResult.samples>1);

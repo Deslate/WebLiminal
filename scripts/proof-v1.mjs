@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { auditOptics } from "./optical-audit.mjs";
 const output =
   process.env.EVIDENCE_DIR ||
-  "/Users/steven/Projects/workroom-v1.1-evidence/proof";
+  "/Users/steven/Projects/workroom-v1.3-evidence/proof";
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
@@ -66,7 +66,7 @@ try {
     delete raw.paths;
     assert.equal(snapshot.runId, runId);
     assert.equal(snapshot.samples, 8);
-    assert.equal(raw.batches, 48);
+    assert.equal(raw.batches, 2 * raw.config.lightBatches);
     assert.equal(raw.errors.length, 0);
     await page.screenshot({ path: `${output}/${name}.png` });
     const sha256 = createHash("sha256")

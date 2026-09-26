@@ -14,7 +14,7 @@ struct Uniforms {
   settings: vec4f, // history weight, photon history weight, sunlight multiplier, diagnostic
   counts: vec4u, // total cells, surfaces, batch number, fixed seed
   sampling: vec4u, // photon paths this batch; divisible by 512
-  lighting: vec4f, // cache interpolation, rough reflection cone, reserved
+  lighting: vec4f, // cache interpolation, rough reflection cone, quality blend, reserved
 };
 struct Shape { lo: vec4f, hi: vec4f, info: vec4u, params: vec4f };
 struct Surface { info: vec4u, metric: vec4f };
@@ -132,4 +132,16 @@ fn smithG1(nv:f32,a:f32)->f32{return 2.*nv/max(nv+sqrt(a*a+(1.-a*a)*nv*nv),.0000
 fn sampleGGX(n:vec3f,v:vec3f,rough:f32,seed:ptr<function,u32>)->vec3f {
   let a=rough*rough;let r=rnd(seed);let ct=sqrt((1.-r)/(1.+(a*a-1.)*r));let st=sqrt(max(0.,1.-ct*ct));let ph=2.*PI*rnd(seed);let hn=basis(n)*vec3f(st*cos(ph),st*sin(ph),ct);
   return reflect(-v,hn);
+}
+
+// Inverse of makeHit: physical location, orientation and receiving coverage.
+fn surfaceHit(sid:u32,uv:vec2f)->Hit {
+  let s=shapes[sid/9u];let face=sid%9u;let d=s.hi.xyz-s.lo.xyz;
+  var p=s.lo.xyz;var n=vec3f(0);
+  if(face<2u){p=vec3f(select(s.lo.x,s.hi.x,face==1u),s.lo.y+uv.y*d.y,s.lo.z+uv.x*d.z);n.x=select(-1.,1.,face==1u);}
+  else if(face<4u){p=vec3f(s.lo.x+uv.x*d.x,select(s.lo.y,s.hi.y,face==3u),s.lo.z+uv.y*d.z);n.y=select(-1.,1.,face==3u);}
+  else if(face<6u){p=vec3f(s.lo.x+uv.x*d.x,s.lo.y+uv.y*d.y,select(s.lo.z,s.hi.z,face==5u));n.z=select(-1.,1.,face==5u);}
+  else if(face==6u){let a=uv.x*PI;let radial=vec3f(cos(a),sin(a),0);p=vec3f((s.lo.x+s.hi.x)*.5,s.params.y,s.lo.z+uv.y*d.z)+radial*s.params.x;n=-radial;}
+  else {p=vec3f((s.lo.x+s.hi.x)*.5+select(-s.params.x,s.params.x,face==8u),uv.y*s.params.y,s.lo.z+uv.x*d.z);n.x=select(1.,-1.,face==8u);}
+  return Hit(0.,p,n,uv,sid,s.info.x);
 }

@@ -29,7 +29,7 @@ fn photons(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_id
   if(rnd(&seed)>.75){rd=cosineDirection(vec3f(0,-1,0),&seed);power=skyRadiance(-rd)*PI*dims.x*dims.y/.25;}
   atomicAdd(&groupCounts[0],1u);
   var underwater=false;var touchedWater=false;var diffuseBounces=0u;var recorded=false;var received=false;let recordThis=i%256u==128u;let ai=(i/256u)*8u;
-  for(var bounce=0u;bounce<7u;bounce++) {
+  for(var bounce=0u;bounce<12u;bounce++) {
     let h=trace(ro,rd,INF);if(h.t>=INF){break;}
     if(underwater){power*=waterTransmittance(h.t);}else{power*=exp(-.004*h.t);}
     if(h.material==9u){

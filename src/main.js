@@ -190,11 +190,11 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
     },
     // Capture the exact production renderer at consecutive specified times.
     // This pauses scheduling, NOT wave evolution: the supplied time advances it.
-    async renderEvidence(time, pose) {
+    async renderEvidence(time, pose, moving=true) {
       paused=true;
       while(renderer.busy)await new Promise(r=>setTimeout(r,1));
       Object.assign(view,pose);
-      await renderer.render(view,time,true,1);
+      await renderer.render(view,time,moving,1);
       return {png:canvas.toDataURL('image/png'),dynamics:renderer.dynamics,view:{...view}};
     },
     // Evidence automation changes the actual camera, without rebuilding light.

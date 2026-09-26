@@ -1,26 +1,26 @@
-# 此处无深水 · Poolrooms v1.1
+# Poolrooms v1.3
 
-这一版优先消除移动时的采样斑点。相机改为确定性着色，水面同时追踪反射与折射；焦散和间接光来自运行时计算的世界空间光子缓存。零位图资产。
+本机浏览器单页体验：持续动态水面、运行时光子焦散、干净的移动相机，以及停车后一秒内的照明细化。WebGPU + 原生 JavaScript + Vite，无运行时第三方依赖、无位图资源。
 
 ```sh
-npm ci
-npm run dev
+npm install
+npm run dev -- --port 4173
 ```
 
-打开 **http://127.0.0.1:4173/**。WASD / 方向键移动，拖动环顾，Shift 加快，M 静音。首次按键/点击后才可能播放声音；需要 WebGPU 桌面浏览器。
+打开 http://127.0.0.1:4173/ 。需要支持 WebGPU 的桌面浏览器。WASD / 方向键行走，拖动画面转头，Shift 加速，M 静音；声音须先有用户手势。
 
-移动和静止使用同一路径，无相机历史累积、随机景深、随机釉面延续或胶片颗粒。4 个固定子像素样本与程序材质的面积覆盖抗锯齿保留接缝。光子缓存启动时预计算 48×131072 条路径，移动不清空。**水波相位固定，取消高频毛细波；当前并非持续动画水面。** 改水位、波幅或天窗参数会重新计算光照。
+```sh
+npm test
+npm run build
+npm run verify
+npm run verify:motion
+npm run verify:reference
+npm run verify:analyze
+npm run proof
+```
 
-- `src/render/`：解析几何、光子传播与缓存、确定性相机、曝光呈现。
-- `materials/porcelain.wgsl`：程序化材质槽；小于像素的接缝与微细节做面积过滤。
-- `levels/`：纯数据关卡；`src/collision.js` / `src/audio.js`：碰撞与合成音景。
-- `scripts/validate-content.mjs`：内容及零位图校验。
-- `npm test` / `npm run build`：碰撞测试及静态构建。
-- `npm run verify`：首帧、GPU 完成帧率、实际键盘行走与控制台验证。
-- `npm run verify:motion`：五类持续移动的截图与停止后像素一致性检查。
-- `npm run verify:frames`：浏览器 compositor 每帧 PNG 抓取，含暗部提高曝光的压力场景。
-- `npm run proof`：同次运行的水位、开口、波高变化与光路审计。
+`verify` 测真实 GPU 完成帧；`verify:motion` 保存三机位同相位比较、停止过程和 12 秒含停走转换的连续 PNG；`verify:reference` 生成高样本比较基准。证据默认在仓库外 `../workroom-v1.3-evidence/`。可用 `python scripts/encode-evidence.py ../workroom-v1.3-evidence/final` 编码 WebM（本机已装 Pillow，使用 Playwright 自带 ffmpeg）；原始 PNG 是无损依据。影片按 30Hz 时间步合成，不冒充实际运行帧率。
 
-最新证据在仓库外 **`../workroom-v1.1-evidence/`**。旧 `../workroom-v1-evidence/` 只作历史记录。构建为相对路径的纯静态前端，无外链运行资源。
+目录：`src/render/` 是光子、天光积分、相机和镜头处理；`levels/` 是关卡数据；`materials/` 是程序材质槽；`scripts/` 是验证入口；`docs/` 保存物理取舍与验收记录。
 
-实测与覆盖范围见 [验收记录](docs/ACCEPTANCE.md)，算法和明确近似见 [渲染说明](docs/PHYSICS.md)。开发前读 [AGENTS.md](AGENTS.md)。
+当前标准见 [BRIEF.md](BRIEF.md)，物理路径与限制见 [docs/PHYSICS.md](docs/PHYSICS.md)，测量和证据见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。没有 WebGL 降级路径。只作本地提交，不配置或推送远端。

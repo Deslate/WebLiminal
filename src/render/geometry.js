@@ -71,18 +71,18 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
         w = 0.01;
         h = 0.01;
       }
-      let density = 8;
-      if (i === 0 && face === 3) density = 12;
+      let density = 12;
+      if (i === 0 && face === 3) density = 24;
       if (
         (i === 1 && face === 1) ||
         (i === 2 && face === 0) ||
         (i === 3 && face === 5) ||
         (i === 4 && face === 4)
       )
-        density = 12;
-      if (i >= 5 && i <= 8 && face === 2) density = 12;
-      if (s.kind === 1 && (face === 4 || face === 5 || face >= 6)) density = 12;
-      if (i >= 13) density = 12;
+        density = 24;
+      if (i >= 5 && i <= 8 && face === 2) density = 24;
+      if (s.kind === 1 && (face === 4 || face === 5 || face >= 6)) density = 24;
+      if (i >= 13) density = 24;
       const nx = Math.max(2, Math.ceil(w * density)),
         ny = Math.max(2, Math.ceil(h * density));
       surfaceList.push({
@@ -103,7 +103,22 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
   surfaceList.forEach((s, i) => {
     su.set([s.offset, s.nx, s.ny, 0], i * 8);
     sf.set([s.width, s.height, s.area, 0], i * 8 + 4);
-    cellSurfaces.fill(i, s.offset, s.offset + s.nx * s.ny);
+    const shape=shapes[Math.floor(i/9)], face=i%9;
+    cellSurfaces.fill(i | (4 << 16), s.offset, s.offset + s.nx * s.ny);
+    if(shape.kind===1 && face<6){
+      const d=shape.hi.map((v,k)=>v-shape.lo[k]),cx=(shape.lo[0]+shape.hi[0])/2;
+      for(let y=0;y<s.ny;y++)for(let x=0;x<s.nx;x++){
+        let coverage=0;
+        for(let k=0;k<4;k++){
+          const u=(x+.25+(k%2)*.5)/s.nx,v=(y+.25+Math.floor(k/2)*.5)/s.ny;
+          const px=face<2?shape[face===1?'hi':'lo'][0]:shape.lo[0]+u*d[0];
+          const py=face<2||face>=4?shape.lo[1]+v*d[1]:shape[face===3?'hi':'lo'][1];
+          const xx=px-cx,yy=py-shape.spring;
+          if(!(Math.abs(xx)<shape.radius&&(yy<0||xx*xx+yy*yy<shape.radius*shape.radius)))coverage++;
+        }
+        cellSurfaces[s.offset+y*s.nx+x]=i|(coverage<<16);
+      }
+    }
   });
   return {
     shapes,

@@ -2,6 +2,7 @@ import common from "./common.wgsl?raw";
 import porcelain from "../../materials/porcelain.wgsl?raw";
 import level from "../../levels/poolrooms.json";
 import photons from "./photons.wgsl?raw";
+import sky from "./sky.wgsl?raw";
 import resolve from "./resolve.wgsl?raw";
 import camera from "./camera.wgsl?raw";
 import present from "./present.wgsl?raw";
@@ -36,6 +37,7 @@ export async function createRenderer(canvas) {
     module("world irradiance estimate", common + resolve),
     module("camera transport", common + porcelain + camera),
     module("lens and film", present),
+    module("area sky integral", common + sky),
   ];
   const infos = await Promise.all(
     shaderModules.map((m) => m.getCompilationInfo()),
@@ -71,6 +73,8 @@ export async function createRenderer(canvas) {
       },
       primitive: { topology: "triangle-list" },
     }),
+    device.createComputePipelineAsync({label:"64-point area sky",layout:"auto",compute:{module:shaderModules[4],entryPoint:"integrateSky"}}),
+    device.createComputePipelineAsync({label:"separable photon kernel",layout:"auto",compute:{module:shaderModules[1],entryPoint:"horizontal"}}),
   ]);
   const uniforms = device.createBuffer({
     label: "physical parameters",
@@ -99,6 +103,7 @@ export async function createRenderer(canvas) {
   });
   const config = {
     photonCount: 131072,
+    lightBatches: 32,
     ...level.optics,
     freeze: false,
     waveTime: 1.7,
@@ -122,10 +127,11 @@ export async function createRenderer(canvas) {
     elapsed = 0,
     lastWaveTime = 0,
     activeJobs = 0;
-  const LIGHT_STEP=.4, LIGHT_BATCHES=16;
-  let cacheOrder=[0,1,2],cacheTimes=[0,0,0],futureBatches=0,
+  const LIGHT_STEP=.4;
+  const lightBatches=()=>config.lightBatches;
+  let cacheOrder=[0,1,2],cacheTimes=[0,0,0],cacheSamples=[0,0,0],futureBatches=0,
       cacheVersion=0,cacheLateFrames=0,lastPhotonTime=0,lightBlend=0;
-  let resolveGroups=[];
+  let resolveGroups=[], skyGroup, horizontalGroup, quality=0, lastRenderTime=null;
   const buffer = (label, data, usage = GPUBufferUsage.STORAGE) => {
     const b = device.createBuffer({
       label,
@@ -157,25 +163,22 @@ export async function createRenderer(canvas) {
         [4, counters],
         [5, pathAudit],
       ]),
-      bindings(pipelines[1], [
-        [0, uniforms],
-        [2, buffers.surfaces],
-        [3, buffers.flux],
-        [4, buffers[`irradiance${cacheOrder[2]}`]],
-        [5, buffers.cellSurface],
-      ]),
+      null,
       bindings(pipelines[2], [
         ...shared,
         [3, buffers[`irradiance${cacheOrder[0]}`]],
         [5, buffers[`irradiance${cacheOrder[1]}`]],
         [4, imageBuffer],
+        [6,buffers[`fine${cacheOrder[0]}`]],[7,buffers[`fine${cacheOrder[1]}`]],[8,buffers.sky],
       ]),
       bindings(pipelines[3], [
         [0, imageBuffer],
         [1, displayUniform],
       ]),
     ];
-    resolveGroups=[0,1,2].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[3,buffers.flux],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface]]));
+    resolveGroups=[0,1,2].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface],[6,buffers[`fine${i}`]],[7,buffers.rows]]));
+    horizontalGroup=bindings(pipelines[5],[[0,uniforms],[2,buffers.surfaces],[3,buffers.flux],[5,buffers.cellSurface],[7,buffers.rows]]);
+    skyGroup=bindings(pipelines[4],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.cellSurface],[4,buffers.sky]]);
   }
   function rebuild() {
     for (const b of Object.values(buffers)) b.destroy();
@@ -202,6 +205,9 @@ export async function createRenderer(canvas) {
       size: geometry.totalCells * 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
+    for(let i=0;i<3;i++)buffers[`fine${i}`]=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE});
+    buffers.rows=device.createBuffer({size:geometry.totalCells*48,usage:GPUBufferUsage.STORAGE});
+    buffers.sky=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE});
     sceneBatches = 0;
     history = 0;
     if (imageBuffer) regroup();
@@ -227,7 +233,8 @@ export async function createRenderer(canvas) {
     const wasWidth = config.apertureWidth,
       wasDepth = config.apertureDepth;
     Object.assign(config, patch);
-    autoStatic=false;
+    autoStatic=false;quality=0;lastRenderTime=null;
+    config.lightBatches=Math.max(16,Math.min(256,Math.round(config.lightBatches)));
     config.photonCount=Math.max(32768,Math.min(262144,Math.round(config.photonCount/512)*512));
     config.waterLevel = Math.max(0.12, Math.min(1.05, config.waterLevel));
     config.waveAmplitude = Math.max(
@@ -245,6 +252,8 @@ export async function createRenderer(canvas) {
     if (activeJobs > 1) return false;
     activeJobs++;
     try {
+      const dt=lastRenderTime===null?0:Math.max(0,Math.min(.05,time-lastRenderTime));lastRenderTime=time;
+      quality=Math.max(0,Math.min(1,quality+(moving?-dt/.35:dt/.8)));
       elapsed = time;
       // Camera motion never selects a stochastic mode or pauses water.
       autoStatic=true;
@@ -320,30 +329,31 @@ export async function createRenderer(canvas) {
         // never the population of photon samples. Build into an unseen slot.
         f[20]=phase;u[30]=batch;u[38]=batch;u[41]=0;f[33]=1/batch;f[34]=1;
         device.queue.writeBuffer(uniforms,0,data);
-        const enc=device.createCommandEncoder();enc.clearBuffer(buffers.flux);
+        const enc=device.createCommandEncoder();if(batch===1)enc.clearBuffer(buffers.flux);
         enc.clearBuffer(counters);enc.clearBuffer(pathAudit);
         let p=enc.beginComputePass();p.setPipeline(pipelines[0]);p.setBindGroup(0,groups[0]);p.dispatchWorkgroups(config.photonCount/64);p.end();
-        p=enc.beginComputePass();p.setPipeline(pipelines[1]);p.setBindGroup(0,resolveGroups[slot]);p.dispatchWorkgroups(Math.ceil(geometry.totalCells/128));p.end();
+        if(batch===lightBatches() || batch===128){cacheSamples[slot]=batch;p=enc.beginComputePass();p.setPipeline(pipelines[5]);p.setBindGroup(0,horizontalGroup);p.dispatchWorkgroups(Math.ceil(geometry.totalCells/128));p.end();p=enc.beginComputePass();p.setPipeline(pipelines[1]);p.setBindGroup(0,resolveGroups[slot]);p.dispatchWorkgroups(Math.ceil(geometry.totalCells/128));p.end();}
         device.queue.submit([enc.finish()]);sceneBatches++;lastPhotonTime=phase;
       };
       if(sceneBatches===0){
         cacheOrder=[0,1,2];cacheTimes=[lastWaveTime,lastWaveTime+LIGHT_STEP,lastWaveTime+2*LIGHT_STEP];futureBatches=0;cacheLateFrames=0;cacheVersion=0;regroup();
-        for(let slot=0;slot<2;slot++)for(let b=1;b<=LIGHT_BATCHES;b++)photonBatch(slot,config.freeze?lastWaveTime:cacheTimes[slot],b);
+        const skyEncoder=device.createCommandEncoder();const skyPass=skyEncoder.beginComputePass();skyPass.setPipeline(pipelines[4]);skyPass.setBindGroup(0,skyGroup);skyPass.dispatchWorkgroups(Math.ceil(geometry.totalCells/64));skyPass.end();device.queue.submit([skyEncoder.finish()]);
+        for(let slot=0;slot<2;slot++)for(let b=1;b<=lightBatches();b++)photonBatch(slot,config.freeze?lastWaveTime:cacheTimes[slot],b);
       }
       if(!config.freeze){
-        if(lastWaveTime>=cacheTimes[cacheOrder[1]] && futureBatches===LIGHT_BATCHES){
+        if(lastWaveTime>=cacheTimes[cacheOrder[1]] && futureBatches>=lightBatches()){
           cacheOrder=[cacheOrder[1],cacheOrder[2],cacheOrder[0]];
           cacheTimes[cacheOrder[2]]=cacheTimes[cacheOrder[1]]+LIGHT_STEP;
           futureBatches=0;cacheVersion++;regroup();
         }
         if(lastWaveTime>cacheTimes[cacheOrder[1]]+.001)cacheLateFrames++;
-        for(let j=0;j<2&&futureBatches<LIGHT_BATCHES;j++)photonBatch(cacheOrder[2],cacheTimes[cacheOrder[2]],++futureBatches);
+        for(let j=0;j<(quality>0?(dt>.025?12:8):(dt>.025?3:2))&&futureBatches<(quality>0?128:lightBatches());j++)photonBatch(cacheOrder[2],cacheTimes[cacheOrder[2]],++futureBatches);
       }
       const a=cacheTimes[cacheOrder[0]],b=cacheTimes[cacheOrder[1]];
       const uBlend=config.freeze?0:Math.max(0,Math.min(1,(lastWaveTime-a)/(b-a)));
       lightBlend=uBlend*uBlend*(3-2*uBlend);
       f[20]=lastWaveTime;u[30]=sceneBatches;u[38]=sceneBatches;u[41]=1;f[34]=sun;
-      f.set([lightBlend,config.reflectionCone,0,0],44);
+      f.set([lightBlend,config.reflectionCone,quality*quality*(3-2*quality),0],44);
       device.queue.writeBuffer(uniforms,0,data);
       const encoder=device.createCommandEncoder();
       let pass;
@@ -444,7 +454,7 @@ export async function createRenderer(canvas) {
     },
     get autoStatic() { return autoStatic; },
     get lightingBatches() { return sceneBatches; },
-    get dynamics() {return {waveTime:lastWaveTime,lightTimes:cacheOrder.map(i=>cacheTimes[i]),lightBlend,cacheVersion,cacheLateFrames,futureBatches};},
+    get dynamics() {return {cacheSamples:cacheOrder.map(i=>cacheSamples[i]),quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,skySamples:64,waveTime:lastWaveTime,lightTimes:cacheOrder.map(i=>cacheTimes[i]),lightBlend,cacheVersion,cacheLateFrames,futureBatches};},
     get busy() {
       return activeJobs > 0;
     },
