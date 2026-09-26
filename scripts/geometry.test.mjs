@@ -45,8 +45,6 @@ test('arch setting-out preserves full modules and symmetric non-sliver closing c
   assert(Math.abs(widths.reduce((a,b)=>a+b,0)-half)<1e-12);
   assert.deepEqual([...widths,...left].reverse(),[...widths,...left]);
   assert(Math.abs(s.spring/.25-Math.round(s.spring/.25))<1e-12);
-  // Radial face wedges use 300mm stock: the 250mm inner module flares
-  // at the outer edge; never pretend these are cut from 250mm stock.
-  assert(2*(s.radius+.25)*Math.sin(.25/(2*s.radius))<.3);
+
  }
 });

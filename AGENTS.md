@@ -1,8 +1,8 @@
-# Poolrooms v1.8 — contributor instructions
+# Poolrooms v1.9 — contributor instructions
 
-Read the requested version in BRIEF.md. This delivery implements v1.8 continuous spring-line tile layout and preserves current-time lighting and single-image reflections. Do not configure or push remotes. Preserve unrelated `.flops/` user data.
+Read the requested version in BRIEF.md. This delivery implements v1.9 plain exterior wall tiles with aligned interior reveals and preserves current-time lighting and single-image reflections. Do not configure or push remotes. Preserve unrelated `.flops/` user data.
 
-- Zero bitmap source/deployment assets. Evidence goes outside this repository under `../workroom-v1.8-evidence/`.
+- Zero bitmap source/deployment assets. Evidence goes outside this repository under `../workroom-v1.9-evidence/`.
 - Preserve continuous ten-wave water, transported caustics, deterministic camera branches and subtle film grain. Never freeze water to stabilize lighting.
 - Camera frames remain independent. Do not blur image history or introduce random camera sampling.
 - Grout uses actual primary-ray height-field intersections and local visibility. Do not replace the relief with painted seams. Secondary/photon area-average approximations are documented in docs/PHYSICS.md.

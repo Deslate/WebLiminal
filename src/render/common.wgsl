@@ -165,9 +165,6 @@ fn tileMode(h:Hit)->u32 {
  let shape=shapes[h.sid/9u];let face=h.sid%9u;
  if(shape.info.y!=1u){return 0u;}
  if(face>=6u){return 1u;}
- let q=h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
- let radial=select(abs(q.x),length(q),q.y>=0.);
- if((face==4u||face==5u)&&radial<shape.params.x+.25){return 2u;}
  return 0u;
 }
 fn archAlong(p:vec2f,r:f32)->f32 {
@@ -178,7 +175,6 @@ fn tileUV(h:Hit)->vec2f {
  let mode=tileMode(h);let shape=shapes[h.sid/9u];
  let q=h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
  if(mode==1u){return vec2f(archAlong(q,shape.params.x),h.p.z);}
- if(mode==2u){return vec2f(archAlong(q,shape.params.x),select(abs(q.x),length(q),q.y>=0.)-shape.params.x);}
  if(abs(h.n.x)>.7){return h.p.zy;}
  if(abs(h.n.y)>.7){return h.p.xz;}
  return h.p.xy;
@@ -188,11 +184,6 @@ fn tileFrame(h:Hit)->mat3x3f {
  if(abs(h.n.x)>.7){t=vec3f(0,0,1);}
  if(abs(h.n.y)>.7){b=vec3f(0,0,1);}
  if(mode==1u){t=vec3f(h.n.y,-h.n.x,0);b=vec3f(0,0,1);}
- if(mode==2u){
-  let p=h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
-  if(p.y<0.){t=vec3f(0,sign(p.x),0);b=vec3f(sign(p.x),0,0);}
-  else{let q=normalize(p);t=vec3f(-q.y,q.x,0)*shape.params.x/length(p);b=vec3f(q,0);}
- }
  return mat3x3f(t,b,h.n);
 }
 fn tileSeed(sid:u32,mode:u32)->f32 {
@@ -203,30 +194,16 @@ fn tileSeed(sid:u32,mode:u32)->f32 {
 fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
   let shape=shapes[sid/9u];var size=vec2f(.25);
   var cell=floor(uv/size);var center=(cell+.5)*size;
-  if(mode==1u||mode==2u){let course=archCourse(uv.x,shape.params.x);cell.x=course.x;center.x=course.y;size.x=course.z;}
-  // Convert face-band tangential distances to metres at the actual radius:
-  // radial joints keep the same physical grout width as flat-wall joints.
-  var stretch=1.;
-  if(mode==2u&&uv.x>=0.&&uv.x<=PI*shape.params.x){stretch=(shape.params.x+uv.y)/shape.params.x;}
+  if(mode==1u){let course=archCourse(uv.x,shape.params.x);cell.x=course.x;center.x=course.y;size.x=course.z;}
   let seed=tileSeed(sid,mode);
   let id=hash2(cell+vec2f(seed*17.19,0));
   let r=vec4f(hash2(cell+vec2f(13.1+seed*31.,7.3)),hash2(cell+vec2f(28.7,9.1+seed*11.)),hash2(cell+vec2f(97.3+id*31.,43.7)),hash2(cell+vec2f(29.1,61.3+id*71.)));
-  let angle=0.;let local=(uv-center)*vec2f(stretch,1.);
+  let angle=0.;let local=uv-center;
   let rotation=mat2x2f(cos(angle),-sin(angle),sin(angle),cos(angle));let q=rotation*local;
-  let halfSize=size*vec2f(stretch,1.)*.5-vec2f(.0028);
+  let halfSize=size*.5-vec2f(.0028);
   let radius=.0012+.0012*id;
   let d=abs(q)-halfSize+radius;
   var edge=-(length(max(d,vec2f(0)))+min(max(d.x,d.y),0.)-radius);
-  var cutGradient=vec2f(0);var cut=1e6;
-  if(mode==0u&&shape.info.y==1u){
-   if(sid%9u==4u||sid%9u==5u){
-    let q=uv-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
-    if(q.y>=0.){cut=length(q)-shape.params.x-.25-.0028;cutGradient=normalize(q);}
-    else {cut=abs(q.x)-shape.params.x-.25-.0028;cutGradient=vec2f(sign(q.x),0);}
-
-   }
-  }
-  let cutEdge=cut<edge;edge=min(edge,cut);
   let bevel=.0012+.0016*r.y;
   let shoulder=smoothstep(0.,bevel,edge);
   let tilt=dot(q,(r.xy-.5)*.009);
@@ -236,19 +213,19 @@ fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
   // Two adjacent faces evaluate the SAME 45-degree cut plane at the arris.
   // Their horizontal grout beds remain continuous; no overlapping tile ends.
   var miterDistance=1e6;var miterGradient=vec2f(0);
-  if(mode==0u&&shape.info.y==1u&&uv.y<shape.params.y){
-   if(sid%9u==4u||sid%9u==5u){let x=uv.x-(shape.lo.x+shape.hi.x)*.5;miterDistance=abs(x)-shape.params.x;miterGradient=vec2f(sign(x),0);}
-   if(sid%9u>=7u){miterDistance=min(uv.x-shape.lo.z,shape.hi.z-uv.x);miterGradient=vec2f(select(1.,-1.,uv.x>(shape.lo.z+shape.hi.z)*.5),0);}
+  // Ordinary wall tiles are cut by the existing opening. Keep only the
+  // millimetre-scale 45-degree arris; no outer band or radial grout chart.
+  if(mode==0u&&shape.info.y==1u&&(sid%9u==4u||sid%9u==5u)){
+   let p=uv-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
+   miterDistance=select(abs(p.x),length(p),p.y>=0.)-shape.params.x;
+   miterGradient=select(vec2f(sign(p.x),0),normalize(p),p.y>=0.);
   }
   if(mode==1u){miterDistance=min(uv.y-shape.lo.z,shape.hi.z-uv.y);miterGradient=vec2f(0,select(1.,-1.,uv.y>(shape.lo.z+shape.hi.z)*.5));}
-  if(mode==2u){miterDistance=uv.y;miterGradient=vec2f(0,1);}
   let miter=miterDistance-.001<height;height=min(height,miterDistance-.001);
   var ge=-sign(q)*select(vec2f(0,1),vec2f(1,0),d.x>d.y);
   if(any(d>vec2f(0))){ge=-sign(q)*normalize(max(d,vec2f(0)));}
-  if(cutEdge){ge=cutGradient;}
   let u=clamp(edge/bevel,0.,1.);
   var slope=transpose(rotation)*((r.xy-.5)*.009*shoulder+ge*(face+.004)*6.*u*(1.-u)/bevel);
-  slope.x*=stretch;
   if(miter){slope=miterGradient;}
   return TileProfile(height,edge,id,bevel,slope);
 }
@@ -286,12 +263,8 @@ fn jointVisibility(h:Hit,l:vec3f)->f32 {
   let detail=1.-smoothstep(2.5,4.,length(h.p-U.camera.xyz));if(detail<=0.||h.material==1u){return 1.;}
   let f=tileFrame(h);let uv=tileUV(h);let mode=tileMode(h);let shape=shapes[h.sid/9u];
   var border=min(fract(uv/.25),1.-fract(uv/.25))*.25;
-  if(mode==1u||mode==2u){let course=archCourse(uv.x,shape.params.x);border.x=course.z*.5-abs(uv.x-course.y);}
+  if(mode==1u){let course=archCourse(uv.x,shape.params.x);border.x=course.z*.5-abs(uv.x-course.y);}
   var clear=min(border.x,border.y);
-  if(mode==0u&&shape.info.y==1u&&(h.sid%9u==4u||h.sid%9u==5u)){
-   let q=uv-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);
-   clear=min(clear,select(abs(q.x),length(q),q.y>=0.)-shape.params.x-.25);
-  }
   if(clear>.010){return 1.;}
   let profile=tileProfile(uv,h.sid,h.material,mode);if(profile.edge>profile.bevel+.0003){return 1.;}let start=profile.height;
   let dir=vec2f(dot(l,f[0]),dot(l,f[1]));let nl=dot(h.n,l);var visible=1.;
