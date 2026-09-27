@@ -1,3 +1,5 @@
+当前 v1.18 材质修改与验收见 [ACCEPTANCE-v1.18.md](ACCEPTANCE-v1.18.md)；下面保留 v1.16 历史记录。
+
 # v1.16 验证记录
 
 证据根目录：`/Users/steven/Projects/workroom-v1.16-evidence/final/`。测试环境：Apple M3 Max、Chrome 153 headless、WebGPU Metal；内部画面 1280×832。数据来自实际 GPU 完成帧，不是 RAF 次数。其他 GPU 验证结束后单独跑性能。

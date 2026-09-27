@@ -298,3 +298,30 @@ fn jointVisibility(h:Hit,l:vec3f)->f32 {
   }
   return mix(1.,visible,detail);
 }
+
+// A stationary 3D material field in world metres. Never wrap/reseed at a
+// tile boundary: construction charts are ONLY for joints and physical relief.
+fn materialHash(p:vec3i)->f32 {
+ return f32(hash((bitcast<u32>(p.x)*73856093u)^(bitcast<u32>(p.y)*19349663u)^(bitcast<u32>(p.z)*83492791u)))/4294967296.;
+}
+fn materialNoise(world:vec3f)->f32 {
+ let p=mat3x3f(vec3f(.8,0.,.6),vec3f(-.36,.8,.48),vec3f(-.48,-.6,.64))*world;
+ let b=vec3i(floor(p));let t=fract(p);let f=t*t*t*(t*(t*6.-15.)+10.);
+ return mix(mix(mix(materialHash(b),materialHash(b+vec3i(1,0,0)),f.x),mix(materialHash(b+vec3i(0,1,0)),materialHash(b+vec3i(1,1,0)),f.x),f.y),mix(mix(materialHash(b+vec3i(0,0,1)),materialHash(b+vec3i(1,0,1)),f.x),mix(materialHash(b+vec3i(0,1,1)),materialHash(b+vec3i(1,1,1)),f.x),f.y),f.z);
+}
+// Centimetre / decimetre mottling is shared by primary and refracted rays.
+// Dirt has no distance-to-tile-centre term or repeating edge halo.
+fn porcelainFields(p:vec3f)->vec3f {
+ let broad=materialNoise(p*2.13+vec3f(4.1,9.7,-2.8));
+ let mottle=materialNoise(p*19.73+vec3f(-7.3,1.9,12.4));
+ let stain=smoothstep(.36,.73,broad*.58+mottle*.42);
+ let mineral=smoothstep(.62,.85,mottle)*smoothstep(.25,.7,broad);
+ return vec3f(stain,mineral,broad);
+}
+fn porcelainColor(p:vec3f,material:u32,fields:vec3f)->vec3f {
+ let pigment=materialNoise(p*1.371+vec3f(21.7,-3.1,8.9));
+ var c=mix(vec3f(.57,.59,.49),vec3f(.80,.78,.66),.18+.65*pigment);
+ if(material==2u){c=mix(vec3f(.37,.55,.47),vec3f(.52,.65,.57),pigment);}
+ let waterline=exp(-abs(p.y-U.state.y-.045)/.08);
+ return mix(c*(1.-.27*fields.x-.20*waterline),vec3f(.69,.70,.61),fields.y*.16);
+}
