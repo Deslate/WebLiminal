@@ -23,7 +23,9 @@ export async function createWaveSimulation(device){
  let body=null,previousBody=null;
  let active=0,time=0,origin=null,lastClock=null,ready=false,sources=Array(24).fill(null),contactSlot=0,ambientSlot=12,dirty=0,nextAmbient=0,seed=7819301,stepsDone=0,config={},injections=0;
  const random=()=>{seed=(seed+0x6d2b79f5)>>>0;let t=seed;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296};
- function reset(c,geometry){bodyWaves.reset(c);previousBody=null;config={...c};active=0;time=0;origin=null;lastClock=null;ready=false;sources=Array(24).fill(null);contactSlot=0;ambientSlot=12;dirty=0;nextAmbient=0;seed=c.seed;stepsDone=0;injections=0;
+ // Attenuate only ambient initial displacement and ambient forcing. Body
+ // displacement and explicit foot pressures keep their physical calibration.
+ function reset(c,geometry){bodyWaves.reset(c);previousBody=null;config={...c,waveAmplitude:c.waveAmplitude*(c.ambientWaveStrength??1)};active=0;time=0;origin=null;lastClock=null;ready=false;sources=Array(24).fill(null);contactSlot=0;ambientSlot=12;dirty=0;nextAmbient=0;seed=c.seed;stepsDone=0;injections=0;
   const values=new Float32Array(count);for(let z=0;z<nz;z++)for(let x=0;x<nx;x++){const px=-7+(x+.5)*dx,pz=-17+(z+.5)*dx;let bottom=0;for(const s of geometry.shapes){if(s.lo[1]>c.waterLevel||s.hi[1]<=0||px<=s.lo[0]||px>=s.hi[0]||pz<=s.lo[2]||pz>=s.hi[2])continue;if(s.kind===1&&Math.abs(px-(s.lo[0]+s.hi[0])*.5)<s.radius)continue;bottom=Math.max(bottom,s.hi[1]);}values[z*nx+x]=Math.max(0,c.waterLevel-bottom);}device.queue.writeBuffer(depth,0,values);
  }
  function addWake(w){sources[contactSlot]={x:w.x,z:w.z,birth:time,radius:.13,duration:.28,angle:w.x*.71+w.z*1.3,aspect:1.6,strength:w.amplitude*400};dirty|=1<<contactSlot;contactSlot=(contactSlot+1)%12;injections++;}

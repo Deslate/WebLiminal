@@ -8,7 +8,7 @@ test('finite-depth band has the accepted motion frequencies and amplitude budget
  assert(Math.abs(Math.sqrt(variance)-SHORT_WAVE_AMPLITUDE/Math.sqrt(2))<1e-10);
 });
 test('zero-amplitude water has no short band, and user amplitude cannot exceed budget',()=>{
- for(const amp of [0,.052,.5]){const a=shortWaveUniforms({...config,waveAmplitude:amp},0);for(let i=0;i<SHORT_WAVE_MODES.length;i++)assert(a[i*4+3]<SHORT_WAVE_AMPLITUDE/Math.sqrt(SHORT_WAVE_MODES.length)+1e-11);if(!amp)assert.equal(a[3]+a[7]+a[11],0);}
+ for(const amp of [0,.052,.5]){const a=shortWaveUniforms({...config,waveAmplitude:amp},0);for(let i=0;i<SHORT_WAVE_MODES.length;i++)assert(a[i*4+3]<=Math.fround(SHORT_WAVE_AMPLITUDE/Math.sqrt(SHORT_WAVE_MODES.length)));if(!amp)assert.equal(a[3]+a[7]+a[11],0);}
 });
 test('finite-depth law approaches shallow limit only when kh is small; phase follows speed',()=>{
  const d=1e-6,a=shortWaveUniforms({...config,waterLevel:d,waveSpeed:1},0),b=shortWaveUniforms({...config,waterLevel:d,waveSpeed:1},1);

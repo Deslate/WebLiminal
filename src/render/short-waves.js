@@ -1,8 +1,10 @@
-// Low-amplitude, finite-depth short-wave band shared by every optical path.
+// Visible finite-depth gravity-wave band shared by every optical path.
+// The old 6–18cm / 0.22mm band added fine-scale curvature while barely contributing
+// to visible water shape. This band makes the same crests readable above and below.
 // A is the combined modal amplitude, not the amplitude of each direction.
-export const SHORT_WAVE_AMPLITUDE = 0.00022;
-// Slow only the short band; the base simulation and walking remain live.
-export const SHORT_WAVE_TIME_SCALE = 0.03;
+export const SHORT_WAVE_AMPLITUDE = 0.006;
+// Finite-depth dispersion advances actual geometry; walking retains its own clock.
+export const SHORT_WAVE_TIME_SCALE = 0.12;
 // Seeded spectral quadrature: fixed realization, never resampled per frame.
 // Broad log-wavelength spectrum and stratified full-circle directions.
 let state = 0x27a19d3;
@@ -10,7 +12,7 @@ const random = () => { state ^= state << 13; state ^= state >>> 17; state ^= sta
 const bands = Array.from({length:16},(_,i)=>i);
 for(let i=bands.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[bands[i],bands[j]]=[bands[j],bands[i]];}
 export const SHORT_WAVE_MODES = Object.freeze(bands.map((band,i)=>Object.freeze({
- wavelength: .06 * Math.pow(3, (band + random()) / 16),
+ wavelength: .24 * Math.pow(3, (band + random()) / 16),
  angle: 2 * Math.PI * (i + random()) / 16,
  phase: random() * 2 * Math.PI,
 })));

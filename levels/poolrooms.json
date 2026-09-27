@@ -17,6 +17,7 @@
   "optics": {
     "waterLevel": 0.42,
     "waveAmplitude": 0.052,
+    "ambientWaveStrength": 0.1,
     "waveSpeed": 0.28,
     "bodyWaveStrength": 0.45,
     "apertureWidth": 4.8,
