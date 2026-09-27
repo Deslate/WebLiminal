@@ -1,3 +1,5 @@
+v1.27 规则波列整改候选及未达项见 [ACCEPTANCE-v1.27.md](ACCEPTANCE-v1.27.md)。性能和严格时间变化上界尚未全部通过。
+
 当前 v1.26 短波档位、慢演化与安静度取舍见 [ACCEPTANCE-v1.26.md](ACCEPTANCE-v1.26.md)。
 
 当前 v1.25 有限水深短波、池底照度缓冲重测及观感验收见 [ACCEPTANCE-v1.25.md](ACCEPTANCE-v1.25.md)。

@@ -18,7 +18,7 @@ struct Uniforms {
   live: vec4u, // sun grid width, sky grid width/height, diffuse probe count
   wakes: array<vec4f,12>, // x, z, birth phase, displacement amplitude
   body:vec4f, // actor x,z,radius,height; zero radius disables it
-  shortWaves:array<vec4f,3>, // k.x, k.z, finite-depth phase, height amplitude
+  shortWaves:array<vec4f,16>, // k.x, k.z, finite-depth phase, height amplitude
 };
 struct Shape { lo: vec4f, hi: vec4f, info: vec4u, params: vec4f };
 struct Surface { info: vec4u, metric: vec4f };
@@ -43,7 +43,7 @@ fn fresnel(cosIn:f32,etaI:f32,etaT:f32)->f32 {let c=clamp(abs(cosIn),0.,1.);let 
 // Camera intersections, refraction and all photon paths use this same surface.
 fn shortWave(p:vec2f)->vec3f {
  var result=vec3f(0.);
- for(var i=0u;i<3u;i++){
+ for(var i=0u;i<16u;i++){
   let m=U.shortWaves[i];let phase=dot(m.xy,p)+m.z;
   result+=vec3f(m.w*cos(phase),-m.w*sin(phase)*m.xy);
  }

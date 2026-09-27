@@ -105,7 +105,7 @@ export async function createRenderer(canvas) {
   let beamComputeGroup,beamRasterGroup,beamDensityGroup;
   const uniforms = device.createBuffer({
     label: "physical parameters",
-    size: 464,
+    size: 672,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const displayUniform = device.createBuffer({
@@ -145,7 +145,7 @@ export async function createRenderer(canvas) {
     grain: .004,
   };
   let wakes=[],body=null;
-  let shortWaveState=new Float32Array(12);
+  let shortWaveState=new Float32Array(64);
   let geometry,
     buffers = {},
     groups = [],
@@ -321,7 +321,7 @@ export async function createRenderer(canvas) {
       const staticExposure=true;
       frame++;
       history++;
-      const data = new ArrayBuffer(464),
+      const data = new ArrayBuffer(672),
         f = new Float32Array(data),
         u = new Uint32Array(data);
       const sy = Math.sin(view.yaw),

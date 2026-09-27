@@ -1,0 +1,2 @@
+// Preserve all cases even when the 30fps acceptance gate fails.
+import{readFileSync,writeFileSync,unlinkSync}from'node:fs';let s=readFileSync('scripts/performance-v123.mjs','utf8').replace('assert(r.fps>=30&&r.minOneSecond>=30);','r.pass30=r.fps>=30&&r.minOneSecond>=30;');process.env.FIXED_RESOLUTION='1';process.env.EVIDENCE_DIR||='../workroom-v1.27-evidence/performance';const path=new URL('./.performance-v127-run.mjs',import.meta.url);writeFileSync(path,s);try{await import(path.href)}finally{unlinkSync(path)}
