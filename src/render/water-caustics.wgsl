@@ -1,5 +1,47 @@
+// v1.20: one scrambled 4-D Sobol net over water area x aperture area.
+// No regular emitter lattice and no linear, spatially correlated aperture shift.
+// Samples and scramble seeds are time/camera independent. Current waves move paths.
+// Direction numbers from the first four Sobol polynomials; no texture assets.
+const SKY_DIRECTIONS=array<vec4u,32>(
+  vec4u(2147483648u,2147483648u,2147483648u,2147483648u),
+  vec4u(1073741824u,3221225472u,3221225472u,3221225472u),
+  vec4u(536870912u,2684354560u,1610612736u,536870912u),
+  vec4u(268435456u,4026531840u,2415919104u,1342177280u),
+  vec4u(134217728u,2281701376u,3892314112u,4160749568u),
+  vec4u(67108864u,3422552064u,1543503872u,1946157056u),
+  vec4u(33554432u,2852126720u,2382364672u,2717908992u),
+  vec4u(16777216u,4278190080u,3305111552u,2466250752u),
+  vec4u(8388608u,2155872256u,1753219072u,3632267264u),
+  vec4u(4194304u,3233808384u,2629828608u,624951296u),
+  vec4u(2097152u,2694840320u,3999268864u,1507852288u),
+  vec4u(1048576u,4042260480u,1435500544u,3872391168u),
+  vec4u(524288u,2290614272u,2154299392u,2013790208u),
+  vec4u(262144u,3435921408u,3231449088u,3020685312u),
+  vec4u(131072u,2863267840u,1626210304u,2181169152u),
+  vec4u(65536u,4294901760u,2421489664u,3271884800u),
+  vec4u(32768u,2147516416u,3900735488u,546275328u),
+  vec4u(16384u,3221274624u,1556135936u,1363623936u),
+  vec4u(8192u,2684395520u,2388680704u,4226424832u),
+  vec4u(4096u,4026593280u,3314585600u,1977167872u),
+  vec4u(2048u,2281736192u,1751705600u,2693105664u),
+  vec4u(1024u,3422604288u,2627492864u,2437829632u),
+  vec4u(512u,2852170240u,4008611328u,3689389568u),
+  vec4u(256u,4278255360u,1431684352u,635137280u),
+  vec4u(128u,2155905152u,2147543168u,1484783744u),
+  vec4u(64u,3233857728u,3221249216u,3846176960u),
+  vec4u(32u,2694881440u,1610649184u,2044723232u),
+  vec4u(16u,4042322160u,2415969680u,3067084880u),
+  vec4u(8u,2290649224u,3892340840u,2148008184u),
+  vec4u(4u,3435973836u,1543543964u,3222012020u),
+  vec4u(2u,2863311530u,2382425838u,537002146u),
+  vec4u(1u,4294967295u,3305133397u,1342505107u)
+);
+fn skyNet(index:u32)->vec4f {var bits=index;var v=vec4u(0);var bit=0u;loop{if(bits==0u){break;}if((bits&1u)!=0u){v^=SKY_DIRECTIONS[bit];}bits>>=1u;bit++;}
+ // Fixed fast Owen digit scrambling; PBRT 4e Sobol Samplers (Laine-Karras).
+ v=reverseBits(v);v^=v*0x3d20adeau;let seed=vec4u(0x92c9d7abu,0x5e2d58d1u,0xa68371e5u,0x38f57ac9u);v+=seed;v*=(seed>>vec4u(16u))|vec4u(1u);v^=v*0x05526c56u;v^=v*0x53a22864u;v=reverseBits(v);
+ return (vec4f(v>>vec4u(8u))+.5)/16777216.;}
 // Current-time finite quadrature of incident flux on the actual water surface.
-// No stochastic branches, light keyframes or temporal filtering.
+// No stochastic branch selection, temporal resampling, keyframes or image filtering.
 // Two u32 limbs per channel: portable exact carry, no dark-flux truncation.
 struct WaterFlux { rlo:atomic<u32>, rhi:atomic<u32>, glo:atomic<u32>, ghi:atomic<u32>, blo:atomic<u32>, bhi:atomic<u32> };
 @group(0) @binding(3) var<storage,read_write> liveFlux:array<WaterFlux>;
@@ -77,19 +119,17 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
   }
   let nx=U.live.y;let ny=U.live.z;
   if(i<nx*ny){
-    let xz=mix(vec2f(-7,-17),vec2f(7,10),(vec2f(f32(i%nx),f32(i/nx))+.5)/vec2f(f32(nx),f32(ny)));
-    let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
+
     let waterArea=14.*27./f32(nx*ny);let lightArea=(U.opening.y-U.opening.x)*(U.opening.w-U.opening.z);
-    let apertureN=select(2u,8u,U.sampling.w==2u);
-    for(var k=0u;k<apertureN*apertureN;k++){
-      // A fixed, spatially distributed area quadrature. Every local patch
-      // samples the whole aperture; never four replicated point lights.
-      // No frame/time dependent scrambling.
-      let shift=fract(vec2f(f32(i%nx)*.754877666+f32(i/nx)*.569840296, f32(i%nx)*.438579021+f32(i/nx)*.819172513));
-      let uv=(vec2f(f32(k%apertureN),f32(k/apertureN))+select(vec2f(.5),shift,U.sampling.w==1u))/f32(apertureN);
+    // 4,194,304 sky paths/frame by default (8x v1.19); 128 is an offline reference.
+    // Each path has its own water point AND aperture point. Keep the original
+    // receiver kernel and radiometry; no contrast reduction or extra smoothing.
+    let sampleCount=select(32u,128u,U.sampling.w==2u);
+    for(var k=0u;k<sampleCount;k++){
+      let sample=skyNet(i*sampleCount+k);let xz=mix(vec2f(-7,-17),vec2f(7,10),sample.xy);let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));let uv=sample.zw;
       let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),6.102,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
       if(dot(n,l)>0. && traceDynamicSolid(p+l*EPS*2.,l,d).t>=d-.005){
-        let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(f32(apertureN*apertureN)*d*d)*exp(-.004*d);
+        let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(f32(sampleCount)*d*d)*exp(-.004*d);
         waterPacket(p,n,l,power,99999u);
       }
       atomicAdd(&packetCounts[0],1u);

@@ -1,3 +1,5 @@
+当前 v1.20 天光采样修复、预算和证据见 [ACCEPTANCE-v1.20.md](ACCEPTANCE-v1.20.md)。
+
 当前 v1.19 的墙面回退、池底点阵诊断及限制见 [ACCEPTANCE-v1.19.md](ACCEPTANCE-v1.19.md)。
 
 当前 v1.18 材质修改与验收见 [PHYSICS-v1.18.md](PHYSICS-v1.18.md)；下面保留 v1.16 历史记录。
