@@ -8,18 +8,36 @@
 @group(0) @binding(8) var<storage,read_write> liveRows:array<vec4f>;
 var<workgroup> packetCounts:array<atomic<u32>,5>;
 const FLUX_SCALE:f32=16777216.;
-fn receive(h:Hit,power:vec3f) {
+fn receive(h:Hit,power:vec3f,footprint:f32) {
   if(h.t>=INF){return;}
   let s=surfaces[h.sid];let p=h.uv*vec2f(s.info.yz)-.5;let base=vec2i(floor(p));let f=fract(p);
-  for(var y=0;y<2;y++){for(var x=0;x<2;x++){
+  // A sky packet represents a finite water patch, not a point. Reconstruct
+  // that footprint on the floor; retain the fine solar and wall estimator.
+  if(footprint>0. && h.sid==3u){
+    let width=max(vec2f(1.),vec2f(footprint)*vec2f(s.info.yz)/s.metric.xy);
+    let radius=vec2i(ceil(width));var norm=vec2f(0.);
+    for(var x=1-radius.x;x<=radius.x;x++){norm.x+=max(0.,width.x-abs(f32(x)-f.x));}
+    for(var y=1-radius.y;y<=radius.y;y++){norm.y+=max(0.,width.y-abs(f32(y)-f.y));}
+    for(var y=1-radius.y;y<=radius.y;y++){
+      let wy=max(0.,width.y-abs(f32(y)-f.y));
+      for(var x=1-radius.x;x<=radius.x;x++){
+        let weight=max(0.,width.x-abs(f32(x)-f.x))*wy/max(norm.x*norm.y,.00001);
+        if(weight<=0.){continue;}
+        let q=clamp(base+vec2i(x,y),vec2i(0),vec2i(s.info.yz)-1);let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);
+        let v=vec3u(max(power,vec3f(0))*weight*FLUX_SCALE);
+        atomicAdd(&liveFlux[j].r,v.r);atomicAdd(&liveFlux[j].g,v.g);atomicAdd(&liveFlux[j].b,v.b);
+      }
+    }
+  }else{for(var y=0;y<2;y++){for(var x=0;x<2;x++){
     let q=clamp(base+vec2i(x,y),vec2i(0),vec2i(s.info.yz)-1);let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);
     let w=select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1);let v=vec3u(max(power,vec3f(0))*w*FLUX_SCALE);
     atomicAdd(&liveFlux[j].r,v.r);atomicAdd(&liveFlux[j].g,v.g);atomicAdd(&liveFlux[j].b,v.b);
   }}
+  }
   atomicAdd(&packetCounts[2],1u);atomicAdd(&packetCounts[3],1u);
   if(h.p.y>U.state.y+.1){atomicAdd(&packetCounts[4],1u);}
 }
-fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32) {
+fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32,footprint:f32) {
   let incoming=-l;let f=fresnel(dot(l,n),1.,1.333);atomicAdd(&packetCounts[1],1u);
   for(var branch=0u;branch<2u;branch++){
     let reflected=branch==0u;let rd=select(refract(incoming,n,1./1.333),reflect(incoming,n),reflected);
@@ -27,7 +45,7 @@ fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32) {
     if(h.material==10u){continue;}
     var transmitted=outgoing;
     if(!reflected){transmitted*=waterTransmittance(h.t);}else{transmitted*=exp(-.004*h.t);}
-    receive(h,transmitted*(1.-schlick(abs(dot(rd,h.n)),.043)));
+    receive(h,transmitted*(1.-schlick(abs(dot(rd,h.n)),.043)),footprint);
     if(auditIndex<256u && h.t<INF){
       let ai=(auditIndex*2u+branch)*8u;let source=p+l*((6.101-p.y)/l.y);
       opticalPaths[ai]=vec4f(source,0);opticalPaths[ai+1u]=vec4f(incoming,1.);
@@ -54,7 +72,7 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
       if(hit.t>=distance-.005 && dot(n,l)>0.){
         let area=(hi.x-lo.x)*(hi.y-lo.y)/f32(nSun*nSun);
         let power=sunIrradiance()*max(dot(n,l),0.)/n.y*area*exp(-.004*distance);
-        waterPacket(p,n,l,power,select(99999u,i/1024u,i%1024u==128u));
+        waterPacket(p,n,l,power,select(99999u,i/1024u,i%1024u==128u),0.);
       }
     }
     atomicAdd(&packetCounts[0],1u);
@@ -69,7 +87,9 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
       let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),6.102,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
       if(dot(n,l)>0. && traceDynamicSolid(p+l*EPS*2.,l,d).t>=d-.005){
         let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(4.*d*d)*exp(-.004*d);
-        waterPacket(p,n,l,power,99999u);
+        // Near-axis projection of one source cell through the mean interface.
+        // This is a finite-footprint estimate, not a full curved beam Jacobian.
+        waterPacket(p,n,l,power,99999u,max(14./f32(nx),27./f32(ny))*(1.+U.state.y/(1.333*max(.1,6.102-U.state.y))));
       }
       atomicAdd(&packetCounts[0],1u);
     }
