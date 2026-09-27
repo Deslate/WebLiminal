@@ -17,9 +17,13 @@ export async function createBodyWaves(device){
   // Teleports are diagnostic resets, not a supersonic body impulse.
   if(Math.hypot(...velocity)>2)velocity.fill(0);
   previous=body?{...body}:null;
+  // Boost only ordinary wading. Resting displacement and the already strong
+  // 1.6m/s wake retain their calibration; this scales the physical pressure.
+  const speed=Math.hypot(...velocity);
+  const wakeGain=1+(config.bodyWakeBoost??0)*Math.min(1,speed/.8)*Math.max(0,Math.min(1,(1.6-speed)/.8));
   const data=new ArrayBuffer(256*36),f=new Float32Array(data),u=new Uint32Array(data);let slot=0,active=0;
   const e=device.createCommandEncoder();
-  function pass(pipe,axis=0,stage=0,inverse=0){const o=slot*64;f.set([time,delta,config.waterLevel,initializing?1:0,body?.x||0,body?.z||0,body&&config.bodyDisplacement!==false?Math.min(.10,config.waterLevel*.24):0,0,...velocity,0,0],o);u.set([axis,stage,inverse,0],o+12);const p=e.beginComputePass();p.setPipeline(pipelines[pipe]);p.setBindGroup(0,groups[pipe][active][slot]);p.dispatchWorkgroups(1024);p.end();active=1-active;slot++;}
+  function pass(pipe,axis=0,stage=0,inverse=0){const o=slot*64;f.set([time,delta,config.waterLevel,initializing?1:0,body?.x||0,body?.z||0,body&&config.bodyDisplacement!==false?Math.min(.10,config.waterLevel*.24)*wakeGain:0,0,...velocity,0,0],o);u.set([axis,stage,inverse,0],o+12);const p=e.beginComputePass();p.setPipeline(pipelines[pipe]);p.setBindGroup(0,groups[pipe][active][slot]);p.dispatchWorkgroups(1024);p.end();active=1-active;slot++;}
   for(let axis=0;axis<2;axis++)for(let stage=0;stage<8+axis;stage++)pass(0,axis,stage,0);
   pass(1);
   for(let axis=0;axis<2;axis++)for(let stage=0;stage<8+axis;stage++)pass(0,axis,stage,1);

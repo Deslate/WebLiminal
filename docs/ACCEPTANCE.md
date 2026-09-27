@@ -1,3 +1,5 @@
+v1.16 回退后的专项调整：背景模拟时间倍率0.28；普通行走身体压力增强，快走与站立保持原标定。数据与录像见 [ACCEPTANCE-v1.16-tuning.md](ACCEPTANCE-v1.16-tuning.md)。以下保留原v1.16记录。
+
 # v1.16 验证记录
 
 证据根目录：`/Users/steven/Projects/workroom-v1.16-evidence/final/`。测试环境：Apple M3 Max、Chrome 153 headless、WebGPU Metal；内部画面 1280×832。数据来自实际 GPU 完成帧，不是 RAF 次数。其他 GPU 验证结束后单独跑性能。
