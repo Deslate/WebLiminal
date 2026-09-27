@@ -95,12 +95,13 @@ export async function createRenderer(canvas) {
   const beamModule=module("fine solar photon beams",common+solarAtlas);
   for(const m of (await beamModule.getCompilationInfo()).messages)if(m.type==='error')throw Error(`solar ${m.lineNum}: ${m.message}`);
   const beamCompute=await device.createComputePipelineAsync({layout:'auto',compute:{module:beamModule,entryPoint:'beamNodes'}});
+  const beamDensity=await device.createComputePipelineAsync({layout:'auto',compute:{module:beamModule,entryPoint:'beamDensities'}});
   const beamRaster=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:beamModule,entryPoint:'beamVertex'},fragment:{module:beamModule,entryPoint:'beamFragment',targets:[{format:'rgba16float',blend:{color:{srcFactor:'one',dstFactor:'one'},alpha:{srcFactor:'one',dstFactor:'one'}}}]},primitive:{topology:'triangle-list'},multisample:{count:4}});
-  const beamNodes=device.createBuffer({size:385*385*3*32,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+  const beamNodes=device.createBuffer({size:641*641*3*32,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
   const solarTexture=device.createTexture({size:[2048,2048],format:'rgba16float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_SRC});
   const solarMSAA=device.createTexture({size:[2048,2048],format:'rgba16float',sampleCount:4,usage:GPUTextureUsage.RENDER_ATTACHMENT});
   const solarView=solarTexture.createView(),solarMSAAView=solarMSAA.createView();
-  let beamComputeGroup,beamRasterGroup;
+  let beamComputeGroup,beamRasterGroup,beamDensityGroup;
   const uniforms = device.createBuffer({
     label: "physical parameters",
     size: 416,
@@ -201,6 +202,7 @@ export async function createRenderer(canvas) {
     ];
     groups[2]=device.createBindGroup({layout:pipelines[2].getBindGroupLayout(0),entries:[...shared,[3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field]].map(([binding,buffer])=>({binding,resource:{buffer}})).concat([{binding:10,resource:solarView}])});
     beamComputeGroup=bindings(beamCompute,[[0,uniforms],[1,buffers.geometry],[9,simulation.field],[3,beamNodes]]);
+    beamDensityGroup=bindings(beamDensity,[[3,beamNodes]]);
     beamRasterGroup=bindings(beamRaster,[[0,uniforms],[4,beamNodes]]);
     reflectionHorizontalGroup=bindings(pipelines[12],[[0,uniforms],[3,reflectionBuffer],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer]]);
     reflectionVerticalGroup=bindings(pipelines[13],[[0,uniforms],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer],[6,imageBuffer]]);
@@ -417,9 +419,10 @@ export async function createRenderer(canvas) {
       compute(waterEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
       compute(waterEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);
       compute(waterEncoder,pipelines[8],liveResolveGroup,geometry.totalCells);
-      compute(waterEncoder,beamCompute,beamComputeGroup,385*385*3);
+      compute(waterEncoder,beamCompute,beamComputeGroup,641*641*3);
+      compute(waterEncoder,beamDensity,beamDensityGroup,641*641*3);
       const beams=waterEncoder.beginRenderPass({colorAttachments:[{view:solarMSAAView,resolveTarget:solarView,loadOp:'clear',storeOp:'discard',clearValue:{r:0,g:0,b:0,a:0}}]});
-      beams.setPipeline(beamRaster);beams.setBindGroup(0,beamRasterGroup);beams.draw(384*384*6*3);beams.end();
+      beams.setPipeline(beamRaster);beams.setBindGroup(0,beamRasterGroup);beams.draw(640*640*6*3);beams.end();
       waterEncoder.clearBuffer(buffers.bounce0);
       for(let i=0;i<config.diffuseIterations;i++)compute(waterEncoder,pipelines[10],propagateGroups[i%2],geometry.probeCount);
       compute(waterEncoder,pipelines[11],composeGroup,geometry.totalCells);
@@ -510,9 +513,9 @@ export async function createRenderer(canvas) {
       for(let i=0;i<a.length;i+=4){const l=half(a[i])*.2126+half(a[i+1])*.7152+half(a[i+2])*.0722;sum+=l;if(l>peak){peak=l;peakIndex=i/4;}finite&&=Number.isFinite(l);if(l>.1)positive.push(l);}
       positive.sort((a,b)=>a-b);const mean=positive.reduce((a,b)=>a+b,0)/positive.length;
       solar={dimensions:[2048,2048],cellMetres:[dx,dz],integratedLuminance:sum*dx*dz,peak,finite,litArea:positive.length*dx*dz,litMean:mean,p50:positive[Math.floor(positive.length*.5)],p99:positive[Math.floor(positive.length*.99)]};rb.unmap();rb.destroy();
-      const beamSize=385*385*3*32,br=device.createBuffer({size:beamSize,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const be=device.createCommandEncoder();be.copyBufferToBuffer(beamNodes,0,br,0,beamSize);device.queue.submit([be.finish()]);await br.mapAsync(GPUMapMode.READ);const nodes=new Float32Array(br.getMappedRange());let transported=0;
-      const sourceArea=(config.apertureWidth+.6)*(config.apertureDepth+.6)/(2*384*384);
-      for(let d=0;d<3;d++)for(let y=0;y<384;y++)for(let x=0;x<384;x++){const base=d*385*385+y*385+x;for(const ids of [[base,base+1,base+385],[base+1,base+386,base+385]]){if(ids.every(i=>nodes[i*8+2]>0)){let power=0;for(const i of ids)power+=nodes[i*8+4]*.2126+nodes[i*8+5]*.7152+nodes[i*8+6]*.0722;transported+=power/3*sourceArea;}}}
+      const beamSize=641*641*3*32,br=device.createBuffer({size:beamSize,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const be=device.createCommandEncoder();be.copyBufferToBuffer(beamNodes,0,br,0,beamSize);device.queue.submit([be.finish()]);await br.mapAsync(GPUMapMode.READ);const nodes=new Float32Array(br.getMappedRange());let transported=0;
+      const sourceArea=(config.apertureWidth+.6)*(config.apertureDepth+.6)/(2*640*640);
+      for(let d=0;d<3;d++)for(let y=0;y<640;y++)for(let x=0;x<640;x++){const base=d*641*641+y*641+x;for(const ids of [[base,base+1,base+641],[base+1,base+642,base+641]]){if(ids.every(i=>nodes[i*8+2]>0)){let power=0;for(const i of ids)power+=nodes[i*8+4]*.2126+nodes[i*8+5]*.7152+nodes[i*8+6]*.0722;transported+=power/3*sourceArea;}}}
       const norm=Math.hypot(.66,.69,.295),ly=.69/norm,rx=.66/norm/1.333,rz=-.295/norm/1.333,ry=-Math.sqrt(1-rx*rx-rz*rz);
       const shiftX=.66/.69*(6.101-config.waterLevel)-rx*config.waterLevel/ry,shiftZ=-.295/.69*(6.101-config.waterLevel)-rz*config.waterLevel/ry;
       solar.peakXZ=[-2.1-config.apertureWidth/2+shiftX-.8+(peakIndex%2048+.5)*dx,1.3-config.apertureDepth/2+shiftZ-.8+(Math.floor(peakIndex/2048)+.5)*dz];

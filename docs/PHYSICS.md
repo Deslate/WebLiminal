@@ -1,3 +1,5 @@
+当前 v1.23 源光束加密、有限像素重建、同状态比较和限制见 [ACCEPTANCE-v1.23.md](ACCEPTANCE-v1.23.md)。
+
 当前 v1.22 池底毫米级光束接收与平静参数见 [PHYSICS-v1.22.md](PHYSICS-v1.22.md)，实测和未达项见 [ACCEPTANCE-v1.22.md](ACCEPTANCE-v1.22.md)。以下 v1.21/v1.16 数值是历史记录。
 
 当前 v1.21 干净池底、阳光聚焦、采样预算与实测折扣见 [ACCEPTANCE-v1.21.md](ACCEPTANCE-v1.21.md)。
