@@ -36,7 +36,9 @@ const SKY_DIRECTIONS=array<vec4u,32>(
   vec4u(2u,2863311530u,2382425838u,537002146u),
   vec4u(1u,4294967295u,3305133397u,1342505107u)
 );
-fn skyNet(index:u32)->vec4f {var bits=index;var v=vec4u(0);var bit=0u;loop{if(bits==0u){break;}if((bits&1u)!=0u){v^=SKY_DIRECTIONS[bit];}bits>>=1u;bit++;}
+fn skyNetBits(index:u32)->vec4u {var bits=index;var v=vec4u(0);var bit=0u;loop{if(bits==0u){break;}if((bits&1u)!=0u){v^=SKY_DIRECTIONS[bit];}bits>>=1u;bit++;}
+ return v;}
+fn scrambleSky(bits:vec4u)->vec4f {var v=bits;
  // Fixed fast Owen digit scrambling; PBRT 4e Sobol Samplers (Laine-Karras).
  v=reverseBits(v);v^=v*0x3d20adeau;let seed=vec4u(0x92c9d7abu,0x5e2d58d1u,0xa68371e5u,0x38f57ac9u);v+=seed;v*=(seed>>vec4u(16u))|vec4u(1u);v^=v*0x05526c56u;v^=v*0x53a22864u;v=reverseBits(v);
  return (vec4f(v>>vec4u(8u))+.5)/16777216.;}
@@ -50,6 +52,7 @@ struct WaterFlux { rlo:atomic<u32>, rhi:atomic<u32>, glo:atomic<u32>, ghi:atomic
 @group(0) @binding(6) var<storage,read_write> opticalPaths:array<vec4f>;
 @group(0) @binding(7) var<storage,read_write> liveCounters:array<atomic<u32>>;
 @group(0) @binding(8) var<storage,read_write> liveRows:array<vec4f>;
+@group(0) @binding(10) var<storage,read_write> solarField:array<vec4f>;
 var<workgroup> packetCounts:array<atomic<u32>,5>;
 fn fluxScale()->f32 {return select(1099511627776.,16777216.,U.sampling.w==0u);}
 fn addFlux(j:u32,v:vec3f){
@@ -63,18 +66,20 @@ fn readFlux(j:u32)->vec3f {
  let high=vec3f(f32(atomicLoad(&liveFlux[j].rhi)),f32(atomicLoad(&liveFlux[j].ghi)),f32(atomicLoad(&liveFlux[j].bhi)));
  return high*4294967296.+low;
 }
-fn receive(h:Hit,power:vec3f) {
+fn receive(h:Hit,power:vec3f,solar:bool) {
   if(h.t>=INF){return;}
   let s=surfaces[h.sid];let p=h.uv*vec2f(s.info.yz)-.5;let base=vec2i(floor(p));let f=fract(p);
   for(var y=0;y<2;y++){for(var x=0;x<2;x++){
     let q=clamp(base+vec2i(x,y),vec2i(0),vec2i(s.info.yz)-1);let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);
     let w=select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1);let v=max(power,vec3f(0))*w*fluxScale();
-    addFlux(j,v);
+    // Resolve the narrow solar beam separately on the floor; the broad sky
+    // retains its existing reconstruction footprint and sample budget.
+    addFlux(j+select(0u,U.counts.x,solar && s.metric.w>4.),v);
   }}
   atomicAdd(&packetCounts[2],1u);atomicAdd(&packetCounts[3],1u);
   if(h.p.y>U.state.y+.1){atomicAdd(&packetCounts[4],1u);}
 }
-fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32) {
+fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32,solar:bool) {
   let incoming=-l;let f=fresnel(dot(l,n),1.,1.333);atomicAdd(&packetCounts[1],1u);
   for(var branch=0u;branch<2u;branch++){
     let reflected=branch==0u;let rd=select(refract(incoming,n,1./1.333),reflect(incoming,n),reflected);
@@ -82,7 +87,7 @@ fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32) {
     if(h.material==10u){continue;}
     var transmitted=outgoing;
     if(!reflected){transmitted*=waterTransmittance(h.t);}else{transmitted*=exp(-.004*h.t);}
-    receive(h,transmitted*(1.-schlick(abs(dot(rd,h.n)),.043)));
+    receive(h,transmitted*(1.-schlick(abs(dot(rd,h.n)),.043)),solar);
     if(auditIndex<256u && h.t<INF){
       let ai=(auditIndex*2u+branch)*8u;let source=p+l*((6.101-p.y)/l.y);
       opticalPaths[ai]=vec4f(source,0);opticalPaths[ai+1u]=vec4f(incoming,1.);
@@ -112,7 +117,7 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
       if(hit.t>=distance-.005 && dot(n,l)>0.){
         let area=(hi.x-lo.x)*(hi.y-lo.y)/f32(nSun*nSun);
         let power=sunIrradiance()*max(dot(n,l),0.)/n.y*area*exp(-.004*distance);
-        waterPacket(p,n,l,power,select(99999u,i/1024u,i%1024u==128u));
+        waterPacket(p,n,l,power,select(99999u,i/1024u,i%1024u==128u),true);
       }
     }
     atomicAdd(&packetCounts[0],1u);
@@ -125,14 +130,19 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
     // Each path has its own water point AND aperture point. Keep the original
     // receiver kernel and radiometry; no contrast reduction or extra smoothing.
     let sampleCount=select(32u,128u,U.sampling.w==2u);
+    // Reuse the high Sobol digits. Binary carry updates preserve every sample
+    // bit-for-bit; only repeated direction-number work is removed.
+    var net=skyNetBits(i*sampleCount);
     for(var k=0u;k<sampleCount;k++){
-      let sample=skyNet(i*sampleCount+k);let xz=mix(vec2f(-7,-17),vec2f(7,10),sample.xy);let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));let uv=sample.zw;
+      let sample=scrambleSky(net);let xz=mix(vec2f(-7,-17),vec2f(7,10),sample.xy);let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));let uv=sample.zw;
       let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),6.102,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
       if(dot(n,l)>0. && traceDynamicSolid(p+l*EPS*2.,l,d).t>=d-.005){
         let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(f32(sampleCount)*d*d)*exp(-.004*d);
-        waterPacket(p,n,l,power,99999u);
+        waterPacket(p,n,l,power,99999u,false);
       }
       atomicAdd(&packetCounts[0],1u);
+      var carry=k^(k+1u);var digit=0u;
+      loop {if(carry==0u){break;}net^=SKY_DIRECTIONS[digit];carry>>=1u;digit++;}
     }
   }
   workgroupBarrier();
@@ -159,5 +169,14 @@ fn waterResolve(@builtin(global_invocation_id) gid:vec3u) {
     let q=xy+vec2i(0,y);if(q.y<0||q.y>=i32(s.info.z)){continue;}
     let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);let w=f32(radius+1-abs(y));let v=liveRows[j];sum+=v.rgb*w;weight+=v.a*w;
   }
-  let e=sum/(max(weight,1.)*fluxScale()*s.metric.z);liveField[idx]=vec4f(e,dot(e,vec3f(.2126,.7152,.0722)));
+  solarField[idx]=vec4f(0.);
+  var e=sum/(max(weight,1.)*fluxScale()*s.metric.z);
+  if(s.metric.w>4.) {
+    let coverage=f32(cellSurface[idx]>>16u)*.25;
+    // Solar packets already integrate a finite solar disc, splat bilinearly,
+    // and are reconstructed bilinearly by camera rays. No extra blur kernel.
+    let solar=readFlux(idx+U.counts.x)/(max(coverage,.25)*fluxScale()*s.metric.z);
+    solarField[idx]=vec4f(solar,dot(solar,vec3f(.2126,.7152,.0722)));e+=solar;
+  }
+  liveField[idx]=vec4f(e,dot(e,vec3f(.2126,.7152,.0722)));
 }

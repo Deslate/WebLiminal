@@ -44,7 +44,9 @@ export async function createWaveSimulation(device){
   bodyWaves.advance(config.freeze?0:clock,body);
   lastClock=clock;
   if(origin===null)origin=clock;
-  const target=config.freeze?time:Math.max(time,clock-origin);
+  // Calm background/foot-wave time scale; transport always uses this current
+  // state. Body dispersion retains real locomotion time and a weaker pressure.
+  const target=config.freeze?time:Math.max(time,(clock-origin)*(config.waveSpeed??1));
   const encoder=device.createCommandEncoder();
   if(!ready){device.queue.writeBuffer(params,0,block(0));dirty=(1<<24)-1;for(const g of inits)dispatch(encoder,pipelines[0],g);ready=true;}
   // Runtime supplies <=50ms deltas, allowing <=18 steps. A diagnostic seek

@@ -1,9 +1,9 @@
 """Continuous-frame diagnostics, not a proof of absence of every visual artifact."""
-import json,sys
+import json,sys,os
 from pathlib import Path
 import numpy as np
 from PIL import Image,ImageDraw
-root=Path(sys.argv[1]);result={}
+root=Path(os.environ.get("EVIDENCE_DIR",sys.argv[1]));result={}
 for name in ['wall','dark','low','glaze','arch','corner']:
  files=sorted(root.glob(name+'-???.png')); frames=[np.asarray(Image.open(p).convert('RGB'),dtype=np.float32) for p in files]
  lum=[a@np.array([.2126,.7152,.0722],dtype=np.float32) for a in frames]

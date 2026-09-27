@@ -1,3 +1,14 @@
+@group(0) @binding(10) var solarAtlas:texture_2d<f32>;
+fn fineSolar(p:vec3f)->vec3f {
+ let l=sunDirection();let rd=refract(-l,vec3f(0,1,0),1./1.333);
+ let shift=-l.xz/l.y*(6.101-U.state.y)+rd.xz*(-U.state.y/rd.y);
+ let lo=U.opening.xz+shift-vec2f(.8);let hi=U.opening.yw+shift+vec2f(.8);
+ let uv=(p.xz-lo)/(hi-lo);if(any(uv<vec2f(0))||any(uv>vec2f(1))){return vec3f(0);}
+ let q=uv*2048.-.5;let b=vec2i(floor(q));let f=fract(q);var e=vec3f(0);
+ for(var y=0;y<2;y++){for(var x=0;x<2;x++){
+ e+=textureLoad(solarAtlas,clamp(b+vec2i(x,y),vec2i(0),vec2i(2047)),0).rgb*select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1);
+ }}return e;
+}
 @group(0) @binding(3) var<storage,read> irradiance: array<vec4f>;
 @group(0) @binding(4) var<storage,read_write> image: array<vec4f>;
 @group(0) @binding(5) var<storage,read_write> reflectionLayer:array<vec4f>;
@@ -10,6 +21,7 @@ fn photonEstimate(h:Hit)->vec4f {
     let e=irradiance[idx];
     result+=e*select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1);
   }}
+  if(h.sid==3u){let solar=fineSolar(h.p);result+=vec4f(solar,dot(solar,vec3f(.2126,.7152,.0722)));}
   return result;
 }
 fn integratedSky(h:Hit)->vec3f {

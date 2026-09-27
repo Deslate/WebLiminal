@@ -1,0 +1,4 @@
+import{spawnSync}from'node:child_process';import{mkdirSync,writeFileSync}from'node:fs';
+const root='../workroom-v1.21-evidence/remaining-final';mkdirSync(root,{recursive:true});const report=[];
+const checks=[['app','verify-v1.mjs'],['simulation','simulation-v114.mjs'],['body','simulation-v116.mjs'],['body-coupling','coupling-v115.mjs'],['record','record-v116.mjs']];
+for(const[name,script]of checks){if(name==='app'&&process.env.SKIP_APP==='1')continue;const out=`${root}/${name}`;mkdirSync(out,{recursive:true});const t=Date.now();const r=spawnSync(process.execPath,[`scripts/${script}`],{env:{...process.env,EVIDENCE_DIR:out},encoding:'utf8',timeout:240000});writeFileSync(`${root}/${name}.log`,(r.stdout||'')+(r.stderr||''));report.push({name,status:r.status,seconds:(Date.now()-t)/1000,error:r.error?.message});writeFileSync(`${root}/checks.json`,JSON.stringify(report,null,2));console.log(report.at(-1));if(r.status!==0)process.exit(1)}

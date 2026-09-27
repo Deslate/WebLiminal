@@ -6,6 +6,7 @@ import level from "../../levels/poolrooms.json";
 import photons from "./photons.wgsl?raw";
 import sky from "./sky.wgsl?raw";
 import resolve from "./resolve.wgsl?raw";
+import solarAtlas from "./solar-atlas.wgsl?raw";
 import camera from "./camera.wgsl?raw";
 import waterCaustics from "./water-caustics.wgsl?raw";
 import composeLight from "./compose-light.wgsl?raw";
@@ -91,6 +92,15 @@ export async function createRenderer(canvas) {
     device.createComputePipelineAsync({label:"compose current light",layout:"auto",compute:{module:shaderModules[7],entryPoint:"compose"}}),
     ...["horizontalReflection","verticalReflection"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[8],entryPoint}})),
   ]);
+  const beamModule=module("fine solar photon beams",common+solarAtlas);
+  for(const m of (await beamModule.getCompilationInfo()).messages)if(m.type==='error')throw Error(`solar ${m.lineNum}: ${m.message}`);
+  const beamCompute=await device.createComputePipelineAsync({layout:'auto',compute:{module:beamModule,entryPoint:'beamNodes'}});
+  const beamRaster=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:beamModule,entryPoint:'beamVertex'},fragment:{module:beamModule,entryPoint:'beamFragment',targets:[{format:'rgba16float',blend:{color:{srcFactor:'one',dstFactor:'one'},alpha:{srcFactor:'one',dstFactor:'one'}}}]},primitive:{topology:'triangle-list'},multisample:{count:4}});
+  const beamNodes=device.createBuffer({size:385*385*3*32,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+  const solarTexture=device.createTexture({size:[2048,2048],format:'rgba16float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_SRC});
+  const solarMSAA=device.createTexture({size:[2048,2048],format:'rgba16float',sampleCount:4,usage:GPUTextureUsage.RENDER_ATTACHMENT});
+  const solarView=solarTexture.createView(),solarMSAAView=solarMSAA.createView();
+  let beamComputeGroup,beamRasterGroup;
   const uniforms = device.createBuffer({
     label: "physical parameters",
     size: 416,
@@ -119,7 +129,7 @@ export async function createRenderer(canvas) {
   const config = {
     photonCount: 49152,
     lightBatches: 32,
-    skyApertureMode:1, sunGrid:384,skyGridX:256,skyGridY:512,diffuseIterations:4,
+    skyApertureMode:1, sunGrid:768,skyGridX:256,skyGridY:512,diffuseIterations:4,
     ...level.optics,
     freeze: false,
     waveTime: 1.7,
@@ -183,15 +193,15 @@ export async function createRenderer(canvas) {
         [5, pathAudit],[9,simulation.field],
       ]),
       null,
-      bindings(pipelines[2], [
-        ...shared,
-        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field],
-      ]),
+      null,
       bindings(pipelines[3], [
         [0, imageBuffer],
         [1, displayUniform],
       ]),
     ];
+    groups[2]=device.createBindGroup({layout:pipelines[2].getBindGroupLayout(0),entries:[...shared,[3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field]].map(([binding,buffer])=>({binding,resource:{buffer}})).concat([{binding:10,resource:solarView}])});
+    beamComputeGroup=bindings(beamCompute,[[0,uniforms],[1,buffers.geometry],[9,simulation.field],[3,beamNodes]]);
+    beamRasterGroup=bindings(beamRaster,[[0,uniforms],[4,beamNodes]]);
     reflectionHorizontalGroup=bindings(pipelines[12],[[0,uniforms],[3,reflectionBuffer],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer]]);
     reflectionVerticalGroup=bindings(pipelines[13],[[0,uniforms],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer],[6,imageBuffer]]);
     resolveGroups=[0].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface],[6,buffers[`fine${i}`]],[7,buffers.rows]]));
@@ -199,9 +209,9 @@ export async function createRenderer(canvas) {
     skyGroup=bindings(pipelines[4],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.cellSurface],[4,buffers.sky]]);
     liveEmitGroup=bindings(pipelines[6],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.liveFlux],[6,pathAudit],[7,counters],[9,simulation.field]]);
     liveHorizontalGroup=bindings(pipelines[7],[[0,uniforms],[2,buffers.surfaces],[3,buffers.liveFlux],[5,buffers.cellSurface],[8,buffers.rows]]);
-    liveResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.liveField],[5,buffers.cellSurface],[8,buffers.rows]]);
-    flatResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.flatField],[5,buffers.cellSurface],[8,buffers.rows]]);
-    composeGroup=bindings(pipelines[11],[[0,uniforms],[2,buffers.surfaces],[3,buffers.irradiance0],[4,buffers.fine0],[5,buffers.liveField],[6,buffers.bounce0],[7,buffers.combined],[8,buffers.cellSurface]]);
+    liveResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[3,buffers.liveFlux],[4,buffers.liveField],[5,buffers.cellSurface],[8,buffers.rows],[10,buffers.solarField]]);
+    flatResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[3,buffers.liveFlux],[4,buffers.flatField],[5,buffers.cellSurface],[8,buffers.rows],[10,buffers.solarField]]);
+    composeGroup=bindings(pipelines[11],[[0,uniforms],[2,buffers.surfaces],[3,buffers.irradiance0],[4,buffers.fine0],[5,buffers.liveField],[6,buffers.bounce0],[7,buffers.combined],[8,buffers.cellSurface],[10,buffers.solarField]]);
     bakeGroup=bindings(pipelines[9],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.probeSurface],[4,buffers.links]]);
     propagateGroups=[0,1].map(i=>bindings(pipelines[10],[[0,uniforms],[3,buffers.probeSurface],[4,buffers.links],[5,buffers.liveField],[6,buffers[`bounce${i}`]],[7,buffers[`bounce${1-i}`]],[8,buffers.flatField]]));
 
@@ -236,7 +246,8 @@ export async function createRenderer(canvas) {
     buffers.rows=device.createBuffer({size:geometry.totalCells*48,usage:GPUBufferUsage.STORAGE});
     buffers.sky=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE});
     buffers.combined=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
-    buffers.liveFlux=device.createBuffer({size:geometry.totalCells*24,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+    buffers.liveFlux=device.createBuffer({size:geometry.totalCells*48,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+    buffers.solarField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE});
     buffers.liveField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.flatField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.probeSurface=buffer("diffuse probe surfaces",geometry.probeSurfaces);
@@ -406,6 +417,9 @@ export async function createRenderer(canvas) {
       compute(waterEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
       compute(waterEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);
       compute(waterEncoder,pipelines[8],liveResolveGroup,geometry.totalCells);
+      compute(waterEncoder,beamCompute,beamComputeGroup,385*385*3);
+      const beams=waterEncoder.beginRenderPass({colorAttachments:[{view:solarMSAAView,resolveTarget:solarView,loadOp:'clear',storeOp:'discard',clearValue:{r:0,g:0,b:0,a:0}}]});
+      beams.setPipeline(beamRaster);beams.setBindGroup(0,beamRasterGroup);beams.draw(384*384*6*3);beams.end();
       waterEncoder.clearBuffer(buffers.bounce0);
       for(let i=0;i<config.diffuseIterations;i++)compute(waterEncoder,pipelines[10],propagateGroups[i%2],geometry.probeCount);
       compute(waterEncoder,pipelines[11],composeGroup,geometry.totalCells);
@@ -486,6 +500,24 @@ export async function createRenderer(canvas) {
       }
       floor={sid:3,dimensions:[nx,ny],cellArea:sf[30],integratedRGB:sum,peak,positive,roi:{bounds:[2,4,-1.5,.5],rgb:roi}};readFloor.unmap();readFloor.destroy();
     }
+    let solar=null;
+    if(options.solar){
+      const size=2048*2048*8,rb=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});
+      const e=device.createCommandEncoder();e.copyTextureToBuffer({texture:solarTexture},{buffer:rb,bytesPerRow:2048*8},[2048,2048]);device.queue.submit([e.finish()]);await rb.mapAsync(GPUMapMode.READ);
+      const half=v=>{const exp=(v>>10)&31,frac=v&1023;return (v&32768?-1:1)*(exp===0?frac*2**-24:exp===31?(frac?NaN:Infinity):(1+frac/1024)*2**(exp-15));};
+      const a=new Uint16Array(rb.getMappedRange());const dx=(config.apertureWidth+1.6)/2048,dz=(config.apertureDepth+1.6)/2048;
+      let sum=0,peak=0,peakIndex=0,finite=true;const positive=[];
+      for(let i=0;i<a.length;i+=4){const l=half(a[i])*.2126+half(a[i+1])*.7152+half(a[i+2])*.0722;sum+=l;if(l>peak){peak=l;peakIndex=i/4;}finite&&=Number.isFinite(l);if(l>.1)positive.push(l);}
+      positive.sort((a,b)=>a-b);const mean=positive.reduce((a,b)=>a+b,0)/positive.length;
+      solar={dimensions:[2048,2048],cellMetres:[dx,dz],integratedLuminance:sum*dx*dz,peak,finite,litArea:positive.length*dx*dz,litMean:mean,p50:positive[Math.floor(positive.length*.5)],p99:positive[Math.floor(positive.length*.99)]};rb.unmap();rb.destroy();
+      const beamSize=385*385*3*32,br=device.createBuffer({size:beamSize,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const be=device.createCommandEncoder();be.copyBufferToBuffer(beamNodes,0,br,0,beamSize);device.queue.submit([be.finish()]);await br.mapAsync(GPUMapMode.READ);const nodes=new Float32Array(br.getMappedRange());let transported=0;
+      const sourceArea=(config.apertureWidth+.6)*(config.apertureDepth+.6)/(2*384*384);
+      for(let d=0;d<3;d++)for(let y=0;y<384;y++)for(let x=0;x<384;x++){const base=d*385*385+y*385+x;for(const ids of [[base,base+1,base+385],[base+1,base+386,base+385]]){if(ids.every(i=>nodes[i*8+2]>0)){let power=0;for(const i of ids)power+=nodes[i*8+4]*.2126+nodes[i*8+5]*.7152+nodes[i*8+6]*.0722;transported+=power/3*sourceArea;}}}
+      const norm=Math.hypot(.66,.69,.295),ly=.69/norm,rx=.66/norm/1.333,rz=-.295/norm/1.333,ry=-Math.sqrt(1-rx*rx-rz*rz);
+      const shiftX=.66/.69*(6.101-config.waterLevel)-rx*config.waterLevel/ry,shiftZ=-.295/.69*(6.101-config.waterLevel)-rz*config.waterLevel/ry;
+      solar.peakXZ=[-2.1-config.apertureWidth/2+shiftX-.8+(peakIndex%2048+.5)*dx,1.3-config.apertureDepth/2+shiftZ-.8+(Math.floor(peakIndex/2048)+.5)*dz];
+      solar.transportedLuminance=transported;solar.rasterRelativeError=solar.integratedLuminance/transported-1;br.unmap();br.destroy();
+    }
     const receivers={};
     for(const sid of options.receivers||[]){
       const u=new Uint32Array(geometry.surfaces),o=sid*8,nx=u[o+1],ny=u[o+2],size=nx*ny*16;
@@ -494,6 +526,7 @@ export async function createRenderer(canvas) {
     return {
       simulation: options.simulation ? await simulation.audit() : simulation.info,
       receivers,
+      solar,
       floor,
       paths,
       emitted: numbers[0],

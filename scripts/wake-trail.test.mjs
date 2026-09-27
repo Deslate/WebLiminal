@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {createWakeTrail} from '../src/wake-trail.js';
 test('turning, blocked movement and teleporting cannot generate a wake',()=>{const t=createWakeTrail();for(let i=0;i<100;i++)assert.equal(t.advance({x:0,z:0},{x:0,z:0},i/60,.42),null);assert.equal(t.advance({x:0,z:0},{x:4,z:0},2,.42),null)});
-test('walking produces bounded alternating foot contacts along the resolved path',()=>{const t=createWakeTrail(),e=[];for(let i=1;i<=600;i++){const a=t.advance({x:(i-1)/60,z:0},{x:i/60,z:0},i/60,.42);if(a)e.push(a)}assert(e.length>=18&&e.length<=21);for(let i=1;i<e.length;i++){assert(e[i].time-e[i-1].time>=.4);assert(e[i].x>e[i-1].x);assert(e[i].z*e[i-1].z<0)}});
+test('walking produces bounded alternating foot contacts along the resolved path',()=>{const t=createWakeTrail(),e=[];for(let i=1;i<=600;i++){const a=t.advance({x:(i-1)/60,z:0},{x:i/60,z:0},i/60,.42);if(a)e.push(a)}assert(e.length>=9&&e.length<=11);for(let i=1;i<e.length;i++){assert(e[i].time-e[i-1].time>=.8);assert(e[i].x>e[i-1].x);assert(e[i].z*e[i-1].z<0)}});
 test('dry floor creates no disturbances',()=>{const t=createWakeTrail();for(let i=1;i<100;i++)assert.equal(t.advance({x:(i-1)/60,z:0},{x:i/60,z:0},i/60,0),null)});
 import {wave} from './optical-audit.mjs';
 test('simulated-field bicubic slopes agree with independent height differences',()=>{

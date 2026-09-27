@@ -6,6 +6,7 @@
 @group(0) @binding(6) var<storage,read> diffuse:array<vec4f>;
 @group(0) @binding(7) var<storage,read_write> combined:array<vec4f>;
 @group(0) @binding(8) var<storage,read> cellSurface:array<u32>;
+@group(0) @binding(10) var<storage,read> solarField:array<vec4f>;
 @compute @workgroup_size(128)
 fn compose(@builtin(global_invocation_id) gid:vec3u){
  let idx=gid.x;if(idx>=U.counts.x){return;}
@@ -16,6 +17,7 @@ fn compose(@builtin(global_invocation_id) gid:vec3u){
   let q=clamp(b+vec2i(x,y),vec2i(0),vec2i(dims)-1);let e=diffuse[s.info.w+u32(q.y)*dims.x+u32(q.x)];
   let w=select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1)*e.a;sum+=e.rgb*w;weight+=w;
  }}
- let base=mix(coarse[idx],fine[idx],U.lighting.z)+water[idx];
+ // Keep coarse solar transport for bounces; replace only the camera-visible first receiver.
+ let base=mix(coarse[idx],fine[idx],U.lighting.z)+water[idx]-solarField[idx];
  combined[idx]=vec4f(max(vec3f(0),base.rgb+sum/max(weight,.0001)),base.w);
 }

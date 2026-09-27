@@ -14,8 +14,7 @@ fn wallPhotonMaterial(h:Hit)->Material {
 fn floorPhotonMaterial(h:Hit)->Material {
   let uv=tileUV(h);let n=h.n;
   if(h.material==1u){return Material(vec3f(.71,.69,.62)*(.86+.14*fbm(uv*.61)),.7,n,.025);}
-  let fields=porcelainFields(h.p);
-  return Material(porcelainColor(h.p,h.material,fields),.17+.08*fields.z,n,.043);
+  return Material(vec3f(.445,.60,.52),.20,n,.043);
 }
 
 fn surfaceMaterial(h:Hit)->Material {if(h.material==2u){return floorPhotonMaterial(h);}return wallPhotonMaterial(h);}

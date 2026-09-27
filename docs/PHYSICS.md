@@ -1,3 +1,7 @@
+当前 v1.22 池底毫米级光束接收与平静参数见 [PHYSICS-v1.22.md](PHYSICS-v1.22.md)，实测和未达项见 [ACCEPTANCE-v1.22.md](ACCEPTANCE-v1.22.md)。以下 v1.21/v1.16 数值是历史记录。
+
+当前 v1.21 干净池底、阳光聚焦、采样预算与实测折扣见 [ACCEPTANCE-v1.21.md](ACCEPTANCE-v1.21.md)。
+
 当前 v1.20 天光采样修复、预算和证据见 [ACCEPTANCE-v1.20.md](ACCEPTANCE-v1.20.md)。
 
 当前 v1.19 的墙面回退、池底点阵诊断及限制见 [ACCEPTANCE-v1.19.md](ACCEPTANCE-v1.19.md)。
