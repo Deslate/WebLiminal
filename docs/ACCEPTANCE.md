@@ -1,3 +1,5 @@
+当前 v1.26 短波档位、慢演化与安静度取舍见 [ACCEPTANCE-v1.26.md](ACCEPTANCE-v1.26.md)。
+
 当前 v1.25 有限水深短波、池底照度缓冲重测及观感验收见 [ACCEPTANCE-v1.25.md](ACCEPTANCE-v1.25.md)。
 
 当前 v1.23 源光束加密、有限像素重建、同状态比较和限制见 [ACCEPTANCE-v1.23.md](ACCEPTANCE-v1.23.md)。

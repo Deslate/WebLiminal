@@ -1,7 +1,7 @@
 import{chromium}from'@playwright/test';import{execFileSync}from'node:child_process';import{mkdirSync,writeFileSync}from'node:fs';import assert from'node:assert/strict';
-const root=process.env.EVIDENCE_DIR||'../workroom-v1.25-evidence/appearance';
-const variants=JSON.parse(process.env.VARIANTS||'["v123","v125"]');
-for(const version of variants){const b=await chromium.launch({channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1280,height:832}});const errors=[];p.on('pageerror',e=>errors.push(e.message));if(version==='v123'||version==='v125')for(const file of (version==='v123'?['common.wgsl','renderer.js']:['common.wgsl','renderer.js','short-waves.js']))await p.route(u=>u.pathname==='/src/render/'+file,route=>{const s=execFileSync('git',['show',(version==='v123'?'8ce969c':'fb40d2e')+':src/render/'+file],{encoding:'utf8'});return route.fulfill({contentType:'text/javascript',body:file.endsWith('wgsl')?'export default '+JSON.stringify(s):s});});await p.goto('http://localhost:4173');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs);
+const root=process.env.EVIDENCE_DIR||'../workroom-v1.26-evidence/appearance';
+const variants=JSON.parse(process.env.VARIANTS||'["final"]');
+for(const version of variants){const b=await chromium.launch({channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1280,height:832}});const errors=[];p.on('pageerror',e=>errors.push(e.message));if(version==='v123')for(const file of ['common.wgsl','renderer.js'])await p.route(u=>u.pathname==='/src/render/'+file,route=>{const s=execFileSync('git',['show','8ce969c:src/render/'+file],{encoding:'utf8'});return route.fulfill({contentType:'text/javascript',body:file.endsWith('wgsl')?'export default '+JSON.stringify(s):s});});await p.goto('http://localhost:4173');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs);
 const views={normal:{x:2,y:1.62,z:3,yaw:0,pitch:-1.12},floor:{x:3.5,y:1.5,z:-1,yaw:0,pitch:-Math.PI/2}};
 for(const [name,view]of Object.entries(views)){
  // Normal view is appearance only. The above-water floor view is also used
