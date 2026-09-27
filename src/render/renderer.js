@@ -1,3 +1,4 @@
+import { shortWaveUniforms } from "./short-waves.js";
 import { createWaveSimulation } from "./wave-simulation.js";
 import common from "./common.wgsl?raw";
 import photonPorcelain from "../../materials/photon-porcelain.wgsl?raw";
@@ -104,7 +105,7 @@ export async function createRenderer(canvas) {
   let beamComputeGroup,beamRasterGroup,beamDensityGroup;
   const uniforms = device.createBuffer({
     label: "physical parameters",
-    size: 416,
+    size: 464,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const displayUniform = device.createBuffer({
@@ -144,6 +145,7 @@ export async function createRenderer(canvas) {
     grain: .004,
   };
   let wakes=[],body=null;
+  let shortWaveState=new Float32Array(12);
   let geometry,
     buffers = {},
     groups = [],
@@ -319,7 +321,7 @@ export async function createRenderer(canvas) {
       const staticExposure=true;
       frame++;
       history++;
-      const data = new ArrayBuffer(416),
+      const data = new ArrayBuffer(464),
         f = new Float32Array(data),
         u = new Uint32Array(data);
       const sy = Math.sin(view.yaw),
@@ -343,6 +345,8 @@ export async function createRenderer(canvas) {
         16,
       );
       lastWaveTime = config.waveTime + (config.freeze ? 0 : time);
+      shortWaveState=shortWaveUniforms(config, lastWaveTime);
+      f.set(shortWaveState, 104);
       const wakeEnvelope=.16; // conservative simulated-height root bracket, not a clamp
       f.set(
         [
@@ -528,6 +532,7 @@ export async function createRenderer(canvas) {
     }
     return {
       simulation: options.simulation ? await simulation.audit() : simulation.info,
+      shortWaves: Array.from(shortWaveState),
       receivers,
       solar,
       floor,

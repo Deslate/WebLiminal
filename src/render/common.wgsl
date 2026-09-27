@@ -18,6 +18,7 @@ struct Uniforms {
   live: vec4u, // sun grid width, sky grid width/height, diffuse probe count
   wakes: array<vec4f,12>, // x, z, birth phase, displacement amplitude
   body:vec4f, // actor x,z,radius,height; zero radius disables it
+  shortWaves:array<vec4f,3>, // k.x, k.z, finite-depth phase, height amplitude
 };
 struct Shape { lo: vec4f, hi: vec4f, info: vec4u, params: vec4f };
 struct Surface { info: vec4u, metric: vec4f };
@@ -38,6 +39,16 @@ fn cosineDirection(n:vec3f,seed:ptr<function,u32>)->vec3f {let r=sqrt(rnd(seed))
 fn fresnel(cosIn:f32,etaI:f32,etaT:f32)->f32 {let c=clamp(abs(cosIn),0.,1.);let sinT=etaI/etaT*sqrt(max(0.,1.-c*c));if(sinT>=1.){return 1.;}let ct=sqrt(1.-sinT*sinT);let rp=(etaT*c-etaI*ct)/(etaT*c+etaI*ct);let rs=(etaI*c-etaT*ct)/(etaI*c+etaT*ct);return .5*(rp*rp+rs*rs);}
 // Runtime simulation storage, shared verbatim by camera and photon paths.
 @group(0) @binding(9) var<storage,read> waveField:array<vec4f>;
+// The short band is actual surface displacement and its exact gradient.
+// Camera intersections, refraction and all photon paths use this same surface.
+fn shortWave(p:vec2f)->vec3f {
+ var result=vec3f(0.);
+ for(var i=0u;i<3u;i++){
+  let m=U.shortWaves[i];let phase=dot(m.xy,p)+m.z;
+  result+=vec3f(m.w*cos(phase),-m.w*sin(phase)*m.xy);
+ }
+ return result;
+}
 fn wave(p:vec2f)->vec3f {
  if(U.state.z==0. && U.body.z==0.){return vec3f(U.state.y,0.,0.);}
  let q=clamp((p-vec2f(-7.,-17.))*32.-.5,vec2f(0.),vec2f(447.,863.));
@@ -45,7 +56,7 @@ fn wave(p:vec2f)->vec3f {
  let a=waveField[offset];let b=waveField[offset+1u];let c=waveField[offset+2u];let d=waveField[offset+3u];
  let x=vec4f(1.,t.x,t.x*t.x,t.x*t.x*t.x);let dx=vec4f(0.,1.,2.*t.x,3.*t.x*t.x);
  let row=((d*t.y+c)*t.y+b)*t.y+a;
- return vec3f(U.state.y+dot(row,x),32.*dot(row,dx),32.*dot((3.*d*t.y+2.*c)*t.y+b,x));
+ return vec3f(U.state.y+dot(row,x),32.*dot(row,dx),32.*dot((3.*d*t.y+2.*c)*t.y+b,x))+shortWave(p);
 }
 fn emptyHit()->Hit {return Hit(INF,vec3f(0),vec3f(0),vec2f(0),0u,0u);}
 fn makeHit(t:f32,ro:vec3f,rd:vec3f,n:vec3f,s:Shape,face:u32)->Hit {

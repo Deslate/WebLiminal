@@ -5,7 +5,8 @@ const norm = (a) => {
   return a.map((x) => x / n);
 };
 // Independent CPU reconstruction of the GPU's *read-back physical state*.
-// No analytic wave surrogate: the simulated heights are the source of truth.
+// The stateful grid plus the uploaded finite-depth modal coefficients form
+// the complete surface. Reconstruct height/gradient independently of WGSL.
 export function wave(p,c){
  const s=c.simulation;if(!s?.values)throw Error('Optical audit requires simulation readback');
  const {nx,nz,dx}=s.grid,values=s.values;
@@ -15,6 +16,8 @@ export function wave(p,c){
  const derivatives=t=>[-.5+2*t-1.5*t*t,-5*t+4.5*t*t,.5+4*t-4.5*t*t,-t+1.5*t*t];
  const wx=weights(t[0]),wz=weights(t[1]),gx=derivatives(t[0]),gz=derivatives(t[1]);let h=0,x=0,z=0;
  for(let j=0;j<4;j++)for(let i=0;i<4;i++){const ix=Math.max(0,Math.min(nx-1,base[0]+i-1)),iz=Math.max(0,Math.min(nz-1,base[1]+j-1));const v=values[(iz*nx+ix)*4];h+=v*wx[i]*wz[j];x+=v*gx[i]*wz[j]/dx;z+=v*wx[i]*gz[j]/dx;}
+ const modes=c.shortWaves||[];
+ for(let i=0;i<modes.length;i+=4){const phase=modes[i]*p[0]+modes[i+1]*p[1]+modes[i+2],a=modes[i+3];h+=a*Math.cos(phase);x-=a*modes[i]*Math.sin(phase);z-=a*modes[i+1]*Math.sin(phase);}
  return {h:c.waterLevel+h,n:norm([-x,1,-z])};
 }
 function fresnel(ci, ni, nt) {
@@ -80,7 +83,7 @@ export function auditOptics(audit) {
         );
     const w = wave([point[0], point[2]], {
       ...audit.config,
-      simulation:audit.simulation, waveTime: audit.waveTime,
+      simulation:audit.simulation, shortWaves:audit.shortWaves, waveTime: audit.waveTime,
     });
     max.heightMetres = Math.max(max.heightMetres, Math.abs(w.h - point[1]));
     const sign = normal[1] > 0 ? 1 : -1;

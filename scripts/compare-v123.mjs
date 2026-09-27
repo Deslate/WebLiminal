@@ -5,7 +5,7 @@ const specs=JSON.parse(process.env.CASES||'[["previous",384,2048],["source512",5
 const lastFrame=Math.round(Number(process.env.TARGET_TIME||6)*30);
 let focus=existsSync(`${out}/previous.json`)?JSON.parse(readFileSync(`${out}/previous.json`)).solar.peakXZ:null;
 for(const[name,n,size,directions=3]of specs){const browser=await chromium.launch({channel:'chrome',headless:true});try{const p=await browser.newPage({viewport:{width:1280,height:832}});
-for(const file of ['renderer.js','solar-atlas.wgsl','camera.wgsl'])await p.route(u=>u.pathname==='/src/render/'+file,route=>{
+for(const file of ['renderer.js','solar-atlas.wgsl','camera.wgsl','common.wgsl'])await p.route(u=>u.pathname==='/src/render/'+file,route=>{
  let s=process.env.WORKING?readFileSync('src/render/'+file,'utf8'):execFileSync('git',['show','ca09c32:src/render/'+file],{encoding:'utf8'});
  const base=process.env.WORKING?640:384;
  s=s.replace(new RegExp('\\b('+[base,base+1,base+2,2048,2047].join('|')+')(?=u?\\b)','g'),x=>({[base]:n,[base+1]:n+1,[base+2]:n+2,2048:size,2047:size-1}[x]));
