@@ -23,7 +23,8 @@ fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32) {
   let incoming=-l;let f=fresnel(dot(l,n),1.,1.333);atomicAdd(&packetCounts[1],1u);
   for(var branch=0u;branch<2u;branch++){
     let reflected=branch==0u;let rd=select(refract(incoming,n,1./1.333),reflect(incoming,n),reflected);
-    let h=traceSolid(p+rd*EPS*2.,rd,INF);let outgoing=power*select(1.-f,f,reflected);
+    let h=traceDynamicSolid(p+rd*EPS*2.,rd,INF);let outgoing=power*select(1.-f,f,reflected);
+    if(h.material==10u){continue;}
     var transmitted=outgoing;
     if(!reflected){transmitted*=waterTransmittance(h.t);}else{transmitted*=exp(-.004*h.t);}
     receive(h,transmitted*(1.-schlick(abs(dot(rd,h.n)),.043)));
@@ -49,7 +50,7 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
     let q=(vec2f(f32(i%nSun),f32(i/nSun))+.5)/f32(nSun);let xz=mix(lo,hi,q);
     if(xz.x>-7.&&xz.x<7.&&xz.y>-17.&&xz.y<10.){
       let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
-      let distance=(6.102-p.y)/l.y;let hit=traceSolid(p+l*EPS*2.,l,distance);
+      let distance=(6.102-p.y)/l.y;let hit=traceDynamicSolid(p+l*EPS*2.,l,distance);
       if(hit.t>=distance-.005 && dot(n,l)>0.){
         let area=(hi.x-lo.x)*(hi.y-lo.y)/f32(nSun*nSun);
         let power=sunIrradiance()*max(dot(n,l),0.)/n.y*area*exp(-.004*distance);
@@ -66,7 +67,7 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
     for(var k=0u;k<4u;k++){
       let uv=vec2f(.25+f32(k%2u)*.5,.25+f32(k/2u)*.5);
       let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),6.102,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
-      if(dot(n,l)>0. && traceSolid(p+l*EPS*2.,l,d).t>=d-.005){
+      if(dot(n,l)>0. && traceDynamicSolid(p+l*EPS*2.,l,d).t>=d-.005){
         let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(4.*d*d)*exp(-.004*d);
         waterPacket(p,n,l,power,99999u);
       }

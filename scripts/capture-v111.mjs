@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import {chromium} from '@playwright/test';
 import {mkdirSync,writeFileSync} from 'node:fs';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.14-evidence/final';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.15-evidence/final';mkdirSync(out,{recursive:true});
 const b=await chromium.launch({channel:'chrome',headless:true});
 try{const p=await b.newPage({viewport:{width:1512,height:982}});const errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('console',m=>{if(m.type()==='error')errors.push(m.text())});await p.goto(process.env.VERIFY_URL||'http://127.0.0.1:4173');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs);
+// Isolate skylight/depth/camera controls from the newly present player body.
+// Actor displacement has its own same-body A/B in coupling-v115.mjs.
 const view={x:3,y:1.62,z:.8,yaw:0,pitch:-.9};const report={};const temporalFocus=[];
 for(const[name,options]of Object.entries({original:{},shallow:{waterLevel:.22},deep:{waterLevel:.85},flat:{waveAmplitude:0},highWave:{waveAmplitude:.095},narrow:{apertureWidth:2.4,apertureDepth:2.9},otherView:{view:{...view,x:2.5,yaw:-.2}}})){
- await p.evaluate(a=>window.__POOLROOMS_V1__.configure({pause:true,freeze:false,grain:0,waterLevel:.42,waveAmplitude:.052,apertureWidth:4.8,apertureDepth:5.8,view:a.view,scale:1280/1512,...a.options}),{view,options});let r;for(let i=0;i<=25;i++)r=await p.evaluate(t=>window.__POOLROOMS_V1__.renderEvidence(t,{},false),12+i/25);writeFileSync(`${out}/${name}.png`,Buffer.from(r.png.split(',')[1],'base64'));report[name]=await p.evaluate(()=>window.__POOLROOMS_V1__.audit({floor:true}));console.log(name);
+ await p.evaluate(a=>window.__POOLROOMS_V1__.configure({body:false,pause:true,freeze:false,grain:0,waterLevel:.42,waveAmplitude:.052,apertureWidth:4.8,apertureDepth:5.8,view:a.view,scale:1280/1512,...a.options}),{view,options});let r;for(let i=0;i<=25;i++)r=await p.evaluate(t=>window.__POOLROOMS_V1__.renderEvidence(t,{},false),12+i/25);writeFileSync(`${out}/${name}.png`,Buffer.from(r.png.split(',')[1],'base64'));report[name]=await p.evaluate(()=>window.__POOLROOMS_V1__.audit({floor:true}));console.log(name);
  // A stateful irregular wave field does not promise a focusing maximum at
  // exactly one second. Keep the same >=2x flat criterion over a declared
  // 1/3/5/7/9s observation window, retaining the 1s image for all controls.

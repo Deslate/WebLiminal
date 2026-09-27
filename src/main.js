@@ -9,6 +9,8 @@ const canvas = document.createElement("canvas");
 document.querySelector("#experience").appendChild(canvas);
 const sound = createSoundscape(document.getElementById("audio-status"));
 const view = { ...level.spawn };
+let observer=null,bodyEnabled=true;
+function cameraPose(){return observer||view;}
 const keys = new Set();
 let dragging = false,
   elapsed = 0,
@@ -48,6 +50,14 @@ addEventListener("keydown", (e) => {
   ) {
     keys.add(e.code);
     e.preventDefault();
+  }
+  if(e.code==="KeyV"&&!e.repeat){
+    if(observer)observer=null;
+    else {
+      const x=Math.max(ROOM.minX+.6,Math.min(ROOM.maxX-.6,view.x+(view.x>3?-2.8:2.8)));
+      const z=Math.max(ROOM.minZ+.6,Math.min(ROOM.maxZ-.6,view.z+(view.z>5?-3.6:3.6)));
+      observer={x,y:2.5,z,yaw:Math.atan2(x-view.x,z-view.z),pitch:Math.atan2(.65-2.5,Math.hypot(x-view.x,z-view.z))};
+    }
   }
   if (e.code === "KeyM" && !e.repeat) sound.toggle();
   else sound.unlock();
@@ -99,7 +109,9 @@ async function tick(now) {
     Number(keys.has("KeyD") || keys.has("ArrowRight")) -
     Number(keys.has("KeyA") || keys.has("ArrowLeft"));
   const norm = Math.hypot(f, s);
-  const speed = keys.has("ShiftLeft") ? 2.4 : 1.6;
+  // Wading drag caps locomotion below this height-field model's critical wave speed.
+  const immersed=renderer.config.waterLevel>view.y-1.62+.04;
+  const speed = keys.has("ShiftLeft") && !immersed ? 2.4 : 1.6;
   const beforeMove={x:view.x,z:view.z};
   if (norm) {
     f /= norm;
@@ -122,7 +134,8 @@ async function tick(now) {
     anomaly = Math.min(1, (elapsed - 34.6) / 1.4, (43 - elapsed) / 2.4);
   }
   sound.update(elapsed, norm > 0, anomaly);
-  const did = await renderer.render(view, elapsed, moving, 1 - anomaly * 0.94);
+  renderer.setBody(bodyEnabled?view:null);
+  const did = await renderer.render(cameraPose(), elapsed, moving, 1 - anomaly * 0.94);
   if (did) {
     const done = performance.now();
     if (ready && lastCompleted !== null) {
@@ -167,6 +180,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
     snapshot: () => ({
       runId,
       view: { ...view },
+      observer,
       elapsed,
       firstFrameMs: firstFrame,
       completedFrames: completed,
@@ -197,6 +211,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       if (holdTime) elapsed = 12;
       wakeTrail.reset();
       renderer.configure(parameters);
+      bodyEnabled=parameters.body!==false;renderer.setBody(bodyEnabled?view:null);
       frameMs = [];
       lastCompleted = null;
       paused = parameters.pause ?? false;
@@ -215,6 +230,14 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
     async pause() { paused=true;while(renderer.busy)await new Promise(r=>setTimeout(r,1)); },
     // Evidence automation changes the actual camera, without rebuilding light.
     setView(patch) { Object.assign(view, patch); },
+    setObserver(pose){observer=pose?{...pose}:null;},
+    async renderActorEvidence(time,actor,camera,capture=true){
+      paused=true;while(renderer.busy)await new Promise(r=>setTimeout(r,1));
+      const before={...view};Object.assign(view,actor);
+      const contact=wakeTrail.advance(before,view,time,renderer.config.waterLevel);if(contact)renderer.addWake(contact);
+      renderer.setBody(view);await renderer.render(camera,time,true,1);
+      return {png:capture?canvas.toDataURL():null,view:{...view},dynamics:renderer.dynamics};
+    },
     audit: (options) => renderer.audit(options),
   },
 });

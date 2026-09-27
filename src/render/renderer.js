@@ -93,7 +93,7 @@ export async function createRenderer(canvas) {
   ]);
   const uniforms = device.createBuffer({
     label: "physical parameters",
-    size: 400,
+    size: 416,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const displayUniform = device.createBuffer({
@@ -132,7 +132,7 @@ export async function createRenderer(canvas) {
     reflectionFilter:1,
     grain: .004,
   };
-  let wakes=[];
+  let wakes=[],body=null;
   let geometry,
     buffers = {},
     groups = [],
@@ -306,7 +306,7 @@ export async function createRenderer(canvas) {
       const staticExposure=true;
       frame++;
       history++;
-      const data = new ArrayBuffer(400),
+      const data = new ArrayBuffer(416),
         f = new Float32Array(data),
         u = new Uint32Array(data);
       const sy = Math.sin(view.yaw),
@@ -341,6 +341,7 @@ export async function createRenderer(canvas) {
         20,
       );
       for(let i=0;i<wakes.length;i++){const w=wakes[i];f.set([w.x,w.z,w.time+config.waveTime,w.amplitude],52+i*4);}
+      if(body)f.set([body.x,body.z,.19,1.05],100);
       f.set(geometry.aperture, 24);
       u.set([width, height, sceneBatches, geometry.shapes.length], 28);
       f.set(
@@ -519,6 +520,7 @@ export async function createRenderer(canvas) {
   }
   return {
     render,
+    setBody(p){body=p?{...p}:null;simulation.setBody(body);},
     addWake(w){simulation.addWake(w);wakes.push(w);wakes=wakes.slice(-12);},
     get wakes(){return wakes.map(w=>({...w}));},
     configure,

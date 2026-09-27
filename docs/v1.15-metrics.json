@@ -1,0 +1,545 @@
+{
+  "version": "v1.15",
+  "baseCommit": "34368bd",
+  "evidenceDirectory": "/Users/steven/Projects/workroom-v1.15-evidence/final",
+  "waveSimulation": {
+    "rows": [
+      {
+        "t": 1,
+        "peak": 0.10151969641447067,
+        "velocityEnergy": 0.06684265988429328,
+        "mean": 2.1406799630878967e-08,
+        "meniscus": 0.05359845841303468,
+        "farRMS": 0.004480654975135871
+      },
+      {
+        "t": 3,
+        "peak": 0.09981640428304672,
+        "velocityEnergy": 0.069158733135322,
+        "mean": 1.8620711077076962e-07,
+        "meniscus": 0.051813446888700126,
+        "farRMS": 0.00029449119602802153
+      },
+      {
+        "t": 4,
+        "peak": 0.15432950854301453,
+        "velocityEnergy": 0.46012192270355234,
+        "mean": 3.2492348516024954e-07,
+        "meniscus": 0.08402036140828871,
+        "farRMS": 0.0014492708128197032
+      },
+      {
+        "t": 5,
+        "peak": 0.15088805556297302,
+        "velocityEnergy": 0.5162739591124662,
+        "mean": 4.980581796992745e-07,
+        "meniscus": 0.08308630961673866,
+        "farRMS": 0.003033466929121004
+      },
+      {
+        "t": 6,
+        "peak": 0.14893165230751038,
+        "velocityEnergy": 0.6236314665987359,
+        "mean": 7.036347683762643e-07,
+        "meniscus": 0.08114659976349285,
+        "farRMS": 0.00437403893946654
+      },
+      {
+        "t": 7,
+        "peak": 0.0976455807685852,
+        "velocityEnergy": 0.6553098054517182,
+        "mean": 9.400180298557057e-07,
+        "meniscus": 0.049053407375522225,
+        "farRMS": 0.008320117803733018
+      },
+      {
+        "t": 8,
+        "peak": 0.10035788267850876,
+        "velocityEnergy": 0.6885539142734679,
+        "mean": 1.205434364060871e-06,
+        "meniscus": 0.052542779652565874,
+        "farRMS": 0.002669606781666932
+      },
+      {
+        "t": 10,
+        "peak": 0.09839998930692673,
+        "velocityEnergy": 0.7097195675024925,
+        "mean": 1.8169316153598924e-06,
+        "meniscus": 0.05006888766478689,
+        "farRMS": 0.000973656548613257
+      },
+      {
+        "t": 14,
+        "peak": 0.09552398324012756,
+        "velocityEnergy": 0.6158955940831651,
+        "mean": 3.3258697684423856e-06,
+        "meniscus": 0.04938406709562312,
+        "farRMS": 0.0011689614006156715
+      },
+      {
+        "t": 22,
+        "peak": 0.09782721102237701,
+        "velocityEnergy": 0.35537057707784353,
+        "mean": 7.232467165078784e-06,
+        "meniscus": 0.05023347169952226,
+        "farRMS": 0.0026223867801181554
+      },
+      {
+        "t": 38,
+        "peak": 0.09928297996520996,
+        "velocityEnergy": 0.10963774023854192,
+        "mean": 1.7240089431886336e-05,
+        "meniscus": 0.05167429239870353,
+        "farRMS": 0.000926011093062542
+      },
+      {
+        "t": 70,
+        "peak": 0.09909136593341827,
+        "velocityEnergy": 0.012616345236347686,
+        "mean": 4.075092783354709e-05,
+        "meniscus": 0.05103486235895305,
+        "farRMS": 0.00034809357116851835
+      }
+    ],
+    "stress": [
+      {
+        "t": 0.5,
+        "peak": 0.13029038906097412
+      },
+      {
+        "t": 1,
+        "peak": 0.10731860995292664
+      },
+      {
+        "t": 1.5,
+        "peak": 0.10939349979162216
+      },
+      {
+        "t": 2,
+        "peak": 0.07824946194887161
+      },
+      {
+        "t": 2.5,
+        "peak": 0.09926453232765198
+      },
+      {
+        "t": 3,
+        "peak": 0.10580822080373764
+      },
+      {
+        "t": 3.5,
+        "peak": 0.1341928392648697
+      },
+      {
+        "t": 4,
+        "peak": 0.1496761292219162
+      },
+      {
+        "t": 4.5,
+        "peak": 0.15250548720359802
+      },
+      {
+        "t": 5,
+        "peak": 0.16339166462421417
+      },
+      {
+        "t": 5.5,
+        "peak": 0.14763641357421875
+      },
+      {
+        "t": 6,
+        "peak": 0.15527811646461487
+      },
+      {
+        "t": 6.5,
+        "peak": 0.10366957634687424
+      },
+      {
+        "t": 7,
+        "peak": 0.097967229783535
+      },
+      {
+        "t": 7.5,
+        "peak": 0.11380116641521454
+      },
+      {
+        "t": 8,
+        "peak": 0.09706594049930573
+      },
+      {
+        "t": 8.5,
+        "peak": 0.08239348977804184
+      },
+      {
+        "t": 9,
+        "peak": 0.08943020552396774
+      },
+      {
+        "t": 9.5,
+        "peak": 0.10949040949344635
+      },
+      {
+        "t": 10,
+        "peak": 0.10324004292488098
+      },
+      {
+        "t": 10.5,
+        "peak": 0.09942624717950821
+      },
+      {
+        "t": 11,
+        "peak": 0.11701396852731705
+      },
+      {
+        "t": 11.5,
+        "peak": 0.0919048860669136
+      },
+      {
+        "t": 12,
+        "peak": 0.09387903660535812
+      },
+      {
+        "t": 12.5,
+        "peak": 0.09844410419464111
+      },
+      {
+        "t": 13,
+        "peak": 0.12021548300981522
+      },
+      {
+        "t": 13.5,
+        "peak": 0.10740320384502411
+      },
+      {
+        "t": 14,
+        "peak": 0.09468446671962738
+      },
+      {
+        "t": 14.5,
+        "peak": 0.10282178223133087
+      },
+      {
+        "t": 15,
+        "peak": 0.10631507635116577
+      },
+      {
+        "t": 15.5,
+        "peak": 0.11215324699878693
+      },
+      {
+        "t": 16,
+        "peak": 0.1046488806605339
+      },
+      {
+        "t": 16.5,
+        "peak": 0.10995928198099136
+      },
+      {
+        "t": 17,
+        "peak": 0.10136140137910843
+      },
+      {
+        "t": 17.5,
+        "peak": 0.10542135685682297
+      },
+      {
+        "t": 18,
+        "peak": 0.09134609252214432
+      },
+      {
+        "t": 18.5,
+        "peak": 0.09744918346405029
+      },
+      {
+        "t": 19,
+        "peak": 0.0919092670083046
+      },
+      {
+        "t": 19.5,
+        "peak": 0.09319335967302322
+      },
+      {
+        "t": 20,
+        "peak": 0.10516096651554108
+      }
+    ],
+    "frameRateDifference": 0,
+    "errors": []
+  },
+  "waterPerformance": {
+    "firstFrameMs": 471.40000000596046,
+    "cases": {
+      "floor": {
+        "static": {
+          "fps": 39.402828247552584,
+          "p95": 27.400000005960464,
+          "max": 28.799999982118607,
+          "minOneSecond": 39.062500000932815,
+          "over50": 0,
+          "count": 180
+        },
+        "staticResolution": [
+          1280,
+          832
+        ],
+        "walking": {
+          "fps": 41.02677828907246,
+          "p95": 27.19999998807907,
+          "max": 31.5,
+          "minOneSecond": 39.18879200594412,
+          "over50": 0,
+          "count": 370
+        },
+        "walkingResolution": [
+          1280,
+          832
+        ],
+        "errors": []
+      },
+      "dark": {
+        "static": {
+          "fps": 43.630017452070014,
+          "p95": 24.80000001192093,
+          "max": 27.5,
+          "minOneSecond": 43.34548320260719,
+          "over50": 0,
+          "count": 180
+        },
+        "staticResolution": [
+          1280,
+          832
+        ],
+        "walking": {
+          "fps": 43.85088478868062,
+          "p95": 24.400000005960464,
+          "max": 25.400000005960464,
+          "minOneSecond": 42.948461845018,
+          "over50": 0,
+          "count": 395
+        },
+        "walkingResolution": [
+          1280,
+          832
+        ],
+        "errors": []
+      }
+    }
+  },
+  "productionPerformance": {
+    "date": "2026-09-27T09:48:14.831Z",
+    "firstFrameMs": 453.30000001192093,
+    "static": {
+      "from": 5,
+      "to": 17,
+      "frames": 704,
+      "averageFps": 58.63344105001341,
+      "minimumOneSecondFps": 57.625434674615,
+      "p95FrameMs": 18.700000017881393,
+      "maxFrameMs": 20.5,
+      "framesOver50ms": 0
+    },
+    "walking": {
+      "from": 20,
+      "to": 22,
+      "frames": 119,
+      "averageFps": 59.54167917560037,
+      "minimumOneSecondFps": 59.38242280425157,
+      "p95FrameMs": 18.299999982118607,
+      "maxFrameMs": 19.299999982118607,
+      "framesOver50ms": 0
+    },
+    "initialInternal": [
+      1280,
+      832
+    ],
+    "finalInternal": [
+      1280,
+      832
+    ],
+    "errors": [],
+    "externalRequests": []
+  },
+  "bodyCoupling": {
+    "method": "Identical deterministic simulation replay; only difference is persistent body displacement forcing. Visible cylinder, shadows, footsteps, actor path and background field are identical. Read raw transported irradiance before tone mapping. Wall selects y>0.6m, above water.",
+    "floor": {
+      "max": 2.6266250610351562,
+      "mean": 0.4152648046750713,
+      "changed": 27647
+    },
+    "wall": {
+      "max": 0.565018892288208,
+      "mean": 0.009913292406331032,
+      "changed": 169848
+    },
+    "simulation": {
+      "max": 0.10485733486711979,
+      "mean": 0.0016545975718565023,
+      "changed": 309947
+    }
+  },
+  "regressions": [
+    {
+      "name": "near",
+      "status": 0,
+      "seconds": 12.385
+    },
+    {
+      "name": "floor",
+      "status": 0,
+      "seconds": 18.929
+    },
+    {
+      "name": "layout",
+      "status": 0,
+      "seconds": 1.086
+    },
+    {
+      "name": "joint",
+      "status": 0,
+      "seconds": 1.24
+    },
+    {
+      "name": "seams",
+      "status": 0,
+      "seconds": 46.021
+    },
+    {
+      "name": "coupling",
+      "status": 0,
+      "seconds": 18.873
+    },
+    {
+      "name": "nonloop",
+      "status": 0,
+      "seconds": 19.094
+    },
+    {
+      "name": "motion",
+      "status": 0,
+      "seconds": 46.102
+    },
+    {
+      "name": "reference",
+      "status": 0,
+      "seconds": 3.354
+    },
+    {
+      "name": "proof",
+      "status": 0,
+      "seconds": 45.741
+    }
+  ],
+  "videoReview": [
+    {
+      "name": "observer-walk",
+      "duration": 37,
+      "overviewHz": 1,
+      "denseHz": 25,
+      "windows": [
+        4,
+        6,
+        8,
+        16,
+        26
+      ],
+      "frames": 161
+    }
+  ],
+  "stopSequence": {
+    "frames": 61,
+    "hz": 30,
+    "adjacentLuminanceMAE255": {
+      "median": 1.6633359789848328,
+      "max": 4.080033779144287
+    },
+    "maximumIsolatedBrightPixels": 0,
+    "limitations": "Includes actual moving water and grain. Visual inspection is still required."
+  },
+  "firstPersonMotion": {
+    "bright": {
+      "frames": 61,
+      "hz": 60,
+      "maximumIsolatedBrightPixels": 0,
+      "adjacentMAEmedian": 5.447956800460815,
+      "adjacentMAEmax": 5.930218696594238
+    },
+    "dark": {
+      "frames": 61,
+      "hz": 60,
+      "maximumIsolatedBrightPixels": 0,
+      "adjacentMAEmedian": 0.6780175864696503,
+      "adjacentMAEmax": 0.798972487449646
+    }
+  },
+  "observerUI": {
+    "observer": {
+      "x": -0.8000000000000003,
+      "y": 2.5,
+      "z": 4.4,
+      "yaw": 2.4805494847391065,
+      "pitch": -0.3853583984985347
+    },
+    "actorStart": {
+      "x": -3.6,
+      "y": 1.62,
+      "z": 8,
+      "yaw": -0.29,
+      "pitch": 0.028
+    },
+    "actorEnd": {
+      "x": -3.048455348217795,
+      "y": 1.62,
+      "z": 6.151739212911112,
+      "yaw": -0.29,
+      "pitch": 0.028
+    },
+    "speed": 1.5783960720130918,
+    "valid": true,
+    "errors": []
+  },
+  "limits": [
+    "Soft displacement potential, not exact moving no-penetration boundary or displaced volume.",
+    "Cylinder proxy and approximate shading; bright-looking proxy in dark areas.",
+    "Wading capped at 1.6m/s after 2.4m/s generated 39cm waves.",
+    "Settling control turns ambient forcing off, while real walking recording retains it.",
+    "Stepped PNGs and real recording are not performance benchmarks.",
+    "No all-view, infinite-time or arbitrary-device guarantee."
+  ],
+  "zeroAmbientBody": {
+    "peak": 0.10153572261333466,
+    "errors": [],
+    "config": {
+      "photonCount": 49152,
+      "lightBatches": 32,
+      "sunGrid": 384,
+      "skyGridX": 256,
+      "skyGridY": 512,
+      "diffuseIterations": 4,
+      "waterLevel": 0.42,
+      "waveAmplitude": 0.001,
+      "apertureWidth": 4.8,
+      "apertureDepth": 5.8,
+      "exposure": 0.85,
+      "freeze": false,
+      "waveTime": 1.7,
+      "seed": 7819301,
+      "diagnostic": 0,
+      "focusDistance": 10,
+      "focalLength": 28,
+      "fNumber": 5.6,
+      "reflectionCone": 0.018,
+      "reflectionFilter": 1,
+      "grain": 0.004,
+      "pause": true,
+      "waveForcing": false,
+      "view": {
+        "x": 3,
+        "y": 1.62,
+        "z": 1,
+        "yaw": 0,
+        "pitch": -0.5
+      },
+      "wakes": []
+    }
+  }
+}

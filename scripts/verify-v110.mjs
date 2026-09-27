@@ -3,7 +3,7 @@ import {writeFileSync,mkdirSync,readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {auditOptics} from './optical-audit.mjs';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.14-evidence/final/synchrony';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.15-evidence/final/synchrony';mkdirSync(out,{recursive:true});
 const b=await chromium.launch({channel:'chrome',headless:true});
 try{
  const p=await b.newPage({viewport:{width:1512,height:982}});const errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('console',m=>{if(m.type()==='error')errors.push(m.text())});

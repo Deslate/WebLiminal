@@ -54,12 +54,19 @@ fn shadeMaterial(h:Hit,rd:vec3f,underwater:bool,material:Material)->vec3f {
   let tr=exp(-.004*h.t);
   return c*tr+vec3f(.065,.085,.09)*(1.-tr);
 }
+fn shadeBody(h:Hit,rd:vec3f,underwater:bool)->vec3f {
+ let light=normalize(vec3f(-.4,1.,.5));let diffuse=.18+.65*max(0.,dot(h.n,light));
+ let wet=h.p.y<U.state.y+.10;let albedo=select(vec3f(.24,.30,.32),vec3f(.085,.13,.15),wet);
+ let c=albedo*diffuse+vec3f(.035)*pow(max(0.,dot(reflect(-light,h.n),-rd)),24.);
+ return c*select(vec3f(1.),waterTransmittance(h.t),underwater);
+}
 fn shadeHit(h:Hit,rd:vec3f,underwater:bool)->vec3f {
+  if(h.material==10u){return shadeBody(h,rd,underwater);}
   if(h.t>=INF){return skyRadiance(rd);}
   return shadeMaterial(h,rd,underwater,filteredMaterial(h));
 }
 fn shadeSolid(ro:vec3f,rd:vec3f,underwater:bool)->vec3f {
-  return shadeHit(traceSolid(ro,rd,INF),rd,underwater);
+  return shadeHit(traceDynamicSolid(ro,rd,INF),rd,underwater);
 }
 fn environmentHit(h:Hit,ro:vec3f,rd:vec3f,sampleIndex:u32)->vec3f {
   if(h.material!=9u){return shadeHit(h,rd,false);}
@@ -85,10 +92,11 @@ fn reflectionSigma(radius:f32,primaryDistance:f32,receiverDistance:f32,maxSigma:
 fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->CameraLayers {
   let base=trace(ro,rd,INF);
   if(base.t>=INF){return CameraLayers(skyRadiance(rd),vec3f(0),vec4f(0));}
+  if(base.material==10u){return CameraLayers(shadeBody(base,rd,false),vec3f(0),vec4f(0));}
   if(base.material==9u){
     let reflected=reflect(rd,base.n);let transmitted=refract(rd,base.n,1./1.333);
     let f=fresnel(-dot(rd,base.n),1.,1.333);let tr=exp(-.004*base.t);
-    let receiver=traceSolid(base.p+reflected*EPS*3.,reflected,INF);
+    let receiver=traceDynamicSolid(base.p+reflected*EPS*3.,reflected,INF);
     let a=shadeHit(receiver,reflected,false)*f*tr;
     let b=shadeSolid(base.p+transmitted*EPS*3.,transmitted,true)*(1.-f)*tr/(1.333*1.333);
     let radius=U.lighting.y*(.65+.35*(1.-abs(rd.y)));

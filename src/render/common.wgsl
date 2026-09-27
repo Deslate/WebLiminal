@@ -17,6 +17,7 @@ struct Uniforms {
   lighting: vec4f, // x: live wake height bound; y: reflection roughness; z: quality
   live: vec4u, // sun grid width, sky grid width/height, diffuse probe count
   wakes: array<vec4f,12>, // x, z, birth phase, displacement amplitude
+  body:vec4f, // actor x,z,radius,height; zero radius disables it
 };
 struct Shape { lo: vec4f, hi: vec4f, info: vec4u, params: vec4f };
 struct Surface { info: vec4u, metric: vec4f };
@@ -38,7 +39,7 @@ fn fresnel(cosIn:f32,etaI:f32,etaT:f32)->f32 {let c=clamp(abs(cosIn),0.,1.);let 
 // Runtime simulation storage, shared verbatim by camera and photon paths.
 @group(0) @binding(9) var<storage,read> waveField:array<vec4f>;
 fn wave(p:vec2f)->vec3f {
- if(U.state.z==0.){return vec3f(U.state.y,0.,0.);}
+ if(U.state.z==0. && U.body.z==0.){return vec3f(U.state.y,0.,0.);}
  let q=clamp((p-vec2f(-7.,-17.))*32.-.5,vec2f(0.),vec2f(447.,863.));
  let base=vec2u(floor(q));let t=fract(q);let offset=(base.y*448u+base.x)*4u;
  let a=waveField[offset];let b=waveField[offset+1u];let c=waveField[offset+2u];let d=waveField[offset+3u];
@@ -119,7 +120,20 @@ fn traceWater(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
   if(t>EPS&&t<maxT&&p.x>-7.&&p.x<7.&&p.z>-17.&&p.z<10.){h=Hit(t,p,normalize(vec3f(-w.y,1.,-w.z)),vec2f(0),0u,9u);}
   return h;
 }
-fn trace(ro:vec3f,rd:vec3f,maxT:f32)->Hit {var h=traceSolid(ro,rd,maxT);let w=traceWater(ro,rd,h.t);if(w.t<h.t){h=w;}return h;}
+// Visible simplified immersed body. Kept out of static baked receiver tables.
+fn traceBody(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
+ var h=emptyHit();h.t=maxT;if(U.body.z<=0.){return h;}
+ let o=ro.xz-U.body.xy;let a=dot(rd.xz,rd.xz);let b=dot(o,rd.xz);let c=dot(o,o)-U.body.z*U.body.z;
+ let disc=b*b-a*c;
+ if(disc>=0. && a>.000001){for(var k=0;k<2;k++){
+  let t=(-b+select(-sqrt(disc),sqrt(disc),k==1))/a;let p=ro+t*rd;
+  if(t>EPS && t<h.t && p.y>=.015 && p.y<=U.body.w){h=Hit(t,p,normalize(vec3f(p.x-U.body.x,0,p.z-U.body.y)),vec2f(0),0u,10u);}
+ }}
+ if(abs(rd.y)>.000001){for(var k=0;k<2;k++){let y=select(.015,U.body.w,k==1);let t=(y-ro.y)/rd.y;let p=ro+t*rd;if(t>EPS&&t<h.t&&distance(p.xz,U.body.xy)<U.body.z){h=Hit(t,p,vec3f(0,select(-1.,1.,k==1),0),vec2f(0),0u,10u);}}}
+ return h;
+}
+fn traceDynamicSolid(ro:vec3f,rd:vec3f,maxT:f32)->Hit {let h=traceSolid(ro,rd,maxT);let b=traceBody(ro,rd,h.t);if(b.material==10u){return b;}return h;}
+fn trace(ro:vec3f,rd:vec3f,maxT:f32)->Hit {var h=traceDynamicSolid(ro,rd,maxT);let w=traceWater(ro,rd,h.t);if(w.t<h.t){h=w;}return h;}
 fn waterTransmittance(distance:f32)->vec3f{return exp(-vec3f(.34,.075,.037)*distance);}
 fn skyRadiance(d:vec3f)->vec3f {return mix(vec3f(.68,.80,.97),vec3f(.31,.52,.88),pow(max(d.y,0.),.45))*.62;}
 fn sunDirection()->vec3f{return normalize(vec3f(-.66,.69,.295));}

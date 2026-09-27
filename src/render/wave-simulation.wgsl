@@ -2,7 +2,7 @@
 // eta_tt = div(g (depth+eta) grad eta)
 //          - (sigma/rho) div(depth grad Laplacian eta)
 //          - damping eta_t + viscosity Laplacian eta_t + local pressure.
-struct SimParams { clock:vec4f, settings:vec4f, sources:array<vec4f,24>, shapes:array<vec4f,24> };
+struct SimParams { clock:vec4f, settings:vec4f, sources:array<vec4f,24>, shapes:array<vec4f,24>, body:vec4f, reserved:vec4f };
 @group(0) @binding(0) var<uniform> P:SimParams;
 @group(0) @binding(1) var<storage,read> previous:array<vec2f>;
 @group(0) @binding(2) var<storage,read_write> next:array<vec2f>;
@@ -61,21 +61,31 @@ fn rand(n:u32)->f32{return f32(hashSim(n^7819301u))/4294967296.;}
  }}
  next[i]=select(vec2f(0.),vec2f(h,v),depth[i]>0.);
 }
+// Immersed displacement potential. A stationary body maintains a smooth
+// meniscus; translating the same potential drives the state, not drawn rings.
+fn bodyDisplacement(world:vec2f)->f32 {
+ if(P.body.w<=0.){return 0.;}
+ let r2=dot(world-P.body.xy,world-P.body.xy)/(P.body.z*P.body.z);
+ return P.body.w*exp(-r2*.5);
+}
 @compute @workgroup_size(128) fn step(@builtin(global_invocation_id) id:vec3u){
  let i=id.x;if(i>=u32(NX*NZ)){return;}if(depth[i]<=0.){next[i]=vec2f(0.);return;}
  let p=vec2i(vec2u(i%u32(NX),i/u32(NX)));let q=previous[i];let h=q.x;
+ let world=(vec2f(p)+.5)*DX+vec2f(-7.,-17.);
+ let nearBody=P.body.w>0. && distance(world,P.body.xy)<1.5;
+ var displacement=0.;if(nearBody){displacement=bodyDisplacement(world);}
  var acceleration=0.;var velocityLaplacian=0.;
  for(var j=0u;j<8u;j++){
   let w=link(p,j);if(w==0.){continue;}let k=idx(p+OFFSETS[j]);
   let d=max(.04,(depth[i]+depth[k]+h+previous[k].x)*.5);
-  acceleration+=w*9.81*d*(previous[k].x-h)/(DX*DX);
+  var bodyGradient=0.;if(nearBody){bodyGradient=bodyDisplacement(world+vec2f(OFFSETS[j])*DX)-displacement;}
+  acceleration+=w*9.81*d*(previous[k].x-h-bodyGradient)/(DX*DX);
   acceleration-=w*.000073*(depth[i]+depth[k])*.5*(curvatures[k]-curvatures[i])/(DX*DX);
   velocityLaplacian+=w*(previous[k].y-q.y)/(DX*DX);
  }
  // Scale-selective dissipation acts on physical velocity, not rendered pixels.
  // Unresolved short waves lose energy; metre-scale displacement remains sharp.
  acceleration+=.00008*velocityLaplacian;
- let world=(vec2f(p)+.5)*DX+vec2f(-7.,-17.);
  for(var j=0u;j<24u;j++){
   let s=P.sources[j];let shape=P.shapes[j];let age=P.clock.x-s.z;
   if(shape.x<=0.||age<0.||age>=shape.y){continue;}

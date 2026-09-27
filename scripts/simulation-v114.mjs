@@ -1,5 +1,5 @@
 import {chromium}from'@playwright/test';import{mkdirSync,writeFileSync}from'node:fs';import assert from'node:assert/strict';
-const out=process.env.EVIDENCE_DIR||'../workroom-v1.14-evidence/final';mkdirSync(out,{recursive:true});
+const out=process.env.EVIDENCE_DIR||'../workroom-v1.15-evidence/final';mkdirSync(out,{recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
 try{const p=await browser.newPage();await p.goto('http://127.0.0.1:4173');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs);await p.evaluate(()=>window.__POOLROOMS_V1__.configure({pause:true}));
 const result=await p.evaluate(async()=>{
