@@ -119,7 +119,7 @@ export async function createRenderer(canvas) {
   const config = {
     photonCount: 49152,
     lightBatches: 32,
-    sunGrid:384,skyGridX:256,skyGridY:512,diffuseIterations:4,
+    skyApertureMode:1, sunGrid:384,skyGridX:256,skyGridY:512,diffuseIterations:4,
     ...level.optics,
     freeze: false,
     waveTime: 1.7,
@@ -235,8 +235,8 @@ export async function createRenderer(canvas) {
     for(let i=0;i<1;i++)buffers[`fine${i}`]=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE});
     buffers.rows=device.createBuffer({size:geometry.totalCells*48,usage:GPUBufferUsage.STORAGE});
     buffers.sky=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE});
-    buffers.combined=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE});
-    buffers.liveFlux=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+    buffers.combined=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+    buffers.liveFlux=device.createBuffer({size:geometry.totalCells*24,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
     buffers.liveField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.flatField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.probeSurface=buffer("diffuse probe surfaces",geometry.probeSurfaces);
@@ -273,7 +273,7 @@ export async function createRenderer(canvas) {
       wasDepth = config.apertureDepth;
     Object.assign(config, patch);
     autoStatic=false;quality=0;lastRenderTime=null;liveFrames=0;
-    config.sunGrid=Math.max(128,Math.min(768,Math.round(config.sunGrid/8)*8));
+    config.sunGrid=config.sunGrid===0?0:Math.max(128,Math.min(768,Math.round(config.sunGrid/8)*8));
     config.diffuseIterations=Math.max(2,Math.min(8,Math.round(config.diffuseIterations/2)*2));
     config.lightBatches=Math.max(16,Math.min(256,Math.round(config.lightBatches)));
     config.photonCount=Math.max(32768,Math.min(262144,Math.round(config.photonCount/512)*512));
@@ -357,7 +357,7 @@ export async function createRenderer(canvas) {
         [geometry.totalCells, geometry.surfaceCount, sceneBatches, config.seed],
         36,
       );
-      u.set([config.photonCount,0,1,0],40);
+      u.set([config.photonCount,0,1,config.skyApertureMode],40);
       u.set([config.sunGrid,config.skyGridX,config.skyGridY,geometry.probeCount],48);
       device.queue.writeBuffer(uniforms, 0, data);
       device.queue.writeBuffer(
@@ -489,7 +489,7 @@ export async function createRenderer(canvas) {
     const receivers={};
     for(const sid of options.receivers||[]){
       const u=new Uint32Array(geometry.surfaces),o=sid*8,nx=u[o+1],ny=u[o+2],size=nx*ny*16;
-      const rb=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const e=device.createCommandEncoder();e.copyBufferToBuffer(buffers.liveField,u[o]*16,rb,0,size);device.queue.submit([e.finish()]);await rb.mapAsync(GPUMapMode.READ);receivers[sid]={nx,ny,irradiance:Array.from(new Float32Array(rb.getMappedRange()))};rb.unmap();rb.destroy();
+      const rb=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const e=device.createCommandEncoder();e.copyBufferToBuffer(options.combined?buffers.combined:buffers.liveField,u[o]*16,rb,0,size);device.queue.submit([e.finish()]);await rb.mapAsync(GPUMapMode.READ);receivers[sid]={nx,ny,irradiance:Array.from(new Float32Array(rb.getMappedRange()))};rb.unmap();rb.destroy();
     }
     return {
       simulation: options.simulation ? await simulation.audit() : simulation.info,

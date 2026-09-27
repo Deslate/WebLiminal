@@ -1,20 +1,33 @@
 // Current-time finite quadrature of incident flux on the actual water surface.
 // No stochastic branches, light keyframes or temporal filtering.
-@group(0) @binding(3) var<storage,read_write> liveFlux:array<Flux>;
+// Two u32 limbs per channel: portable exact carry, no dark-flux truncation.
+struct WaterFlux { rlo:atomic<u32>, rhi:atomic<u32>, glo:atomic<u32>, ghi:atomic<u32>, blo:atomic<u32>, bhi:atomic<u32> };
+@group(0) @binding(3) var<storage,read_write> liveFlux:array<WaterFlux>;
 @group(0) @binding(4) var<storage,read_write> liveField:array<vec4f>;
 @group(0) @binding(5) var<storage,read> cellSurface:array<u32>;
 @group(0) @binding(6) var<storage,read_write> opticalPaths:array<vec4f>;
 @group(0) @binding(7) var<storage,read_write> liveCounters:array<atomic<u32>>;
 @group(0) @binding(8) var<storage,read_write> liveRows:array<vec4f>;
 var<workgroup> packetCounts:array<atomic<u32>,5>;
-const FLUX_SCALE:f32=16777216.;
+fn fluxScale()->f32 {return select(1099511627776.,16777216.,U.sampling.w==0u);}
+fn addFlux(j:u32,v:vec3f){
+ let upper=vec3u(floor(v/4294967296.));let lower=vec3u(v-vec3f(upper)*4294967296.);
+ let r=atomicAdd(&liveFlux[j].rlo,lower.r);atomicAdd(&liveFlux[j].rhi,upper.r+select(0u,1u,r>0xffffffffu-lower.r));
+ let g=atomicAdd(&liveFlux[j].glo,lower.g);atomicAdd(&liveFlux[j].ghi,upper.g+select(0u,1u,g>0xffffffffu-lower.g));
+ let b=atomicAdd(&liveFlux[j].blo,lower.b);atomicAdd(&liveFlux[j].bhi,upper.b+select(0u,1u,b>0xffffffffu-lower.b));
+}
+fn readFlux(j:u32)->vec3f {
+ let low=vec3f(f32(atomicLoad(&liveFlux[j].rlo)),f32(atomicLoad(&liveFlux[j].glo)),f32(atomicLoad(&liveFlux[j].blo)));
+ let high=vec3f(f32(atomicLoad(&liveFlux[j].rhi)),f32(atomicLoad(&liveFlux[j].ghi)),f32(atomicLoad(&liveFlux[j].bhi)));
+ return high*4294967296.+low;
+}
 fn receive(h:Hit,power:vec3f) {
   if(h.t>=INF){return;}
   let s=surfaces[h.sid];let p=h.uv*vec2f(s.info.yz)-.5;let base=vec2i(floor(p));let f=fract(p);
   for(var y=0;y<2;y++){for(var x=0;x<2;x++){
     let q=clamp(base+vec2i(x,y),vec2i(0),vec2i(s.info.yz)-1);let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);
-    let w=select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1);let v=vec3u(max(power,vec3f(0))*w*FLUX_SCALE);
-    atomicAdd(&liveFlux[j].r,v.r);atomicAdd(&liveFlux[j].g,v.g);atomicAdd(&liveFlux[j].b,v.b);
+    let w=select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1);let v=max(power,vec3f(0))*w*fluxScale();
+    addFlux(j,v);
   }}
   atomicAdd(&packetCounts[2],1u);atomicAdd(&packetCounts[3],1u);
   if(h.p.y>U.state.y+.1){atomicAdd(&packetCounts[4],1u);}
@@ -46,8 +59,11 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
   if(i<nSun*nSun){
     // Sample the projected aperture footprint in horizontal water coordinates.
     // A margin encloses its displacement over the entire wave envelope.
-    let l=sunDirection();let shift=-l.xz/l.y*(6.101-U.state.y);let margin=max(vec2f(.12),(U.state.z*1.07+U.lighting.x)*abs(l.xz/l.y)+.005);let lo=U.opening.xz+shift-margin;let hi=U.opening.yw+shift+margin;
+    let central=sunDirection();let shift=-central.xz/central.y*(6.101-U.state.y);let margin=max(vec2f(.12),(U.state.z*1.07+U.lighting.x)*abs(central.xz/central.y)+select(.005,.07,(U.sampling.w==1u||U.sampling.w==2u)));let lo=U.opening.xz+shift-margin;let hi=U.opening.yw+shift+margin;
     let q=(vec2f(f32(i%nSun),f32(i/nSun))+.5)/f32(nSun);let xz=mix(lo,hi,q);
+    let disc=fract(vec2f(f32(i%nSun)*.754877666+f32(i/nSun)*.569840296,f32(i%nSun)*.438579021+f32(i/nSun)*.819172513));
+    let radius=select(0.,.00465,(U.sampling.w==1u||U.sampling.w==2u))*sqrt(disc.x);let angle=2.*PI*disc.y;
+    let l=normalize(central+basis(central)*vec3f(radius*cos(angle),radius*sin(angle),0.));
     if(xz.x>-7.&&xz.x<7.&&xz.y>-17.&&xz.y<10.){
       let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
       let distance=(6.102-p.y)/l.y;let hit=traceDynamicSolid(p+l*EPS*2.,l,distance);
@@ -64,11 +80,16 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
     let xz=mix(vec2f(-7,-17),vec2f(7,10),(vec2f(f32(i%nx),f32(i/nx))+.5)/vec2f(f32(nx),f32(ny)));
     let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
     let waterArea=14.*27./f32(nx*ny);let lightArea=(U.opening.y-U.opening.x)*(U.opening.w-U.opening.z);
-    for(var k=0u;k<4u;k++){
-      let uv=vec2f(.25+f32(k%2u)*.5,.25+f32(k/2u)*.5);
+    let apertureN=select(2u,8u,U.sampling.w==2u);
+    for(var k=0u;k<apertureN*apertureN;k++){
+      // A fixed, spatially distributed area quadrature. Every local patch
+      // samples the whole aperture; never four replicated point lights.
+      // No frame/time dependent scrambling.
+      let shift=fract(vec2f(f32(i%nx)*.754877666+f32(i/nx)*.569840296, f32(i%nx)*.438579021+f32(i/nx)*.819172513));
+      let uv=(vec2f(f32(k%apertureN),f32(k/apertureN))+select(vec2f(.5),shift,U.sampling.w==1u))/f32(apertureN);
       let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),6.102,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
       if(dot(n,l)>0. && traceDynamicSolid(p+l*EPS*2.,l,d).t>=d-.005){
-        let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(4.*d*d)*exp(-.004*d);
+        let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(f32(apertureN*apertureN)*d*d)*exp(-.004*d);
         waterPacket(p,n,l,power,99999u);
       }
       atomicAdd(&packetCounts[0],1u);
@@ -85,7 +106,7 @@ fn waterHorizontal(@builtin(global_invocation_id) gid:vec3u) {
   for(var x=-3;x<=3;x++){if(abs(x)>radius){continue;}
     let q=xy+vec2i(x,0);if(q.x<0||q.x>=i32(s.info.y)){continue;}
     let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);let w=f32(radius+1-abs(x));let coverage=f32(cellSurface[j]>>16u)*.25;
-    sum+=vec3f(f32(atomicLoad(&liveFlux[j].r)),f32(atomicLoad(&liveFlux[j].g)),f32(atomicLoad(&liveFlux[j].b)))*w;weight+=coverage*w;
+    sum+=readFlux(j)*w;weight+=coverage*w;
   }
   liveRows[idx]=vec4f(sum,weight);
 }
@@ -98,5 +119,5 @@ fn waterResolve(@builtin(global_invocation_id) gid:vec3u) {
     let q=xy+vec2i(0,y);if(q.y<0||q.y>=i32(s.info.z)){continue;}
     let j=s.info.x+u32(q.y)*s.info.y+u32(q.x);let w=f32(radius+1-abs(y));let v=liveRows[j];sum+=v.rgb*w;weight+=v.a*w;
   }
-  let e=sum/(max(weight,1.)*FLUX_SCALE*s.metric.z);liveField[idx]=vec4f(e,dot(e,vec3f(.2126,.7152,.0722)));
+  let e=sum/(max(weight,1.)*fluxScale()*s.metric.z);liveField[idx]=vec4f(e,dot(e,vec3f(.2126,.7152,.0722)));
 }
