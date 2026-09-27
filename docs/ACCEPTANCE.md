@@ -1,3 +1,5 @@
+v1.29 性能隔离复核通过30fps，保留v1.27全部波谱与画面；同条件数据和环境边界见 [ACCEPTANCE-v1.29.md](ACCEPTANCE-v1.29.md)。
+
 v1.27 规则波列整改候选及未达项见 [ACCEPTANCE-v1.27.md](ACCEPTANCE-v1.27.md)。性能和严格时间变化上界尚未全部通过。
 
 当前 v1.26 短波档位、慢演化与安静度取舍见 [ACCEPTANCE-v1.26.md](ACCEPTANCE-v1.26.md)。
