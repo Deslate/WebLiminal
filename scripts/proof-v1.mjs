@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { auditOptics } from "./optical-audit.mjs";
 const output =
   process.env.EVIDENCE_DIR ||
-  "/Users/steven/Projects/workroom-v1.12-evidence/final/proof";
+  "/Users/steven/Projects/workroom-v1.13-evidence/final/proof";
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
@@ -61,7 +61,7 @@ try {
     const snapshot = await page.evaluate(() =>
       window.__POOLROOMS_V1__.snapshot(),
     );
-    const raw = await page.evaluate(() => window.__POOLROOMS_V1__.audit());
+    const raw = await page.evaluate(() => window.__POOLROOMS_V1__.audit({simulation:true}));
     const optics = auditOptics(raw);
     delete raw.paths;
     assert.equal(snapshot.runId, runId);

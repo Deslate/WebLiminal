@@ -1,3 +1,4 @@
+import { createWaveSimulation } from "./wave-simulation.js";
 import common from "./common.wgsl?raw";
 import photonPorcelain from "../../materials/photon-porcelain.wgsl?raw";
 import porcelain from "../../materials/porcelain.wgsl?raw";
@@ -33,6 +34,7 @@ export async function createRenderer(canvas) {
     errors.push(e.error.message);
     console.error(e.error.message);
   });
+  const simulation = await createWaveSimulation(device);
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque" });
@@ -178,12 +180,12 @@ export async function createRenderer(canvas) {
         ...shared,
         [3, buffers.flux],
         [4, counters],
-        [5, pathAudit],
+        [5, pathAudit],[9,simulation.field],
       ]),
       null,
       bindings(pipelines[2], [
         ...shared,
-        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],
+        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field],
       ]),
       bindings(pipelines[3], [
         [0, imageBuffer],
@@ -195,7 +197,7 @@ export async function createRenderer(canvas) {
     resolveGroups=[0].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface],[6,buffers[`fine${i}`]],[7,buffers.rows]]));
     horizontalGroup=bindings(pipelines[5],[[0,uniforms],[2,buffers.surfaces],[3,buffers.flux],[5,buffers.cellSurface],[7,buffers.rows]]);
     skyGroup=bindings(pipelines[4],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.cellSurface],[4,buffers.sky]]);
-    liveEmitGroup=bindings(pipelines[6],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.liveFlux],[6,pathAudit],[7,counters]]);
+    liveEmitGroup=bindings(pipelines[6],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.liveFlux],[6,pathAudit],[7,counters],[9,simulation.field]]);
     liveHorizontalGroup=bindings(pipelines[7],[[0,uniforms],[2,buffers.surfaces],[3,buffers.liveFlux],[5,buffers.cellSurface],[8,buffers.rows]]);
     liveResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.liveField],[5,buffers.cellSurface],[8,buffers.rows]]);
     flatResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.flatField],[5,buffers.cellSurface],[8,buffers.rows]]);
@@ -207,6 +209,7 @@ export async function createRenderer(canvas) {
   function rebuild() {
     for (const b of Object.values(buffers)) b.destroy();
     geometry = makeGeometry(config.apertureWidth, config.apertureDepth);
+    simulation.reset(config,geometry);
     buffers.geometry = buffer("analytic scene geometry", geometry.geometryData);
     buffers.surfaces = buffer(
       "surface density grid descriptors",
@@ -264,7 +267,8 @@ export async function createRenderer(canvas) {
   resize(1512, 982, 0.63);
   let autoStatic=false;
   function configure(patch) {
-    wakes=(patch.wakes||[]).slice(-12);
+    if(patch.wakes?.length)throw Error('Analytic wake lists are obsolete: replay physical pressure sources in time order.');
+    wakes=[];
     const wasWidth = config.apertureWidth,
       wasDepth = config.apertureDepth;
     Object.assign(config, patch);
@@ -282,6 +286,7 @@ export async function createRenderer(canvas) {
     config.apertureDepth = Math.max(0.5, Math.min(9, config.apertureDepth));
     if (wasWidth !== config.apertureWidth || wasDepth !== config.apertureDepth)
       rebuild();
+    simulation.reset(config,geometry);
     sceneBatches = 0;
     history = 0;
   }
@@ -293,6 +298,9 @@ export async function createRenderer(canvas) {
       quality=Math.max(0,Math.min(1,quality+(moving?-dt/.35:dt/.8)));
       const costStart=performance.now();
       elapsed = time;
+      simulation.advance(time);
+      if(config.profile)await device.queue.onSubmittedWorkDone();
+      const simulationDone=performance.now();
       // Camera motion never selects a stochastic mode or pauses water.
       autoStatic=true;
       const staticExposure=true;
@@ -322,8 +330,7 @@ export async function createRenderer(canvas) {
         16,
       );
       lastWaveTime = config.waveTime + (config.freeze ? 0 : time);
-      const smooth=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
-      const wakeEnvelope=wakes.reduce((sum,w)=>{const age=lastWaveTime-w.time-config.waveTime;return sum+(age>0&&age<4.5?Math.abs(w.amplitude)*smooth(0,.16,age)*(1-smooth(3.4,4.5,age))*Math.exp(-.6*age):0);},0);
+      const wakeEnvelope=.16; // conservative simulated-height root bracket, not a clamp
       f.set(
         [
           lastWaveTime,
@@ -431,7 +438,7 @@ export async function createRenderer(canvas) {
       draw.end();
       device.queue.submit([encoder.finish()]);
       await device.queue.onSubmittedWorkDone();
-      if(config.profile)frameCost={lighting:lightingDone-costStart,camera:performance.now()-lightingDone};
+      if(config.profile)frameCost={simulation:simulationDone-costStart,lighting:lightingDone-simulationDone,camera:performance.now()-lightingDone};
       return true;
     } finally {
       activeJobs--;
@@ -484,6 +491,7 @@ export async function createRenderer(canvas) {
       const rb=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const e=device.createCommandEncoder();e.copyBufferToBuffer(buffers.liveField,u[o]*16,rb,0,size);device.queue.submit([e.finish()]);await rb.mapAsync(GPUMapMode.READ);receivers[sid]={nx,ny,irradiance:Array.from(new Float32Array(rb.getMappedRange()))};rb.unmap();rb.destroy();
     }
     return {
+      simulation: options.simulation ? await simulation.audit() : simulation.info,
       receivers,
       floor,
       paths,
@@ -511,7 +519,7 @@ export async function createRenderer(canvas) {
   }
   return {
     render,
-    addWake(w){wakes.push(w);wakes=wakes.slice(-12);},
+    addWake(w){simulation.addWake(w);wakes.push(w);wakes=wakes.slice(-12);},
     get wakes(){return wakes.map(w=>({...w}));},
     configure,
     resize,
@@ -533,7 +541,7 @@ export async function createRenderer(canvas) {
     },
     get autoStatic() { return autoStatic; },
     get lightingBatches() { return sceneBatches; },
-    get dynamics() {return {frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:64,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:config.sunGrid**2,skyPackets:config.skyGridX*config.skyGridY*4,diffuseLinks:geometry.probeCount*64,diffuseIterations:config.diffuseIterations};},
+    get dynamics() {return {simulation:simulation.info,frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:64,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:config.sunGrid**2,skyPackets:config.skyGridX*config.skyGridY*4,diffuseLinks:geometry.probeCount*64,diffuseIterations:config.diffuseIterations};},
     get busy() {
       return activeJobs > 0;
     },

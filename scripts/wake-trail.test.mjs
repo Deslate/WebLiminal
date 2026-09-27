@@ -3,4 +3,8 @@ test('turning, blocked movement and teleporting cannot generate a wake',()=>{con
 test('walking produces bounded alternating foot contacts along the resolved path',()=>{const t=createWakeTrail(),e=[];for(let i=1;i<=600;i++){const a=t.advance({x:(i-1)/60,z:0},{x:i/60,z:0},i/60,.42);if(a)e.push(a)}assert(e.length>=18&&e.length<=21);for(let i=1;i<e.length;i++){assert(e[i].time-e[i-1].time>=.4);assert(e[i].x>e[i-1].x);assert(e[i].z*e[i-1].z<0)}});
 test('dry floor creates no disturbances',()=>{const t=createWakeTrail();for(let i=1;i<100;i++)assert.equal(t.advance({x:(i-1)/60,z:0},{x:i/60,z:0},i/60,0),null)});
 import {wave} from './optical-audit.mjs';
-test('wave normals agree with finite differences through random-field modulation and wake interference',()=>{const c={waveTime:12.81,waterLevel:.42,waveAmplitude:.052,wakes:[{x:1.2,z:-.6,time:11.5,amplitude:.007},{x:1.8,z:-.1,time:12.2,amplitude:.007}]};for(let i=0;i<100;i++){let p=[i*.043-1.5,Math.sin(i*.317)*2],w=wave(p,c);for(let j=0;j<2;j++){let a=[...p],b=[...p];a[j]-=.00001;b[j]+=.00001;let fd=(wave(b,c).h-wave(a,c).h)/.00002;assert(Math.abs(fd+w.n[j===0?0:2]/w.n[1])<1e-5)}}});
+test('simulated-field bicubic slopes agree with independent height differences',()=>{
+ const nx=24,nz=20,dx=1/32,values=new Float32Array(nx*nz*4);for(let j=0;j<nz;j++)for(let i=0;i<nx;i++)values[(j*nx+i)*4]=.01*Math.sin(i*.71+j*.37)+.003*Math.cos(i*.19-j*.4);
+ const c={waterLevel:.42,simulation:{grid:{nx,nz,dx},values}};
+ for(let i=0;i<100;i++){const p=[-7+(3.1+i*.12)*dx,-17+(3.2+i*.1)*dx],w=wave(p,c);for(let j=0;j<2;j++){let a=[...p],b=[...p];a[j]-=1e-6;b[j]+=1e-6;const fd=(wave(b,c).h-wave(a,c).h)/2e-6;assert(Math.abs(fd+w.n[j===0?0:2]/w.n[1])<1e-6);}}
+});

@@ -35,47 +35,16 @@ fn fbm(p:vec2f)->f32{return noise(p)*.55+noise(p*2.071+17.3)*.27+noise(p*4.317-8
 fn basis(n:vec3f)->mat3x3f {let a=select(vec3f(0,1,0),vec3f(1,0,0),abs(n.y)>.9);let t=normalize(cross(a,n));return mat3x3f(t,cross(n,t),n);}
 fn cosineDirection(n:vec3f,seed:ptr<function,u32>)->vec3f {let r=sqrt(rnd(seed));let a=2.*PI*rnd(seed);return basis(n)*vec3f(r*cos(a),r*sin(a),sqrt(max(0.,1.-r*r)));}
 fn fresnel(cosIn:f32,etaI:f32,etaT:f32)->f32 {let c=clamp(abs(cosIn),0.,1.);let sinT=etaI/etaT*sqrt(max(0.,1.-c*c));if(sinT>=1.){return 1.;}let ct=sqrt(1.-sinT*sinT);let rp=(etaT*c-etaI*ct)/(etaT*c+etaI*ct);let rs=(etaI*c-etaT*ct)/(etaI*c+etaT*ct);return .5*(rp*rp+rs*rs);}
-// Quintic world-space random field with an analytic gradient. Its advected
-// coordinates never wrap, and value/first/second derivatives meet at cells.
-fn waveNoise(p:vec2f)->vec3f {
- let b=floor(p);let t=fract(p);let f=t*t*t*(t*(t*6.-15.)+10.);
- let df=30.*t*t*(t-1.)*(t-1.);
- let a=hash2(b);let c=hash2(b+vec2f(1,0));let d=hash2(b+vec2f(0,1));let e=hash2(b+vec2f(1));
- return vec3f(mix(mix(a,c,f.x),mix(d,e,f.x),f.y),mix(c-a,e-d,f.y)*df.x,mix(d-a,e-c,f.x)*df.y);
-}
+// Runtime simulation storage, shared verbatim by camera and photon paths.
+@group(0) @binding(9) var<storage,read> waveField:array<vec4f>;
 fn wave(p:vec2f)->vec3f {
- var h=0.;var grad=vec2f(0.);
- let a=waveNoise(p*.71+vec2f(.023,-.017)*U.state.x);
- let b=waveNoise(p*1.37+vec2f(-.031,.013)*U.state.x+vec2f(17.3,-9.1));
- let ga=a.yz*.71;let gb=b.yz*1.37;
- let envelope=.45+.55*a.x;let envelopeGradient=.55*ga;
- let dirs=array<vec2f,10>(vec2f(.91,.41),vec2f(-.38,.925),vec2f(.71,-.704),vec2f(-.97,-.24),vec2f(.18,.984),vec2f(.839,.544),vec2f(-.61,.792),vec2f(.994,-.108),vec2f(.39,-.921),vec2f(-.84,-.542));
- let ks=array<f32,10>(1.17,2.03,3.19,5.37,8.71,13.43,19.7,27.1,35.3,43.7);
- let amps=array<f32,10>(.28,.25,.12,.07,.043,.023,.07,.05,.034,.024);
- let rates=array<f32,10>(.19,.23,.17,.26,.31,.28,.4,.43,.37,.46);
- for(var i=0u;i<10u;i++){
-  let k=ks[i];let modulation=vec2f(dirs[(i+3u)%10u].x,dirs[(i+7u)%10u].y)*(2.7+k*.24);
-  let ph=dot(p,dirs[i])*k+sqrt(9.81*k)*rates[i]*U.state.x+f32(i*i)*1.719+dot(modulation,vec2f(a.x,b.x)-.5);
-  let dp=dirs[i]*k+modulation.x*ga+modulation.y*gb;
-  let amplitude=amps[i]*U.state.z;
-  h+=amplitude*envelope*sin(ph);
-  grad+=amplitude*(envelope*cos(ph)*dp+envelopeGradient*sin(ph));
- }
- // Analytic dispersing wave packets from real foot contacts. Both the height
- // and its exact slope enter all camera and light paths, never a surface decal.
- for(var i=0u;i<12u;i++){
-  let source=U.wakes[i];let age=U.state.x-source.z;
-  if(source.w<=0.||age<=0.||age>=4.5){continue;}
-  let delta=p-source.xy;let r=sqrt(dot(delta,delta)+.0025);
-  let front=r-.85*age;let width=.13+.065*age;
-  if(abs(front)>width*3.5){continue;}
-  let fade=smoothstep(0.,.16,age)*(1.-smoothstep(3.4,4.5,age))*exp(-.6*age);
-  let packet=source.w*fade*exp(-front*front/(width*width));
-  let phase=front*(24.-1.4*age);
-  h+=packet*cos(phase);
-  grad+=packet*(-2.*front/(width*width)*cos(phase)-(24.-1.4*age)*sin(phase))*delta/r;
- }
- return vec3f(U.state.y+h,grad);
+ if(U.state.z==0.){return vec3f(U.state.y,0.,0.);}
+ let q=clamp((p-vec2f(-7.,-17.))*32.-.5,vec2f(0.),vec2f(447.,863.));
+ let base=vec2u(floor(q));let t=fract(q);let offset=(base.y*448u+base.x)*4u;
+ let a=waveField[offset];let b=waveField[offset+1u];let c=waveField[offset+2u];let d=waveField[offset+3u];
+ let x=vec4f(1.,t.x,t.x*t.x,t.x*t.x*t.x);let dx=vec4f(0.,1.,2.*t.x,3.*t.x*t.x);
+ let row=((d*t.y+c)*t.y+b)*t.y+a;
+ return vec3f(U.state.y+dot(row,x),32.*dot(row,dx),32.*dot((3.*d*t.y+2.*c)*t.y+b,x));
 }
 fn emptyHit()->Hit {return Hit(INF,vec3f(0),vec3f(0),vec2f(0),0u,0u);}
 fn makeHit(t:f32,ro:vec3f,rd:vec3f,n:vec3f,s:Shape,face:u32)->Hit {

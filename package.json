@@ -1,7 +1,7 @@
 {
   "name": "poolrooms-v1",
   "private": true,
-  "version": "0.1.12",
+  "version": "0.1.13",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -13,10 +13,10 @@
     "proof": "node scripts/proof-v1.mjs",
     "verify:motion": "node scripts/verify-v110.mjs",
     "verify:frames": "node scripts/verify-v110.mjs",
-    "verify:analyze": "python scripts/analyze-v17.py ../workroom-v1.12-evidence/final/synchrony",
+    "verify:analyze": "python scripts/analyze-v17.py ../workroom-v1.13-evidence/final/synchrony",
     "verify:reference": "node scripts/reference-v13.mjs",
     "verify:near": "node scripts/capture-v110.mjs",
-    "verify:record": "node scripts/record-v112.mjs",
+    "verify:record": "node scripts/record-v113.mjs",
     "verify:deadlines": "node scripts/verify-v110.mjs",
     "verify:reflection": "node scripts/capture-v16.mjs",
     "verify:reflection-performance": "node scripts/performance-reflections-v16.mjs",
@@ -27,8 +27,8 @@
     "verify:floor": "node scripts/capture-v111.mjs",
     "verify:floor-motion": "node scripts/sequence-v111.mjs",
     "verify:floor-performance": "node scripts/performance-v111.mjs",
-    "verify:wakes": "node scripts/verify-wakes-v112.mjs",
-    "verify:wake-coupling": "node scripts/capture-v112.mjs",
+    "verify:wakes": "node scripts/simulation-v113.mjs",
+    "verify:wake-coupling": "node scripts/coupling-v113.mjs",
     "verify:wake-performance": "node scripts/performance-v112.mjs"
   },
   "devDependencies": {
