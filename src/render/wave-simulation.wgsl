@@ -61,25 +61,15 @@ fn rand(n:u32)->f32{return f32(hashSim(n^7819301u))/4294967296.;}
  }}
  next[i]=select(vec2f(0.),vec2f(h,v),depth[i]>0.);
 }
-// Immersed displacement potential. A stationary body maintains a smooth
-// meniscus; translating the same potential drives the state, not drawn rings.
-fn bodyDisplacement(world:vec2f)->f32 {
- if(P.body.w<=0.){return 0.;}
- let r2=dot(world-P.body.xy,world-P.body.xy)/(P.body.z*P.body.z);
- return P.body.w*exp(-r2*.5);
-}
 @compute @workgroup_size(128) fn step(@builtin(global_invocation_id) id:vec3u){
  let i=id.x;if(i>=u32(NX*NZ)){return;}if(depth[i]<=0.){next[i]=vec2f(0.);return;}
  let p=vec2i(vec2u(i%u32(NX),i/u32(NX)));let q=previous[i];let h=q.x;
  let world=(vec2f(p)+.5)*DX+vec2f(-7.,-17.);
- let nearBody=P.body.w>0. && distance(world,P.body.xy)<1.5;
- var displacement=0.;if(nearBody){displacement=bodyDisplacement(world);}
  var acceleration=0.;var velocityLaplacian=0.;
  for(var j=0u;j<8u;j++){
   let w=link(p,j);if(w==0.){continue;}let k=idx(p+OFFSETS[j]);
   let d=max(.04,(depth[i]+depth[k]+h+previous[k].x)*.5);
-  var bodyGradient=0.;if(nearBody){bodyGradient=bodyDisplacement(world+vec2f(OFFSETS[j])*DX)-displacement;}
-  acceleration+=w*9.81*d*(previous[k].x-h-bodyGradient)/(DX*DX);
+  acceleration+=w*9.81*d*(previous[k].x-h)/(DX*DX);
   acceleration-=w*.000073*(depth[i]+depth[k])*.5*(curvatures[k]-curvatures[i])/(DX*DX);
   velocityLaplacian+=w*(previous[k].y-q.y)/(DX*DX);
  }
@@ -98,11 +88,23 @@ fn bodyDisplacement(world:vec2f)->f32 {
  let v=(q.y+P.clock.y*acceleration)*exp(-P.clock.y*.055);
  next[i]=vec2f(h+P.clock.y*v,v);
 }
+@group(0) @binding(12) var<storage,read> bodyField:array<vec4f>;
+fn cubicBody(a:vec2f,b:vec2f,c:vec2f,d:vec2f,t:f32)->vec2f {
+ return b+.5*t*(c-a+t*(2.*a-5.*b+4.*c-d+t*(3.*(b-c)+d-a)));
+}
+fn bodySample(world:vec2f)->vec2f {
+ let uv=(world+vec2f(16.,32.))/.125;let p=vec2i(floor(uv));let f=fract(uv);
+ var rows:array<vec2f,4>;
+ for(var j=0;j<4;j++) {let i=u32((p.y+j-1)*256+p.x);rows[j]=cubicBody(bodyField[i-1u].xz,bodyField[i].xz,bodyField[i+1u].xz,bodyField[i+2u].xz,f.x);}
+ return cubicBody(rows[0],rows[1],rows[2],rows[3],f.y);
+}
 @compute @workgroup_size(128) fn reconstruct(@builtin(global_invocation_id) id:vec3u){
  let i=id.x;if(i>=u32(NX*NZ)){return;}
  // First-order velocity extrapolation shorter than one simulation step prevents
  // display stair steps at 60 / 59 / 30 Hz. No accumulated camera history.
- let q=previous[i];display[i]=vec4f(q.x+q.y*P.clock.z,q.y,depth[i],0.);
+ let q=previous[i];let world=(vec2f(f32(i%u32(NX)),f32(i/u32(NX)))+.5)*DX+vec2f(-7.,-17.);
+ let wake=bodySample(world)*select(0.,1.,depth[i]>0.);
+ display[i]=vec4f(q.x+q.y*P.clock.z+wake.x,q.y+wake.y,depth[i],0.);
 }
 @group(0) @binding(5) var<storage,read> reconstructed:array<vec4f>;
 @group(0) @binding(6) var<storage,read_write> coefficients:array<vec4f>;

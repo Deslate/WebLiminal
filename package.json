@@ -1,7 +1,7 @@
 {
   "name": "poolrooms-v1",
   "private": true,
-  "version": "0.1.15",
+  "version": "0.1.16",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -16,7 +16,7 @@
     "verify:analyze": "python scripts/analyze-v17.py ../workroom-v1.15-evidence/final/synchrony",
     "verify:reference": "node scripts/reference-v13.mjs",
     "verify:near": "node scripts/capture-v110.mjs",
-    "verify:record": "node scripts/record-v115.mjs",
+    "verify:record": "node scripts/record-v116.mjs",
     "verify:deadlines": "node scripts/verify-v110.mjs",
     "verify:reflection": "node scripts/capture-v16.mjs",
     "verify:reflection-performance": "node scripts/performance-reflections-v16.mjs",
@@ -29,9 +29,9 @@
     "verify:floor-performance": "node scripts/performance-v111.mjs",
     "verify:wakes": "node scripts/simulation-v114.mjs",
     "verify:wake-coupling": "node scripts/coupling-v113.mjs",
-    "verify:wake-performance": "node scripts/performance-v112.mjs",
+    "verify:wake-performance": "node scripts/performance-v116.mjs",
     "verify:spectrum": "node scripts/spectrum-v114.mjs",
-    "verify:body": "node scripts/simulation-v115.mjs",
+    "verify:body": "node scripts/simulation-v116.mjs",
     "verify:body-stop": "node scripts/stop-v115.mjs",
     "verify:body-motion": "node scripts/motion-v115.mjs",
     "verify:body-coupling": "node scripts/coupling-v115.mjs"

@@ -56,7 +56,7 @@ addEventListener("keydown", (e) => {
     else {
       const x=Math.max(ROOM.minX+.6,Math.min(ROOM.maxX-.6,view.x+(view.x>3?-2.8:2.8)));
       const z=Math.max(ROOM.minZ+.6,Math.min(ROOM.maxZ-.6,view.z+(view.z>5?-3.6:3.6)));
-      observer={x,y:2.5,z,yaw:Math.atan2(x-view.x,z-view.z),pitch:Math.atan2(.65-2.5,Math.hypot(x-view.x,z-view.z))};
+      observer={x,y:4.7,z,yaw:Math.atan2(x-view.x,z-view.z),pitch:Math.atan2(.42-4.7,Math.hypot(x-view.x,z-view.z))};
     }
   }
   if (e.code === "KeyM" && !e.repeat) sound.toggle();
@@ -111,7 +111,7 @@ async function tick(now) {
   const norm = Math.hypot(f, s);
   // Wading drag caps locomotion below this height-field model's critical wave speed.
   const immersed=renderer.config.waterLevel>view.y-1.62+.04;
-  const speed = keys.has("ShiftLeft") && !immersed ? 2.4 : 1.6;
+  const speed = immersed ? (keys.has("ShiftLeft") ? 1.6 : .8) : (keys.has("ShiftLeft") ? 2.4 : 1.6);
   const beforeMove={x:view.x,z:view.z};
   if (norm) {
     f /= norm;

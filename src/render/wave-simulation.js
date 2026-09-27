@@ -1,6 +1,8 @@
 import code from './wave-simulation.wgsl?raw';
+import {createBodyWaves} from './body-waves.js';
 export const WAVE_GRID={nx:448,nz:864,dx:1/32,dt:1/360};
 export async function createWaveSimulation(device){
+ const bodyWaves=await createBodyWaves(device);
  const {nx,nz,dx,dt}=WAVE_GRID,count=nx*nz,size=count*8;
  const module=device.createShaderModule({label:'nonlinear gravity-capillary wave field',code});
  const info=await module.getCompilationInfo();for(const m of info.messages)if(m.type==='error')throw Error(`wave simulation ${m.lineNum}: ${m.message}`);
@@ -14,14 +16,14 @@ export async function createWaveSimulation(device){
  const bind=(pipeline,entries,slot)=>device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:entries.map(([binding,buffer])=>({binding,resource:buffer===params?{buffer,offset:slot*stride,size:832}:{buffer}}))});
  const steps=state.map((_,i)=>Array.from({length:32},(_,slot)=>bind(pipelines[1],[[0,params],[1,state[i]],[2,state[1-i]],[3,depth],[8,kernels],[11,laplacian]],slot)));
  const inits=state.map(s=>bind(pipelines[0],[[0,params],[2,s],[3,depth]],0));
- const packs=state.map(s=>bind(pipelines[2],[[0,params],[1,s],[3,depth],[4,field]],31));
+ const packs=state.map(s=>bind(pipelines[2],[[0,params],[1,s],[3,depth],[4,field],[12,bodyWaves.field]],31));
  const kernelGroups=Array.from({length:32},(_,slot)=>bind(pipelines[4],[[0,params],[3,depth],[7,kernels]],slot));
  const curvatureGroups=state.map(s=>bind(pipelines[5],[[1,s],[3,depth],[10,laplacian]],0));
  const interpolation=bind(pipelines[3],[[5,field],[6,coefficients]],0);
  let body=null,previousBody=null;
  let active=0,time=0,origin=null,lastClock=null,ready=false,sources=Array(24).fill(null),contactSlot=0,ambientSlot=12,dirty=0,nextAmbient=0,seed=7819301,stepsDone=0,config={},injections=0;
  const random=()=>{seed=(seed+0x6d2b79f5)>>>0;let t=seed;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296};
- function reset(c,geometry){previousBody=null;config={...c};active=0;time=0;origin=null;lastClock=null;ready=false;sources=Array(24).fill(null);contactSlot=0;ambientSlot=12;dirty=0;nextAmbient=0;seed=c.seed;stepsDone=0;injections=0;
+ function reset(c,geometry){bodyWaves.reset(c);previousBody=null;config={...c};active=0;time=0;origin=null;lastClock=null;ready=false;sources=Array(24).fill(null);contactSlot=0;ambientSlot=12;dirty=0;nextAmbient=0;seed=c.seed;stepsDone=0;injections=0;
   const values=new Float32Array(count);for(let z=0;z<nz;z++)for(let x=0;x<nx;x++){const px=-7+(x+.5)*dx,pz=-17+(z+.5)*dx;let bottom=0;for(const s of geometry.shapes){if(s.lo[1]>c.waterLevel||s.hi[1]<=0||px<=s.lo[0]||px>=s.hi[0]||pz<=s.lo[2]||pz>=s.hi[2])continue;if(s.kind===1&&Math.abs(px-(s.lo[0]+s.hi[0])*.5)<s.radius)continue;bottom=Math.max(bottom,s.hi[1]);}values[z*nx+x]=Math.max(0,c.waterLevel-bottom);}device.queue.writeBuffer(depth,0,values);
  }
  function addWake(w){sources[contactSlot]={x:w.x,z:w.z,birth:time,radius:.13,duration:.28,angle:w.x*.71+w.z*1.3,aspect:1.6,strength:w.amplitude*400};dirty|=1<<contactSlot;contactSlot=(contactSlot+1)%12;injections++;}
@@ -39,6 +41,7 @@ export async function createWaveSimulation(device){
  const dispatch=(encoder,pipeline,group)=>{const p=encoder.beginComputePass();p.setPipeline(pipeline);p.setBindGroup(0,group);p.dispatchWorkgroups(Math.ceil(count/128));p.end();};
  function advance(clock){
   if(!config.freeze&&lastClock!==null&&clock<lastClock-1e-7)throw Error('Stateful water cannot seek backwards: reset and replay the simulation.');
+  bodyWaves.advance(config.freeze?0:clock,body);
   lastClock=clock;
   if(origin===null)origin=clock;
   const target=config.freeze?time:Math.max(time,clock-origin);
@@ -55,5 +58,5 @@ export async function createWaveSimulation(device){
   device.queue.writeBuffer(params,0,data);dispatch(encoder,pipelines[2],packs[active]);dispatch(encoder,pipelines[3],interpolation);device.queue.submit([encoder.finish()]);previousBody=body?{...body}:null;
  }
  async function audit(){await device.queue.onSubmittedWorkDone();const rb=device.createBuffer({size:count*16,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const e=device.createCommandEncoder();e.copyBufferToBuffer(field,0,rb,0,count*16);device.queue.submit([e.finish()]);await rb.mapAsync(GPUMapMode.READ);const values=Array.from(new Float32Array(rb.getMappedRange()));rb.unmap();rb.destroy();return {grid:WAVE_GRID,time,stepsDone,injections,values};}
- return {field:coefficients,reset,advance,addWake,audit,setBody(p){body=p?{...p}:null;},get info(){return {method:'nonlinear finite-difference gravity-capillary wave equation',...WAVE_GRID,time,stepsDone,injections,body,forcing:config.waveForcing!==false}}};
+ return {field:coefficients,reset,advance,addWake,audit,setBody(p){body=p?{...p}:null;},get info(){return {method:'nonlinear finite-difference gravity-capillary wave equation',...WAVE_GRID,time,stepsDone,injections,body,bodyWaves:bodyWaves.info,forcing:config.waveForcing!==false}}};
 }
