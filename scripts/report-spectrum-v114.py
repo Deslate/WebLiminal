@@ -1,0 +1,7 @@
+import json,numpy as np,sys
+from pathlib import Path
+root=Path(sys.argv[1] if len(sys.argv)>1 else '../workroom-v1.14-evidence');results={}
+for name,folder in [('before','before'),('after','final')]:
+ d=json.load(open(root/folder/'spectrum.json'));a=np.array(d['frames']).reshape(-1,64,64);f=np.fft.rfftfreq(len(a),1/30);window=np.hanning(len(a))[:,None,None];p=(abs(np.fft.rfft((a-a.mean(0))*window,axis=0))**2).sum((1,2));sp=(abs(np.fft.fftshift(np.fft.fft2((a-a.mean((1,2),keepdims=True))*np.outer(np.hanning(64),np.hanning(64))),axes=(-2,-1)))**2).mean(0);k=np.fft.fftshift(np.fft.fftfreq(64,1/32));x,z=np.meshgrid(k,k);r=np.hypot(x,z);slopePower=sum((abs(np.fft.rfft((g-g.mean(0))*window,axis=0))**2).sum((1,2)) for g in [np.diff(a,axis=1),np.diff(a,axis=2)]);results[name]={'heightRMSmm':float(np.sqrt((a*a).mean())*1000),'sampledTemporalPowerAbove5Hz':float(p[f>5].sum()/p.sum()),'sampledTemporalPowerAbove8Hz':float(p[f>8].sum()/p.sum()),'slopeTemporalPowerAbove5Hz':float(slopePower[f>5].sum()/slopePower.sum()),'slopePowerBelow25cm':float((sp*r*r)[r>4].sum()/(sp*r*r).sum())}
+results['method']='GPU height field, identical 2x2m ROI, same seed/depth/default amplitude, 0–10s at 30Hz; Hann temporal/spatial windows. Temporal data is sampled, not an assertion about frequencies above Nyquist. No camera, tiles, light or film grain. Finite-patch angular energy is not a valid bias proof; use stencil dispersion calculation separately.'
+json.dump(results,open(root/'final'/'spectral-comparison.json','w'),indent=2);print(json.dumps(results,indent=2))

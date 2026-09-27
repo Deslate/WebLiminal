@@ -1,5 +1,5 @@
 import{chromium}from'@playwright/test';import{mkdirSync,writeFileSync}from'node:fs';import assert from'node:assert/strict';import{auditOptics}from'./optical-audit.mjs';
-const out=process.env.EVIDENCE_DIR||'../workroom-v1.13-evidence/final';mkdirSync(out,{recursive:true});const browser=await chromium.launch({channel:'chrome',headless:true});
+const out=process.env.EVIDENCE_DIR||'../workroom-v1.14-evidence/final';mkdirSync(out,{recursive:true});const browser=await chromium.launch({channel:'chrome',headless:true});
 try{const p=await browser.newPage({viewport:{width:1512,height:982}});await p.goto('http://127.0.0.1:4173');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs);
 const results={};for(const inject of [false,true]){
  await p.evaluate(()=>window.__POOLROOMS_V1__.configure({pause:true,freeze:false,grain:0,scale:1280/1512,view:{x:3,y:1.62,z:1,yaw:0,pitch:-1.05}}));

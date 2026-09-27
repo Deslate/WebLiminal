@@ -1,5 +1,5 @@
 import {chromium} from '@playwright/test';import{mkdirSync,writeFileSync}from'node:fs';
-const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.13-evidence/final';
+const out=process.env.EVIDENCE_DIR||'/Users/steven/Projects/workroom-v1.14-evidence/final';
 const b=await chromium.launch({channel:'chrome',headless:true});
 try{const p=await b.newPage({viewport:{width:1512,height:982}});const errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('console',m=>{if(m.type()==='error')errors.push(m.text())});await p.goto('http://127.0.0.1:4174/poolrooms/');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs);
 for(const kind of ['inside']){mkdirSync(`${out}/${kind}-frames`,{recursive:true});await p.evaluate(()=>window.__POOLROOMS_V1__.configure({pause:true,freeze:false,grain:.004,scale:1280/1512}));const frames=[];

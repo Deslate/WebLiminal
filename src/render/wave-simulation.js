@@ -32,7 +32,7 @@ export async function createWaveSimulation(device){
     if(free<0){nextAmbient=Math.min(...sources.slice(12).map(s=>s.birth+s.duration))+dt;continue;}
     ambientSlot=free;
    }
-   const r=random();const radius=r<.22?.7+random()* .8:r<.65?.19+random()*.24:.07+random()*.07;sources[ambientSlot]={x:-6.8+random()*13.6,z:-16.8+random()*26.6,birth:nextAmbient,radius,duration:.08+radius*.7,angle:random()*6.283,aspect:.65+random()*1.2,strength:(random()<.5?-1:1)*(.26+random()*.34)/(radius*radius+.025)*(config.waveAmplitude/.052)};dirty|=1<<ambientSlot;ambientSlot=12+(ambientSlot-11)%12;nextAmbient+=.07+random()*.12;}
+   const r=random();const radius=r<.25?.75+random()*.85:r<.8?.2+random()*.3:.10+random()*.10;sources[ambientSlot]={x:-6.8+random()*13.6,z:-16.8+random()*26.6,birth:nextAmbient,radius,duration:.35+radius*.9,angle:random()*6.283,aspect:.65+random()*1.2,strength:(random()<.5?-1:1)*(.45+random()*.45)/(radius*radius+.06)*Math.min(1,(.5/radius)**2)*(config.waveAmplitude/.052)};dirty|=1<<ambientSlot;ambientSlot=12+(ambientSlot-11)%12;nextAmbient+=.07+random()*.12;}
  }
  function block(t,delta=dt,remainder=0){sourcesAt(t);const f=new Float32Array(200);f.set([t,delta,remainder,0,config.waveAmplitude,dirty,0,0]);dirty=0;sources.forEach((s,i)=>{if(!s)return;f.set([s.x,s.z,s.birth,s.strength],8+i*4);f.set([s.radius,s.duration,s.angle,s.aspect],104+i*4)});return f;}
  const dispatch=(encoder,pipeline,group)=>{const p=encoder.beginComputePass();p.setPipeline(pipeline);p.setBindGroup(0,group);p.dispatchWorkgroups(Math.ceil(count/128));p.end();};

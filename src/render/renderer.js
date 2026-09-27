@@ -119,7 +119,7 @@ export async function createRenderer(canvas) {
   const config = {
     photonCount: 49152,
     lightBatches: 32,
-    sunGrid:384,skyGridX:128,skyGridY:256,diffuseIterations:4,
+    sunGrid:384,skyGridX:256,skyGridY:512,diffuseIterations:4,
     ...level.optics,
     freeze: false,
     waveTime: 1.7,
