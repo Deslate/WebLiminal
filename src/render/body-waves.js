@@ -17,20 +17,19 @@ export async function createBodyWaves(device){
   // Teleports are diagnostic resets, not a supersonic body impulse.
   if(Math.hypot(...velocity)>2)velocity.fill(0);
   previous=body?{...body}:null;
-  // Boost only ordinary wading. Resting displacement and the already strong
-  // 1.6m/s wake retain their calibration; this scales the physical pressure.
+  // The ordinary-wading pressure gain fades at rest and at 1.6m/s.
   const speed=Math.hypot(...velocity);
   const wakeGain=1+(config.bodyWakeBoost??0)*Math.min(1,speed/.8)*Math.max(0,Math.min(1,(1.6-speed)/.8));
   const data=new ArrayBuffer(256*36),f=new Float32Array(data),u=new Uint32Array(data);let slot=0,active=0;
   const e=device.createCommandEncoder();
-  function pass(pipe,axis=0,stage=0,inverse=0){const o=slot*64;f.set([time,delta,config.waterLevel,initializing?1:0,body?.x||0,body?.z||0,body&&config.bodyDisplacement!==false?Math.min(.10,config.waterLevel*.24)*wakeGain:0,0,...velocity,0,0],o);u.set([axis,stage,inverse,0],o+12);if(contact)f.set([contact.x,contact.z,contact.time,contact.amplitude*20],o+16);const p=e.beginComputePass();p.setPipeline(pipelines[pipe]);p.setBindGroup(0,groups[pipe][active][slot]);p.dispatchWorkgroups(1024);p.end();active=1-active;slot++;}
+  function pass(pipe,axis=0,stage=0,inverse=0){const o=slot*64;f.set([time,delta,config.waterLevel,initializing?1:0,body?.x||0,body?.z||0,body&&config.bodyDisplacement!==false?Math.min(.025,config.waterLevel*.06)*wakeGain:0,0,...velocity,0,0],o);u.set([axis,stage,inverse,0],o+12);if(contact)f.set([contact.x,contact.z,contact.time,contact.amplitude*8],o+16);const p=e.beginComputePass();p.setPipeline(pipelines[pipe]);p.setBindGroup(0,groups[pipe][active][slot]);p.dispatchWorkgroups(1024);p.end();active=1-active;slot++;}
   for(let axis=0;axis<2;axis++)for(let stage=0;stage<8+axis;stage++)pass(0,axis,stage,0);
   pass(1);
   for(let axis=0;axis<2;axis++)for(let stage=0;stage<8+axis;stage++)pass(0,axis,stage,1);
   pass(2); // 36 passes return to state 0.
   device.queue.writeBuffer(params,0,data);device.queue.submit([e.finish()]);
  }
- // The .36s pressure pulse ends before the next allowed contact (.4s).
+ // The .14s pressure pulse ends before the next allowed contact (.4s).
  // Its radiated height/velocity remain in the state after the source expires.
  return{field:states[0],reset,advance,addWake(w){contact={...w,time:w.time??last??0};},get info(){return{method:'finite-depth gravity-capillary spectral initial-value solver',grid:[256,512],dx:.125,domain:[32,64],last}}};
 }
