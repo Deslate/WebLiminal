@@ -6,6 +6,7 @@ export function createSoundscape(status) {
     return {
       update() {},
       unlock() {},
+      setPaused() {},
       toggle() {},
       inspect: () => ({ state: "unsupported" }),
     };
@@ -73,12 +74,15 @@ export function createSoundscape(status) {
   pressure.connect(pressureGain);
   pressureGain.connect(master);
   pending.push(pressure);
+  let paused = false, resumeAudio = false;
   let muted = false,
     lastDrop = -10,
     lastStep = 0,
     eventTriggered = false;
   function refresh() {
-    status.textContent = muted
+    status.textContent = paused
+      ? "已暂停 · ESC 恢复"
+      : muted
       ? "声音已关闭 · M 开启"
       : ctx.state === "running"
         ? ""
@@ -93,7 +97,7 @@ export function createSoundscape(status) {
   ctx.addEventListener("statechange", startSources);
   startSources();
   function unlock() {
-    if (ctx.state === "suspended") ctx.resume().then(refresh).catch(refresh);
+    if (!paused && ctx.state === "suspended") ctx.resume().then(refresh).catch(refresh);
   }
   // Calling resume before interaction produces a policy warning in Chrome. The running
   // state already tells us whether this origin has autoplay permission; unlock on input.
@@ -123,6 +127,15 @@ export function createSoundscape(status) {
   }
   return {
     unlock,
+    setPaused(value) {
+      if (paused === value) return;
+      paused = value;
+      if (value) {
+        resumeAudio = ctx.state === "running";
+        ctx.suspend().catch(refresh);
+      } else if (resumeAudio) ctx.resume().catch(refresh);
+      refresh();
+    },
     toggle() {
       unlock();
       muted = !muted;

@@ -29,12 +29,21 @@ const renderer = await createRenderer(canvas).catch((e) => {
   console.error(e);
   throw e;
 });
+let resizePending = false;
 function resize() {
+  if (paused) { resizePending = true; return; }
+  resizePending = false;
   renderer.resize(innerWidth, innerHeight, scale);
 }
 resize();
 addEventListener("resize", resize);
 addEventListener("keydown", (e) => {
+  if (e.code === "Escape") {
+    e.preventDefault();
+    if (!e.repeat) setPaused(!paused);
+    return;
+  }
+  if (paused) return;
   if (
     [
       "KeyW",
@@ -68,6 +77,7 @@ addEventListener("blur", () => {
   dragging = false;
 });
 canvas.addEventListener("pointerdown", (e) => {
+  if (paused) return;
   dragging = true;
   canvas.setPointerCapture(e.pointerId);
   sound.unlock();
@@ -84,101 +94,131 @@ canvas.addEventListener("pointermove", (e) => {
   }
 });
 addEventListener("visibilitychange", () => {
-  previous = performance.now();
+  resetClock();
+  if (document.hidden) cancelFrame();
+  else scheduleFrame();
 });
 let lastCompleted = performance.now(),
   lastView = "",
   lastResize = 0,
   lastSimulation = performance.now();
-function scheduleFrame(delay=0) { setTimeout(()=>tick(performance.now()),delay); }
+let frameTimer = null, tickRunning = false, resumeFrame = false;
+function resetClock() {
+  previous = lastSimulation = performance.now();
+  lastCompleted = null;
+  resumeFrame = true;
+}
+function cancelFrame() {
+  if (frameTimer !== null) clearTimeout(frameTimer);
+  frameTimer = null;
+}
+function setPaused(value) {
+  if (paused === value) return;
+  paused = value;
+  keys.clear();
+  dragging = false;
+  sound.setPaused(value);
+  document.body.classList.toggle("paused", value);
+  if (value) cancelFrame();
+  else { resetClock(); scheduleFrame(); }
+}
+function scheduleFrame(delay=0) {
+  if (paused || document.hidden || tickRunning || frameTimer !== null ||
+      (targetSamples && renderer.samples >= targetSamples)) return;
+  frameTimer = setTimeout(() => { frameTimer = null; tick(performance.now()); }, delay);
+}
 async function tick(now) {
-  const dt = Math.min((now - previous) / 1000, 0.05);
-  previous = now;
-  if (!holdTime && !document.hidden && !paused) elapsed += dt;
-  if (
-    paused ||
-    document.hidden ||
-    renderer.busy ||
-    (targetSamples && renderer.samples >= targetSamples)
-  ) { scheduleFrame(16);return; }
-  const moveDt=Math.min((now-lastSimulation)/1000,.05);lastSimulation=now;
-  let f =
-    Number(keys.has("KeyW") || keys.has("ArrowUp")) -
-    Number(keys.has("KeyS") || keys.has("ArrowDown"));
-  let s =
-    Number(keys.has("KeyD") || keys.has("ArrowRight")) -
-    Number(keys.has("KeyA") || keys.has("ArrowLeft"));
-  const norm = Math.hypot(f, s);
-  // Wading drag caps locomotion below this height-field model's critical wave speed.
-  const immersed=renderer.config.waterLevel>view.y-1.62+.04;
-  const speed = immersed ? (keys.has("ShiftLeft") ? 1.6 : .8) : (keys.has("ShiftLeft") ? 2.4 : 1.6);
-  const beforeMove={x:view.x,z:view.z};
-  if (norm) {
-    f /= norm;
-    s /= norm;
-    movePlayer(
-      view,
-      (-Math.sin(view.yaw) * f + Math.cos(view.yaw) * s) * moveDt * speed,
-      (-Math.cos(view.yaw) * f - Math.sin(view.yaw) * s) * moveDt * speed,
-      ROOM,
-      renderer.solids,
-    );
-  }
-  const contact=wakeTrail.advance(beforeMove,view,elapsed,renderer.config.waterLevel);
-  if(contact)renderer.addWake(contact);
-  const sig = [view.x, view.z, view.yaw, view.pitch].join(",");
-  const moving = sig !== lastView;
-  lastView = sig;
-  let anomaly = 0;
-  if (!holdTime && elapsed > 34.6 && elapsed < 43) {
-    anomaly = Math.min(1, (elapsed - 34.6) / 1.4, (43 - elapsed) / 2.4);
-  }
-  sound.update(elapsed, norm > 0, anomaly);
-  renderer.setBody(bodyEnabled?view:null);
-  const did = await renderer.render(cameraPose(), elapsed, moving, 1 - anomaly * 0.94);
-  if (did) {
-    const done = performance.now();
-    if (ready && lastCompleted !== null) {
-      frameMs.push({ t: elapsed, ms: done - lastCompleted });
-      if (frameMs.length > 12000) frameMs.shift();
+  if (paused || document.hidden || tickRunning) return;
+  if (renderer.busy) { scheduleFrame(16); return; }
+  tickRunning = true;
+  try {
+    const dt = resumeFrame ? 0 : Math.min((now - previous) / 1000, 0.05);
+    const moveDt = resumeFrame ? 0 : Math.min((now-lastSimulation)/1000,.05);
+    resumeFrame = false;
+    previous = lastSimulation = now;
+    if (!holdTime) elapsed += dt;
+    if (resizePending) resize();
+    let f =
+      Number(keys.has("KeyW") || keys.has("ArrowUp")) -
+      Number(keys.has("KeyS") || keys.has("ArrowDown"));
+    let s =
+      Number(keys.has("KeyD") || keys.has("ArrowRight")) -
+      Number(keys.has("KeyA") || keys.has("ArrowLeft"));
+    const norm = Math.hypot(f, s);
+    // Wading drag caps locomotion below this height-field model's critical wave speed.
+    const immersed=renderer.config.waterLevel>view.y-1.62+.04;
+    const speed = immersed ? (keys.has("ShiftLeft") ? 1.6 : .8) : (keys.has("ShiftLeft") ? 2.4 : 1.6);
+    const beforeMove={x:view.x,z:view.z};
+    if (norm) {
+      f /= norm;
+      s /= norm;
+      movePlayer(
+        view,
+        (-Math.sin(view.yaw) * f + Math.cos(view.yaw) * s) * moveDt * speed,
+        (-Math.cos(view.yaw) * f - Math.sin(view.yaw) * s) * moveDt * speed,
+        ROOM,
+        renderer.solids,
+      );
     }
-    lastCompleted = done;
-    completed++;
-    if (!ready) {
-      ready = true;
-      firstFrame = done;
-      canvas.style.visibility = "visible";
-      document.getElementById("experience").style.visibility = "visible";
+    const contact=wakeTrail.advance(beforeMove,view,elapsed,renderer.config.waterLevel);
+    if(contact)renderer.addWake(contact);
+    const sig = [view.x, view.z, view.yaw, view.pitch].join(",");
+    const moving = sig !== lastView;
+    lastView = sig;
+    let anomaly = 0;
+    if (!holdTime && elapsed > 34.6 && elapsed < 43) {
+      anomaly = Math.min(1, (elapsed - 34.6) / 1.4, (43 - elapsed) / 2.4);
     }
-    if (completed % 15 === 0)
-      document.getElementById("timecode").textContent =
-        `00:${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(Math.floor(elapsed) % 60).padStart(2, "0")}`;
-    if (!holdTime && frameMs.length > 60 && done - lastResize > 900) {
-      const samples = frameMs
-        .slice(-60)
-        .map((f) => f.ms)
-        .sort((a, b) => a - b);
-      if (samples[30] > 28.5 && scale > 0.36) {
-        scale = Math.max(0.36, scale - 0.07);
-        resize();
-        lastResize = done;
-      } else if(samples[30] < 20 && scale < Math.min(1,1280/innerWidth)) {
-        // Recover detail after leaving a costly inspection view. Hysteresis
-        // avoids chasing individual frame spikes or oscillating every frame.
-        scale=Math.min(Math.min(1,1280/innerWidth),scale+.025);
-        resize();lastResize=done;
+    sound.update(elapsed, norm > 0, anomaly);
+    renderer.setBody(bodyEnabled?view:null);
+    const did = await renderer.render(cameraPose(), elapsed, moving, 1 - anomaly * 0.94);
+    if (did) {
+      const done = performance.now();
+      if (ready && lastCompleted !== null) {
+        frameMs.push({ t: elapsed, ms: done - lastCompleted });
+        if (frameMs.length > 12000) frameMs.shift();
+      }
+      lastCompleted = done;
+      completed++;
+      if (!ready) {
+        ready = true;
+        firstFrame = done;
+        canvas.style.visibility = "visible";
+        document.getElementById("experience").style.visibility = "visible";
+      }
+      if (completed % 15 === 0)
+        document.getElementById("timecode").textContent =
+          `00:${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(Math.floor(elapsed) % 60).padStart(2, "0")}`;
+      if (!paused && !holdTime && frameMs.length > 60 && done - lastResize > 900) {
+        const samples = frameMs
+          .slice(-60)
+          .map((f) => f.ms)
+          .sort((a, b) => a - b);
+        if (samples[30] > 28.5 && scale > 0.36) {
+          scale = Math.max(0.36, scale - 0.07);
+          resize();
+          lastResize = done;
+        } else if(samples[30] < 20 && scale < Math.min(1,1280/innerWidth)) {
+          // Recover detail after leaving a costly inspection view. Hysteresis
+          // avoids chasing individual frame spikes or oscillating every frame.
+          scale=Math.min(Math.min(1,1280/innerWidth),scale+.025);
+          resize();lastResize=done;
+        }
       }
     }
-  }
+  } finally { tickRunning = false; }
   // Do not wait an extra refresh after a 17–25 ms GPU task. Submit the next
   // actual render when its predecessor is complete, capped at 60 submissions/s.
   scheduleFrame(Math.max(0,1000/60-(performance.now()-now)));
 }
-requestAnimationFrame(tick);
+scheduleFrame();
 Object.defineProperty(window, "__POOLROOMS_V1__", {
   value: {
     snapshot: () => ({
       runId,
+      paused,
+      frameScheduled: frameTimer !== null,
+      rendering: tickRunning || renderer.busy,
       view: { ...view },
       observer,
       elapsed,
@@ -199,12 +239,13 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       validPosition: canStand(view.x, view.z, ROOM, renderer.solids),
     }),
     async configure(parameters) {
-      paused = true;
+      setPaused(true);
       while (renderer.busy) await new Promise((r) => setTimeout(r, 5));
       if (parameters.view) Object.assign(view, parameters.view);
       if (parameters.scale) {
         scale = parameters.scale;
-        resize();
+        renderer.resize(innerWidth, innerHeight, scale);
+        resizePending = false;
       }
       targetSamples = parameters.targetSamples || 0;
       holdTime = parameters.freeze ?? holdTime;
@@ -214,12 +255,12 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       bodyEnabled=parameters.body!==false;renderer.setBody(bodyEnabled?view:null);
       frameMs = [];
       lastCompleted = null;
-      paused = parameters.pause ?? false;
+      setPaused(parameters.pause ?? false);
     },
     // Capture the exact production renderer at consecutive specified times.
     // This pauses scheduling, NOT wave evolution: the supplied time advances it.
     async renderEvidence(time, pose, moving=true, capture=true) {
-      paused=true;
+      setPaused(true);
       while(renderer.busy)await new Promise(r=>setTimeout(r,1));
       Object.assign(view,pose);
       await renderer.render(view,time,moving,1);
@@ -227,12 +268,12 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
     },
     // Diagnostic replay injects physical sources, never a rendered ring.
     injectWaveSource(source) { renderer.addWake(source); },
-    async pause() { paused=true;while(renderer.busy)await new Promise(r=>setTimeout(r,1)); },
+    async pause() { setPaused(true);while(renderer.busy)await new Promise(r=>setTimeout(r,1)); },
     // Evidence automation changes the actual camera, without rebuilding light.
     setView(patch) { Object.assign(view, patch); },
     setObserver(pose){observer=pose?{...pose}:null;},
     async renderActorEvidence(time,actor,camera,capture=true){
-      paused=true;while(renderer.busy)await new Promise(r=>setTimeout(r,1));
+      setPaused(true);while(renderer.busy)await new Promise(r=>setTimeout(r,1));
       const before={...view};Object.assign(view,actor);
       const contact=wakeTrail.advance(before,view,time,renderer.config.waterLevel);if(contact)renderer.addWake(contact);
       renderer.setBody(view);await renderer.render(camera,time,true,1);
