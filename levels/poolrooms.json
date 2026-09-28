@@ -12,7 +12,7 @@
     "y": 1.62,
     "z": 8,
     "yaw": -0.29,
-    "pitch": 0.028
+    "pitch": -0.7
   },
   "optics": {
     "waterLevel": 0.42,
@@ -21,7 +21,8 @@
     "bodyWakeBoost": 0.6,
     "apertureWidth": 4.8,
     "apertureDepth": 5.8,
-    "exposure": 0.85
+    "exposure": 0.85,
+    "focalLength": 14
   },
   "moment": {
     "start": 34.6,

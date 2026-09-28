@@ -126,7 +126,7 @@ export async function createRenderer(canvas) {
     seed: 7819301,
     diagnostic: 0,
     focusDistance: 10,
-    focalLength: 28,
+    focalLength: level.optics.focalLength ?? 28,
     fNumber: 5.6,
     reflectionCone: .018,
     reflectionFilter:1,

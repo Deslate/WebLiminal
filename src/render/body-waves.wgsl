@@ -35,12 +35,14 @@ fn reverse(v:u32,bits:u32)->u32{return reverseBits(v)>>(32u-bits);}
  let substeps=max(1u,u32(ceil(P.clock.y*240.)));let dt=P.clock.y/f32(substeps);
  let speed=length(P.motion.xy);let direction=P.motion.xy/max(speed,.0001);
  // Soft excluded-volume equilibrium plus velocity-dependent dynamic pressure.
- // The pressure has a fore/aft dipole, confined to <1m about the body. V arms
+ // The pressure has a fore/aft dipole, localized about the body. V arms
  // are entirely the dispersive initial-value response, never prescribed here.
- let radius=.24;let gaussian=6.283185307*radius*radius/(.125*.125)*exp(-.5*radius*radius*km*km);
+ // Broaden the physical pressure support, not the rendered normal. The
+ // visible forward ridge is wider while the slow-walk peak becomes lower.
+ let radius=.36;let gaussian=6.283185307*radius*radius/(.125*.125)*exp(-.5*radius*radius*km*km);
  let dipole=dot(k,direction)*.20;
  let amplitude=P.body.z;
- let dynamicGaussian=6.283185307*.17*.17/(.125*.125)*exp(-.5*.17*.17*km*km);
+ let dynamicGaussian=6.283185307*.25*.25/(.125*.125)*exp(-.5*.25*.25*km*km);
  for(var j=0u;j<substeps;j++){
   // Calibrated soft-pressure footprint leads the cylinder at its wet front.
   let position=P.body.xy+P.motion.xy*.225-P.motion.xy*(P.clock.y-(f32(j)+.5)*dt)+vec2f(16.,32.);
