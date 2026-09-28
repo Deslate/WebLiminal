@@ -29,7 +29,7 @@ fn directLighting(h:Hit,m:Material,v:vec3f)->vec3f {
     let spec=ggxD(nh,a)*smithG1(nl,a)*smithG1(nv,a)*schlick(vh,m.coat)/max(4.*nl*nv,.00001);
     result+=jointVisibility(h,sun)*sunIrradiance()*nl*(m.albedo/PI*(1.-fv)*(1.-schlick(nl,m.coat))+vec3f(spec));
   }
-  // The 64-point world-space sky integral is already available in both modes.
+  // The 256-point world-space sky integral is already available in both modes.
   // Reuse it for moving primary and glaze rays instead of retracing four points
   // and four grout visibility walks per shading invocation.
   let sky=integratedSky(h);

@@ -117,7 +117,7 @@ export async function createRenderer(canvas) {
       GPUBufferUsage.COPY_DST,
   });
   const config = {
-    photonCount: 49152,
+    photonCount: 196608,
     lightBatches: 32,
     sunGrid:384,skyGridX:256,skyGridY:512,diffuseIterations:4,
     ...level.optics,
@@ -543,7 +543,7 @@ export async function createRenderer(canvas) {
     },
     get autoStatic() { return autoStatic; },
     get lightingBatches() { return sceneBatches; },
-    get dynamics() {return {simulation:simulation.info,frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:64,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:config.sunGrid**2,skyPackets:config.skyGridX*config.skyGridY*4,diffuseLinks:geometry.probeCount*64,diffuseIterations:config.diffuseIterations};},
+    get dynamics() {return {simulation:simulation.info,frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:256,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:config.sunGrid**2,skyPackets:config.skyGridX*config.skyGridY*4,diffuseLinks:geometry.probeCount*64,diffuseIterations:config.diffuseIterations};},
     get busy() {
       return activeJobs > 0;
     },
