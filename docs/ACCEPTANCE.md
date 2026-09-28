@@ -1,3 +1,5 @@
+短波再标定候选：提高频率同时提高法线扰动，但默认第一人称可见性未通过；不替换 main。详见 [ACCEPTANCE-ripples-steep.md](ACCEPTANCE-ripples-steep.md)。
+
 v1.35：ESC 取消渲染调度并暂停模拟时钟，保留最后帧；恢复首帧使用原时间。水波与光传输不变。硬件占用、连续帧和性能见 [ACCEPTANCE-v1.35.md](ACCEPTANCE-v1.35.md)。
 
 v1.33 当前更新：脚步压力移至真实时间的有限水深身体求解器，重新标定受力范围与强度；背景幅度 0.018，默认 18.3°/24mm。录像、性能与内部墙体边界的新增折扣见 [ACCEPTANCE-v1.33.md](ACCEPTANCE-v1.33.md)。以下为历史记录。
