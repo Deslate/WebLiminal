@@ -330,7 +330,7 @@ export async function createRenderer(canvas) {
         16,
       );
       lastWaveTime = config.waveTime + (config.freeze ? 0 : time);
-      const wakeEnvelope=.28; // conservative simulated-height root bracket, not a clamp
+      const wakeEnvelope=.34; // conservative simulated-height root bracket, not a clamp
       f.set(
         [
           lastWaveTime,
