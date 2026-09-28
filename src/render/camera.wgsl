@@ -6,7 +6,7 @@
 fn photonEstimate(h:Hit)->vec4f {
   let s=surfaces[h.sid];let p=h.uv*vec2f(s.info.yz)-.5;let b=vec2i(floor(p));let f=fract(p);var result=vec4f(0);
   for(var y=0;y<2;y++){for(var x=0;x<2;x++){
-    let q=clamp(b+vec2i(x,y),vec2i(0),vec2i(s.info.yz)-1);let idx=s.info.x+u32(q.y)*s.info.y+u32(q.x);
+    let idx=chartCellClamped(h.sid,b+vec2i(x,y),false);
     let e=irradiance[idx];
     result+=e*select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1);
   }}
@@ -15,7 +15,7 @@ fn photonEstimate(h:Hit)->vec4f {
 fn integratedSky(h:Hit)->vec3f {
   let s=surfaces[h.sid];let p=h.uv*vec2f(s.info.yz)-.5;let b=vec2i(floor(p));let f=fract(p);var result=vec3f(0);var weight=0.;
   for(var y=0;y<2;y++){for(var x=0;x<2;x++){
-    let q=clamp(b+vec2i(x,y),vec2i(0),vec2i(s.info.yz)-1);let idx=s.info.x+u32(q.y)*s.info.y+u32(q.x);
+    let idx=chartCellClamped(h.sid,b+vec2i(x,y),false);
     let w=select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1)*skyIntegral[idx].w;
     result+=skyIntegral[idx].rgb*w;weight+=w;
   }}return result/max(weight,.0001);

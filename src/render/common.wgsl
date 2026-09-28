@@ -159,6 +159,41 @@ fn surfaceHit(sid:u32,uv:vec2f)->Hit {
   return Hit(0.,p,n,uv,sid,s.info.x);
 }
 
+// Coplanar arch modules are one receiving plane. Their storage charts are
+// separate, but a chart edge is not a physical boundary. Continue the SAME
+// reconstruction stencil into its aligned neighbour, never widen the kernel.
+const NO_CELL:u32=0xffffffffu;
+fn adjacentChart(sid:u32,right:bool)->u32 {
+ let face=sid%9u;let index=sid/9u;let a=shapes[index];
+ if(a.info.y!=1u||(face!=4u&&face!=5u)){return NO_CELL;}
+ let other=i32(index)+select(-1,1,right);
+ if(other<0||other>=i32(U.render.w)){return NO_CELL;}
+ let b=shapes[u32(other)];let next=u32(other)*9u+face;
+ let edge=select(a.lo.x,a.hi.x,right);let adjacentEdge=select(b.hi.x,b.lo.x,right);
+ if(b.info.y!=1u||abs(edge-adjacentEdge)>.00001||any(a.lo.yz!=b.lo.yz)||any(a.hi.yz!=b.hi.yz)){return NO_CELL;}
+ // Only equal-pitch aligned charts can be addressed by integer neighbours.
+ let sa=surfaces[sid];let sb=surfaces[next];
+ if(any(sa.info.yz!=sb.info.yz)||any(abs(sa.metric.xy-sb.metric.xy)>vec2f(.00001))){return NO_CELL;}
+ return next;
+}
+fn chartCell(sid:u32,xy:vec2i,probe:bool)->u32 {
+ var chartSid=sid;var s=surfaces[sid];var dims=s.info.yz;
+ if(probe){dims=(dims+u32(s.metric.w)-1u)/u32(s.metric.w);}
+ var q=xy;if(q.y<0||q.y>=i32(dims.y)){return NO_CELL;}
+ if(q.x<0||q.x>=i32(dims.x)){
+  let right=q.x>=i32(dims.x);chartSid=adjacentChart(sid,right);
+  if(chartSid==NO_CELL){return NO_CELL;}
+  q.x+=select(i32(dims.x),-i32(dims.x),right);s=surfaces[chartSid];
+ }
+ return select(s.info.x,s.info.w,probe)+u32(q.y)*dims.x+u32(q.x);
+}
+fn chartCellClamped(sid:u32,xy:vec2i,probe:bool)->u32 {
+ let s=surfaces[sid];var dims=s.info.yz;if(probe){dims=(dims+u32(s.metric.w)-1u)/u32(s.metric.w);}
+ let q=vec2i(xy.x,clamp(xy.y,0,i32(dims.y)-1));let cell=chartCell(sid,q,probe);
+ if(cell!=NO_CELL){return cell;}
+ return select(s.info.x,s.info.w,probe)+u32(q.y)*dims.x+u32(clamp(q.x,0,i32(dims.x)-1));
+}
+
 // Metre-scale tile construction. Independent seeds stay attached to the world.
 const GROUT_HALF_WIDTH:f32=.0028;
 struct TileProfile { height:f32, edge:f32, id:f32, bevel:f32, slope:vec2f };

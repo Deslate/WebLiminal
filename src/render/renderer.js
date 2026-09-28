@@ -195,13 +195,13 @@ export async function createRenderer(canvas) {
     reflectionHorizontalGroup=bindings(pipelines[12],[[0,uniforms],[3,reflectionBuffer],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer]]);
     reflectionVerticalGroup=bindings(pipelines[13],[[0,uniforms],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer],[6,imageBuffer]]);
     resolveGroups=[0].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface],[6,buffers[`fine${i}`]],[7,buffers.rows]]));
-    horizontalGroup=bindings(pipelines[5],[[0,uniforms],[2,buffers.surfaces],[3,buffers.flux],[5,buffers.cellSurface],[7,buffers.rows]]);
+    horizontalGroup=bindings(pipelines[5],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.flux],[5,buffers.cellSurface],[7,buffers.rows]]);
     skyGroup=bindings(pipelines[4],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.cellSurface],[4,buffers.sky]]);
     liveEmitGroup=bindings(pipelines[6],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.liveFlux],[6,pathAudit],[7,counters],[9,simulation.field]]);
     liveHorizontalGroup=bindings(pipelines[7],[[0,uniforms],[2,buffers.surfaces],[3,buffers.liveFlux],[5,buffers.cellSurface],[8,buffers.rows]]);
     liveResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.liveField],[5,buffers.cellSurface],[8,buffers.rows]]);
     flatResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.flatField],[5,buffers.cellSurface],[8,buffers.rows]]);
-    composeGroup=bindings(pipelines[11],[[0,uniforms],[2,buffers.surfaces],[3,buffers.irradiance0],[4,buffers.fine0],[5,buffers.liveField],[6,buffers.bounce0],[7,buffers.combined],[8,buffers.cellSurface]]);
+    composeGroup=bindings(pipelines[11],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.irradiance0],[4,buffers.fine0],[5,buffers.liveField],[6,buffers.bounce0],[7,buffers.combined],[8,buffers.cellSurface]]);
     bakeGroup=bindings(pipelines[9],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.probeSurface],[4,buffers.links]]);
     propagateGroups=[0,1].map(i=>bindings(pipelines[10],[[0,uniforms],[3,buffers.probeSurface],[4,buffers.links],[5,buffers.liveField],[6,buffers[`bounce${i}`]],[7,buffers[`bounce${1-i}`]],[8,buffers.flatField]]));
 

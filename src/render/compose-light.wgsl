@@ -9,11 +9,11 @@
 @compute @workgroup_size(128)
 fn compose(@builtin(global_invocation_id) gid:vec3u){
  let idx=gid.x;if(idx>=U.counts.x){return;}
- let s=surfaces[cellSurface[idx]&65535u];let local=idx-s.info.x;
+ let sid=cellSurface[idx]&65535u;let s=surfaces[sid];let local=idx-s.info.x;
  let uv=(vec2f(f32(local%s.info.y),f32(local/s.info.y))+.5)/vec2f(s.info.yz);
  let dims=(s.info.yz+u32(s.metric.w)-1u)/u32(s.metric.w);let p=uv*vec2f(dims)-.5;let b=vec2i(floor(p));let f=fract(p);var sum=vec3f(0);var weight=0.;
  for(var y=0;y<2;y++){for(var x=0;x<2;x++){
-  let q=clamp(b+vec2i(x,y),vec2i(0),vec2i(dims)-1);let e=diffuse[s.info.w+u32(q.y)*dims.x+u32(q.x)];
+  let e=diffuse[chartCellClamped(sid,b+vec2i(x,y),true)];
   let w=select(1.-f.x,f.x,x==1)*select(1.-f.y,f.y,y==1)*e.a;sum+=e.rgb*w;weight+=w;
  }}
  let base=mix(coarse[idx],fine[idx],U.lighting.z)+water[idx];
