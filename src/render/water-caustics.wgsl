@@ -7,7 +7,9 @@
 @group(0) @binding(7) var<storage,read_write> liveCounters:array<atomic<u32>>;
 @group(0) @binding(8) var<storage,read_write> liveRows:array<vec4f>;
 var<workgroup> packetCounts:array<atomic<u32>,5>;
-const FLUX_SCALE:f32=16777216.;
+// 30 fractional bits preserve weak, split reflected packets. The brightest
+// audited cell remains far below the 4-unit uint32 accumulation limit.
+const FLUX_SCALE:f32=1073741824.;
 fn receive(h:Hit,power:vec3f,footprint:f32) {
   if(h.t>=INF){return;}
   let s=surfaces[h.sid];let p=h.uv*vec2f(s.info.yz)-.5;let base=vec2i(floor(p));let f=fract(p);
@@ -56,26 +58,42 @@ fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32,footprint:f32)
     }
   }
 }
+// Integrate the same 0.2664-degree angular solar radius used by cached
+// photon paths. Four symmetric disk samples match its first/second moments.
+// Directions are fixed in source space, never randomized between frames.
+const SUN_SAMPLES:u32=4u;
+fn solarDiskDirection(k:u32)->vec3f {
+  let ring=k/4u;let r=.00465*sqrt((f32(ring)+.5)/f32(SUN_SAMPLES/4u));
+  let angle=2.*PI*(f32(k%4u)+.5+f32(ring)*.38196601125)/4.;
+  return normalize(sunDirection()+basis(sunDirection())*vec3f(r*cos(angle),r*sin(angle),0.));
+}
+fn solarWaterPacket(i:u32,nSun:u32,l:vec3f) {
+    // Sample the projected aperture footprint in horizontal water coordinates.
+    // A margin encloses its displacement over the entire wave envelope.
+    let shift=-l.xz/l.y*(6.101-U.state.y);let margin=max(vec2f(.12),(U.state.z*1.07+U.lighting.x)*abs(l.xz/l.y)+.005);let lo=U.opening.xz+shift-margin;let hi=U.opening.yw+shift+margin;
+    let q=(vec2f(f32(i%nSun),f32(i/nSun))+.5)/f32(nSun);let xz=mix(lo,hi,q);
+    if(xz.x>-7.&&xz.x<7.&&xz.y>-17.&&xz.y<10.){
+      let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
+      let distance=(6.102-p.y)/l.y;let hit=traceDynamicSolid(p+l*EPS*2.,l,distance);
+      if(hit.t>=distance-.005 && dot(n,l)>0.){
+        let area=(hi.x-lo.x)*(hi.y-lo.y)/f32(nSun*nSun*2u);
+        let power=sunIrradiance()*max(dot(n,l),0.)/n.y*area*exp(-.004*distance);
+        waterPacket(p,n,l,power,select(99999u,i/1024u,i%1024u==128u),0.);
+      }
+    }
+}
 @compute @workgroup_size(64)
 fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_id) local:vec3u) {
   if(local.x<5u){atomicStore(&packetCounts[local.x],0u);}
   workgroupBarrier();
   let i=gid.x;let nSun=U.live.x;
   if(i<nSun*nSun){
-    // Sample the projected aperture footprint in horizontal water coordinates.
-    // A margin encloses its displacement over the entire wave envelope.
-    let l=sunDirection();let shift=-l.xz/l.y*(6.101-U.state.y);let margin=max(vec2f(.12),(U.state.z*1.07+U.lighting.x)*abs(l.xz/l.y)+.005);let lo=U.opening.xz+shift-margin;let hi=U.opening.yw+shift+margin;
-    let q=(vec2f(f32(i%nSun),f32(i/nSun))+.5)/f32(nSun);let xz=mix(lo,hi,q);
-    if(xz.x>-7.&&xz.x<7.&&xz.y>-17.&&xz.y<10.){
-      let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
-      let distance=(6.102-p.y)/l.y;let hit=traceDynamicSolid(p+l*EPS*2.,l,distance);
-      if(hit.t>=distance-.005 && dot(n,l)>0.){
-        let area=(hi.x-lo.x)*(hi.y-lo.y)/f32(nSun*nSun);
-        let power=sunIrradiance()*max(dot(n,l),0.)/n.y*area*exp(-.004*distance);
-        waterPacket(p,n,l,power,select(99999u,i/1024u,i%1024u==128u),0.);
-      }
-    }
-    atomicAdd(&packetCounts[0],1u);
+    // Opposite directions cancel first-order angular error at each water cell.
+    // Adjacent cells use the orthogonal pair: four disk nodes, two rays/cell.
+    let k=(i%nSun+i/nSun)%2u;
+    solarWaterPacket(i,nSun,solarDiskDirection(k));
+    solarWaterPacket(i,nSun,solarDiskDirection(k+2u));
+    atomicAdd(&packetCounts[0],2u);
   }
   let nx=U.live.y;let ny=U.live.z;
   if(i<nx*ny){

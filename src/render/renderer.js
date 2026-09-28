@@ -507,7 +507,7 @@ export async function createRenderer(canvas) {
       waterLight:{time:liveTime,frames:liveFrames,keyframes:false},
       batches: sceneBatches,
       baseEmittedSinceReset: sceneBatches * config.photonCount,
-      livePacketsPerFrame: config.sunGrid**2+config.skyGridX*config.skyGridY*4,
+      livePacketsPerFrame: config.sunGrid**2*2+config.skyGridX*config.skyGridY*4,
       atlasCells: geometry.totalCells,
       internal: [width, height],
       adapter: {
@@ -543,7 +543,7 @@ export async function createRenderer(canvas) {
     },
     get autoStatic() { return autoStatic; },
     get lightingBatches() { return sceneBatches; },
-    get dynamics() {return {simulation:simulation.info,frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:256,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:config.sunGrid**2,skyPackets:config.skyGridX*config.skyGridY*4,diffuseLinks:geometry.probeCount*64,diffuseIterations:config.diffuseIterations};},
+    get dynamics() {return {simulation:simulation.info,frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:256,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:config.sunGrid**2*2,skyPackets:config.skyGridX*config.skyGridY*4,diffuseLinks:geometry.probeCount*64,diffuseIterations:config.diffuseIterations};},
     get busy() {
       return activeJobs > 0;
     },
