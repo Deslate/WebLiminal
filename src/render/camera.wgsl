@@ -107,11 +107,19 @@ fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->CameraLayers {
   // reflected transport. Continue glaze rays at every camera distance.
   var a=vec3f(0);var guide=vec4f(0);
   if(m.coat>.009){
-    let reflected=reflect(rd,m.normal);let origin=h.p+h.n*.010;
-    let receiver=trace(origin,reflected,INF);
-    let fres=schlick(max(dot(m.normal,-rd),0.),m.coat);
-    a=environmentHit(receiver,origin,reflected,sampleIndex)*fres;
-    guide=vec4f(f32(h.sid+1u),h.t,reflectionSigma(m.roughness*m.roughness*.55,h.t,receiver.t,1.1),1.);
+    let origin=h.p+h.n*.010;let v=-rd;let nv=max(dot(m.normal,v),.001);let alpha=max(m.roughness*m.roughness,.001);
+    // Deterministic GGX angular quadrature. Every contribution traces geometry;
+    // no post-process blur stands in for unresolved normal variance.
+    let frame=basis(m.normal);
+    for(var j=0u;j<8u;j++){
+      let k=j*2u+(sampleIndex&1u);let u=(f32(k)+.5)/16.;
+      let phi=2.*PI*fract(f32(k)*.61803398875);let radius=alpha*sqrt(u/(1.-u));
+      let hn=normalize(frame*vec3f(radius*cos(phi),radius*sin(phi),1.));let vh=max(dot(v,hn),0.);
+      let reflected=reflect(rd,hn);let nl=dot(m.normal,reflected);if(nl<=0.||vh<=0.){continue;}
+      let receiver=trace(origin,reflected,INF);let weight=smithG1(nv,alpha)*smithG1(nl,alpha)*vh/max(nv*dot(m.normal,hn),.00001);
+      a+=environmentHit(receiver,origin,reflected,sampleIndex)*schlick(vh,m.coat)*weight/8.;
+    }
+    guide=vec4f(f32(h.sid+1u),h.t,0.,1.);
   }
   return CameraLayers(shadeMaterial(h,rd,false,m),a,guide);
 }
