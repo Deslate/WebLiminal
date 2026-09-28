@@ -1,6 +1,6 @@
 // Sub-grid splash momentum closure. No visible particle layer or prescribed
 // wave shape: these events feed the shared finite-depth wave equation.
-// A foot sweep ejects 18 litres in six parcels (calibrated swept-water budget), with forward velocity
+// A foot sweep ejects 14.4 litres in six parcels (calibrated swept-water budget), with forward velocity
 // and flight time determined at contact. Gravity determines landing positions.
 export function kickImpacts(contact){
  if(!contact.direction)return [];
@@ -12,7 +12,7 @@ export function kickImpacts(contact){
   const vx=forward*(dx*Math.cos(angle)-dz*Math.sin(angle));
   const vz=forward*(dz*Math.cos(angle)+dx*Math.sin(angle));
   const flight=2*up/9.81;
-  events.push({x:contact.x+vx*flight,z:contact.z+vz*flight,time:contact.time+flight,momentum:.003*up});
+  events.push({x:contact.x+vx*flight,z:contact.z+vz*flight,time:contact.time+flight,momentum:.0024*up});
  }
  return events;
 }

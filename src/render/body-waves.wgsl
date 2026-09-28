@@ -69,9 +69,11 @@ fn reverse(v:u32,bits:u32)->u32{return reverseBits(v)>>(32u-bits);}
  // zero spatial mode is excluded above: displaced volume is not created.
  // Exact elapsed-time response makes impact strength independent of frame rate.
  for(var n=0u;n<u32(P.motion.z);n++){
-  let hit=P.impacts[n];let radius=.105;
+  let hit=P.impacts[n];let radius=.075;
   let phase=-dot(k,hit.xy+vec2f(16.,32.));
-  let dv=-hit.w/(.125*.125)*km*tanh(km*max(.04,P.clock.z))*exp(-.5*radius*radius*km*km)*vec2f(cos(phase),sin(phase));
+  // Radial resolution cutoff avoids injecting square Nyquist-edge modes.
+  let resolved=1.-smoothstep(18.,24.,km);
+  let dv=-hit.w*resolved/(.125*.125)*km*tanh(km*max(.04,P.clock.z))*exp(-.5*radius*radius*km*km)*vec2f(cos(phase),sin(phase));
   let age=max(0.,P.clock.x-hit.z);
   h+=dv*sin(omega*age)/omega;v+=dv*cos(omega*age);
  }

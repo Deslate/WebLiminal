@@ -30,7 +30,7 @@ fn rand(n:u32)->f32{return f32(hashSim(n^7819301u))/4294967296.;}
  var h=0.;var v=0.;
  for(var j=0u;j<96u;j++){
   let n=j*11u;let center=vec2f(rand(n),rand(n+1u))*vec2f(14.,27.);
-  let r=mix(.22,1.65,pow(rand(n+2u),1.25));let delta=p-center;
+  let r=.7*mix(.22,1.65,pow(rand(n+2u),1.25));let delta=p-center;
   let a=(rand(n+3u)*2.-1.)*.52*P.settings.x;
   let bump=a*exp(-dot(delta,delta)/(r*r));h+=bump;
   let angle=rand(n+4u)*6.2831853;
@@ -49,7 +49,7 @@ fn rand(n:u32)->f32{return f32(hashSim(n^7819301u))/4294967296.;}
   for(var j=0u;j<count;j++){
    let n=hashSim(seed+j*7919u);
    let center=(vec2f(c)+vec2f(rand(n+1u),rand(n+2u)))*1.2;
-   let r=mix(.095,.32,rand(n+3u));let delta=p-center;
+   let r=.7*mix(.095,.32,rand(n+3u));let delta=p-center;
    let radius2=r*r;let dist2=dot(delta,delta);if(dist2>radius2*9.){continue;}
    let a=(rand(n+4u)*2.-1.)*.75*P.settings.x;
    // C1 compact radial profile prevents truncation seams between source cells.
