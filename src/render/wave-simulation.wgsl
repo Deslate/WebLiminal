@@ -1,7 +1,5 @@
-// Stateful nonlinear height wave equation, metres / seconds. No carrier waves.
-// eta_tt = div(g (depth+eta) grad eta)
-//          - (sigma/rho) div(depth grad Laplacian eta)
-//          - damping eta_t + viscosity Laplacian eta_t + local pressure.
+// Initial conditions, pressure footprints and shared water reconstruction.
+// Time propagation lives in finite-depth.wgsl.
 struct SimParams { clock:vec4f, settings:vec4f, sources:array<vec4f,24>, shapes:array<vec4f,24>, body:vec4f, reserved:vec4f };
 @group(0) @binding(0) var<uniform> P:SimParams;
 @group(0) @binding(1) var<storage,read> previous:array<vec2f>;
@@ -12,15 +10,6 @@ const NX:i32=448;const NZ:i32=864;const DX:f32=.03125;
 fn idx(p:vec2i)->u32 {let q=clamp(p,vec2i(0),vec2i(NX-1,NZ-1));return u32(q.y*NX+q.x);}
 fn sampleHeight(p:vec2i,center:f32)->f32 {let i=idx(p);return select(center,previous[i].x,depth[i]>0.);}
 fn hashSim(v:u32)->u32 {var x=v;x=((x>>16u)^x)*0x7feb352du;x=((x>>15u)^x)*0x846ca68bu;return (x>>16u)^x;}
-// Rotationally balanced nine-point operator. Diagonal links cannot cross a
-// dry corner. Pairwise symmetric links conserve mass at real pool boundaries.
-const OFFSETS=array<vec2i,8>(vec2i(-1,0),vec2i(1,0),vec2i(0,-1),vec2i(0,1),vec2i(-1,-1),vec2i(1,-1),vec2i(-1,1),vec2i(1,1));
-fn link(p:vec2i,j:u32)->f32 {
- let o=OFFSETS[j];let q=p+o;
- if(any(q<vec2i(0))||any(q>=vec2i(NX,NZ))||depth[idx(q)]<=0.){return 0.;}
- if(j>=4u){if(depth[idx(p+vec2i(o.x,0))]<=0.||depth[idx(p+vec2i(0,o.y))]<=0.){return 0.;}return 1./6.;}
- return 2./3.;
-}
 fn rand(n:u32)->f32{return f32(hashSim(n^7819301u))/4294967296.;}
 @compute @workgroup_size(128) fn initialize(@builtin(global_invocation_id) id:vec3u){
  let i=id.x;if(i>=u32(NX*NZ)){return;}
@@ -61,33 +50,6 @@ fn rand(n:u32)->f32{return f32(hashSim(n^7819301u))/4294967296.;}
  }}
  next[i]=select(vec2f(0.),vec2f(h,v),depth[i]>0.);
 }
-@compute @workgroup_size(128) fn step(@builtin(global_invocation_id) id:vec3u){
- let i=id.x;if(i>=u32(NX*NZ)){return;}if(depth[i]<=0.){next[i]=vec2f(0.);return;}
- let p=vec2i(vec2u(i%u32(NX),i/u32(NX)));let q=previous[i];let h=q.x;
- let world=(vec2f(p)+.5)*DX+vec2f(-7.,-17.);
- var acceleration=0.;var velocityLaplacian=0.;
- for(var j=0u;j<8u;j++){
-  let w=link(p,j);if(w==0.){continue;}let k=idx(p+OFFSETS[j]);
-  let d=max(.04,(depth[i]+depth[k]+h+previous[k].x)*.5);
-  acceleration+=w*9.81*d*(previous[k].x-h)/(DX*DX);
-  acceleration-=w*.000073*(depth[i]+depth[k])*.5*(curvatures[k]-curvatures[i])/(DX*DX);
-  velocityLaplacian+=w*(previous[k].y-q.y)/(DX*DX);
- }
- // Scale-selective dissipation acts on physical velocity, not rendered pixels.
- // Unresolved short waves lose energy; metre-scale displacement remains sharp.
- acceleration+=.00008*velocityLaplacian;
- for(var j=0u;j<24u;j++){
-  let s=P.sources[j];let shape=P.shapes[j];let age=P.clock.x-s.z;
-  if(shape.x<=0.||age<0.||age>=shape.y){continue;}
-  let a=age/shape.y;let pulse=16.*a*a*(1.-a)*(1.-a);
-  // The cached discrete pressure Laplacian is conservative at solid boundaries.
-  acceleration+=s.w*pulse*pressureKernels[j*u32(NX*NZ)+i];
- }
- // Symplectic Euler, fixed 1/360s. Damping is physical state dissipation,
- // not image filtering. Symmetric viscosity preserves the zero-mean source response.
- let v=(q.y+P.clock.y*acceleration)*exp(-P.clock.y*.055);
- next[i]=vec2f(h+P.clock.y*v,v);
-}
 @group(0) @binding(12) var<storage,read> bodyField:array<vec4f>;
 fn cubicBody(a:vec2f,b:vec2f,c:vec2f,d:vec2f,t:f32)->vec2f {
  return b+.5*t*(c-a+t*(2.*a-5.*b+4.*c-d+t*(3.*(b-c)+d-a)));
@@ -120,14 +82,6 @@ fn polynomial(r:vec4f)->vec4f{return vec4f(r.y,.5*(-r.x+r.z),r.x-2.5*r.y+2.*r.z-
 }
 
 @group(0) @binding(7) var<storage,read_write> kernelOutput:array<f32>;
-@group(0) @binding(8) var<storage,read> pressureKernels:array<f32>;
-@group(0) @binding(10) var<storage,read_write> curvatureOutput:array<f32>;
-@group(0) @binding(11) var<storage,read> curvatures:array<f32>;
-fn gaussian(world:vec2f,s:vec4f,shape:vec4f)->f32 {
- let delta=world-s.xy;let c=cos(shape.z);let sn=sin(shape.z);
- let uv=vec2f(c*delta.x+sn*delta.y,-sn*delta.x+c*delta.y)/vec2f(shape.x,shape.x*shape.w);
- return exp(-dot(uv,uv));
-}
 @compute @workgroup_size(128) fn pressureKernel(@builtin(global_invocation_id) id:vec3u){
  let i=id.x;if(i>=u32(NX*NZ)){return;}let p=vec2i(vec2u(i%u32(NX),i/u32(NX)));
  let world=(vec2f(p)+.5)*DX+vec2f(-7.,-17.);
@@ -135,13 +89,10 @@ fn gaussian(world:vec2f,s:vec4f,shape:vec4f)->f32 {
  for(var j=0u;j<24u;j++){if((u32(P.settings.y)&(1u<<j))==0u){continue;}
   let s=P.sources[j];let shape=P.shapes[j];let dst=j*u32(NX*NZ)+i;
   if(shape.x<=0.||depth[i]<=0.){kernelOutput[dst]=0.;continue;}
-  let center=gaussian(world,s,shape);var lap=0.;
-  for(var k=0u;k<8u;k++){let w=link(p,k);let n=idx(p+OFFSETS[k]);if(w>0.){let nw=(vec2f(f32(n%u32(NX)),f32(n/u32(NX)))+.5)*DX+vec2f(-7.,-17.);lap+=w*(gaussian(nw,s,shape)-center);}}
-  kernelOutput[dst]=-lap/(DX*DX)*shape.x*shape.x/(2.*(1.+1./(shape.w*shape.w)));
+  let delta=world-s.xy;let c=cos(shape.z);let sn=sin(shape.z);
+  let uv=vec2f(c*delta.x+sn*delta.y,-sn*delta.x+c*delta.y)/vec2f(shape.x,shape.x*shape.w);
+  // A localized, zero-integral pressure fluctuation. It drives the state via
+  // the finite-depth pressure response; this is not a prescribed surface wave.
+  kernelOutput[dst]=(1.-dot(uv,uv))*exp(-dot(uv,uv));
  }
-}
-@compute @workgroup_size(128) fn curvature(@builtin(global_invocation_id) id:vec3u){
- let i=id.x;if(i>=u32(NX*NZ)){return;}let p=vec2i(vec2u(i%u32(NX),i/u32(NX)));let h=previous[i].x;
- var lap=0.;for(var j=0u;j<8u;j++){lap+=link(p,j)*(sampleHeight(p+OFFSETS[j],h)-h);}
- curvatureOutput[i]=lap/(DX*DX);
 }
