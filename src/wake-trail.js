@@ -7,6 +7,6 @@ export function createWakeTrail(){
   distance+=d;if(distance<.48||time-last<.4)return null;
   distance=0;last=time;foot++;const side=foot%2?1:-1;
   // The planted foot is ahead of the body centre, not inside its cylinder.
-  return {x:to.x+dx/d*.30-dz/d*.10*side,z:to.z+dz/d*.30+dx/d*.10*side,time,amplitude:.012};
+  return {x:to.x+dx/d*.30-dz/d*.10*side,z:to.z+dz/d*.30+dx/d*.10*side,time,amplitude:.006,direction:[dx/d,dz/d],step:foot};
  }};
 }

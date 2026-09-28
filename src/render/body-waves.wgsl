@@ -1,6 +1,6 @@
 // Linear finite-depth gravity-capillary initial-value problem. The only forcing
 // is local body / collision-resolved foot pressure; no prescribed wake shape.
-struct Params { clock:vec4f, body:vec4f, motion:vec4f, fft:vec4u, contact:vec4f };
+struct Params { clock:vec4f, body:vec4f, motion:vec4f, fft:vec4u, contact:vec4f, impacts:array<vec4f,12> };
 @group(0) @binding(0) var<uniform> P:Params;
 @group(0) @binding(1) var<storage,read> input:array<vec4f>;
 @group(0) @binding(2) var<storage,read_write> output:array<vec4f>;
@@ -43,17 +43,6 @@ fn reverse(v:u32,bits:u32)->u32{return reverseBits(v)>>(32u-bits);}
  let dipole=dot(k,direction)*.20;
  let amplitude=P.body.z;
  let dynamicGaussian=6.283185307*.16*.16/(.125*.125)*exp(-.5*.16*.16*km*km);
- // Broad, zero-integral fore/aft pressure from moving displaced water.
- // Separate it from the compact foot load: shortening a foot contact must
- // not remove the body's forward pressure. This forces the same wave ODE;
- // it is neither a prescribed surface ridge nor a shading-normal layer.
- let bowRadius=.23+max(.04,P.clock.z);
- let bowGaussian=6.283185307*bowRadius*bowRadius/(.125*.125)*exp(-.5*bowRadius*bowRadius*km*km);
- // Soft-pressure calibration in units of velocity head. Fade the extra
- // long-wave load above normal wading speed: the linear solver otherwise
- // over-amplifies near-critical fast motion. Compact body/foot loads remain.
- let bowHead=(speed*speed/(2.*9.81))*3.*(1.-smoothstep(.8,1.2,speed));
- let bowPressure=bowGaussian*1.64872127*bowHead*dot(k,direction)*bowRadius*select(0.,1.,amplitude>0.);
  let footRadius=.14;
  let footprint=6.283185307*footRadius*footRadius/(.125*.125)*exp(-.5*footRadius*footRadius*km*km);
  let footPhase=-dot(k,P.contact.xy+vec2f(16.,32.));
@@ -62,7 +51,7 @@ fn reverse(v:u32,bits:u32)->u32{return reverseBits(v)>>(32u-bits);}
   // Calibrated soft-pressure footprint leads the cylinder at its wet front.
   let position=P.body.xy+P.motion.xy*.225-P.motion.xy*(P.clock.y-(f32(j)+.5)*dt)+vec2f(16.,32.);
   let phase=-dot(k,position);let phaseRotation=vec2f(cos(phase),sin(phase));
-  let pressure=vec2f(gaussian*amplitude*.30,-dynamicGaussian*amplitude*.24*speed*speed*dipole-bowPressure);
+  let pressure=vec2f(gaussian*amplitude*.30,-dynamicGaussian*amplitude*.24*speed*speed*dipole);
   var equilibrium=cmul(phaseRotation,pressure);
   // A collision-resolved foot contact loads and unloads a local pressure patch.
   // It travels through this real-time dispersive solver, not the slow ambient clock.
@@ -75,6 +64,16 @@ fn reverse(v:u32,bits:u32)->u32{return reverseBits(v)>>(32u-bits);}
   let c=cos(omega*dt);let s=sin(omega*dt);
   let nh=h*c+v*(s/omega)+equilibrium*(1.-c);
   v=v*c-h*(omega*s)+equilibrium*(omega*s);h=nh;
+ }
+ // Landing momentum impulses excite the same height/velocity state. The
+ // zero spatial mode is excluded above: displaced volume is not created.
+ // Exact elapsed-time response makes impact strength independent of frame rate.
+ for(var n=0u;n<u32(P.motion.z);n++){
+  let hit=P.impacts[n];let radius=.105;
+  let phase=-dot(k,hit.xy+vec2f(16.,32.));
+  let dv=-hit.w/(.125*.125)*km*tanh(km*max(.04,P.clock.z))*exp(-.5*radius*radius*km*km)*vec2f(cos(phase),sin(phase));
+  let age=max(0.,P.clock.x-hit.z);
+  h+=dv*sin(omega*age)/omega;v+=dv*cos(omega*age);
  }
  // Physical modal dissipation, increasing only towards unresolved short waves.
  let attenuation=exp(-P.clock.y*(.035+.0007*km*km));

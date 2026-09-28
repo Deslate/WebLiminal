@@ -3,7 +3,7 @@ export async function installVariant(page,name){
  if(name==='after')return;
  if(name==='base'||name==='steep')await page.route(u=>u.pathname==='/src/render/renderer.js',async r=>{const q=await r.fetch();await r.fulfill({response:q,body:(await q.text()).replace('const wakeEnvelope=.34;','const wakeEnvelope=.28;')});});
  for(const file of ['wake-trail.js','render/body-waves.js','render/body-waves.wgsl'])await page.route(u=>u.pathname==='/src/'+file,r=>{
-  let raw=execFileSync('git',['show',(name==='base'?'249dd10':'candidate/ripples-steep')+':src/'+file],{encoding:'utf8'});
+  let raw=execFileSync('git',['show',(name==='before'?'1738234':name==='base'?'249dd10':'candidate/ripples-steep')+':src/'+file],{encoding:'utf8'});
   if(name.startsWith('bow')&&file.endsWith('wgsl')){
    const gain=Number(name.match(/^bow([0-9.]+)/)[1]);
    if(name.endsWith('safe')) {

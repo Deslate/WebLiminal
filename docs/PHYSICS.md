@@ -1,3 +1,5 @@
+v1.36：删除持续宽弓浪压力，加入真实步程触发的弹道回落冲量；前方碎波、录像、性能与未解析飞沫近似见 [ACCEPTANCE-v1.36.md](ACCEPTANCE-v1.36.md)。
+
 前向弓浪更新：保留紧凑脚步压力，重新标定身体前后压力，默认视角的前方法线 RMS 提至 4.650°。实现、录像、速度范围和近似见 [ACCEPTANCE-forward.md](ACCEPTANCE-forward.md)。
 
 v1.35：ESC 取消渲染调度并暂停模拟时钟，保留最后帧；恢复首帧使用原时间。水波与光传输不变。硬件占用、连续帧和性能见 [ACCEPTANCE-v1.35.md](ACCEPTANCE-v1.35.md)。
