@@ -103,12 +103,14 @@ fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->CameraLayers {
     return CameraLayers(b,a,vec4f(10000.,base.t,reflectionSigma(radius,base.t,receiver.t,.8),1.));
   }
   let h=reliefHit(ro,rd,base);let m=surfaceMaterial(h);
-  let near=1.-smoothstep(3.,5.,h.t);var a=vec3f(0);var guide=vec4f(0);
-  if(near>.001 && m.coat>.009){
+  // A material LOD may filter unresolved detail, but must not remove its
+  // reflected transport. Continue glaze rays at every camera distance.
+  var a=vec3f(0);var guide=vec4f(0);
+  if(m.coat>.009){
     let reflected=reflect(rd,m.normal);let origin=h.p+h.n*.010;
     let receiver=trace(origin,reflected,INF);
     let fres=schlick(max(dot(m.normal,-rd),0.),m.coat);
-    a=environmentHit(receiver,origin,reflected,sampleIndex)*fres*near;
+    a=environmentHit(receiver,origin,reflected,sampleIndex)*fres;
     guide=vec4f(f32(h.sid+1u),h.t,reflectionSigma(m.roughness*m.roughness*.55,h.t,receiver.t,1.1),1.);
   }
   return CameraLayers(shadeMaterial(h,rd,false,m),a,guide);
