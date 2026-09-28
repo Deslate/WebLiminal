@@ -1,6 +1,6 @@
 // Linear finite-depth gravity-capillary initial-value problem. The only forcing
-// is the compact moving body pressure; no wake angle, arms, or time carrier.
-struct Params { clock:vec4f, body:vec4f, motion:vec4f, fft:vec4u };
+// is local body / collision-resolved foot pressure; no prescribed wake shape.
+struct Params { clock:vec4f, body:vec4f, motion:vec4f, fft:vec4u, contact:vec4f };
 @group(0) @binding(0) var<uniform> P:Params;
 @group(0) @binding(1) var<storage,read> input:array<vec4f>;
 @group(0) @binding(2) var<storage,read_write> output:array<vec4f>;
@@ -43,12 +43,23 @@ fn reverse(v:u32,bits:u32)->u32{return reverseBits(v)>>(32u-bits);}
  let dipole=dot(k,direction)*.20;
  let amplitude=P.body.z;
  let dynamicGaussian=6.283185307*.25*.25/(.125*.125)*exp(-.5*.25*.25*km*km);
+ let footRadius=.60;
+ let footprint=6.283185307*footRadius*footRadius/(.125*.125)*exp(-.5*footRadius*footRadius*km*km);
+ let footPhase=-dot(k,P.contact.xy+vec2f(16.,32.));
+ let footPressure=vec2f(cos(footPhase),sin(footPhase))*footprint*P.contact.w;
  for(var j=0u;j<substeps;j++){
   // Calibrated soft-pressure footprint leads the cylinder at its wet front.
   let position=P.body.xy+P.motion.xy*.225-P.motion.xy*(P.clock.y-(f32(j)+.5)*dt)+vec2f(16.,32.);
   let phase=-dot(k,position);let phaseRotation=vec2f(cos(phase),sin(phase));
   let pressure=vec2f(gaussian*amplitude*.30,-dynamicGaussian*amplitude*.24*speed*speed*dipole);
-  let equilibrium=cmul(phaseRotation,pressure);
+  var equilibrium=cmul(phaseRotation,pressure);
+  // A collision-resolved foot contact loads and unloads a local pressure patch.
+  // It travels through this real-time dispersive solver, not the slow ambient clock.
+  let age=P.clock.x-P.clock.y+(f32(j)+.5)*dt-P.contact.z;
+  if(age>=0. && age<.36 && P.contact.w>0.){
+   let a=age/.36;let pulse=16.*a*a*(1.-a)*(1.-a);
+   equilibrium+=footPressure*pulse;
+  }
   if(P.clock.w>.5){h=equilibrium;v=vec2f(0.);}
   let c=cos(omega*dt);let s=sin(omega*dt);
   let nh=h*c+v*(s/omega)+equilibrium*(1.-c);
