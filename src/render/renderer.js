@@ -195,13 +195,13 @@ export async function createRenderer(canvas) {
     reflectionHorizontalGroup=bindings(pipelines[12],[[0,uniforms],[3,reflectionBuffer],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer]]);
     reflectionVerticalGroup=bindings(pipelines[13],[[0,uniforms],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer],[6,imageBuffer]]);
     resolveGroups=[0].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface],[6,buffers[`fine${i}`]],[7,buffers.rows]]));
-    horizontalGroup=bindings(pipelines[5],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.flux],[5,buffers.cellSurface],[7,buffers.rows]]);
+    horizontalGroup=bindings(pipelines[5],[[0,uniforms],[2,buffers.surfaces],[3,buffers.flux],[5,buffers.cellSurface],[7,buffers.rows]]);
     skyGroup=bindings(pipelines[4],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.cellSurface],[4,buffers.sky]]);
     liveEmitGroup=bindings(pipelines[6],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.liveFlux],[6,pathAudit],[7,counters],[9,simulation.field]]);
     liveHorizontalGroup=bindings(pipelines[7],[[0,uniforms],[2,buffers.surfaces],[3,buffers.liveFlux],[5,buffers.cellSurface],[8,buffers.rows]]);
     liveResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.liveField],[5,buffers.cellSurface],[8,buffers.rows]]);
     flatResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.flatField],[5,buffers.cellSurface],[8,buffers.rows]]);
-    composeGroup=bindings(pipelines[11],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.irradiance0],[4,buffers.fine0],[5,buffers.liveField],[6,buffers.bounce0],[7,buffers.combined],[8,buffers.cellSurface]]);
+    composeGroup=bindings(pipelines[11],[[0,uniforms],[2,buffers.surfaces],[3,buffers.irradiance0],[4,buffers.fine0],[5,buffers.liveField],[6,buffers.bounce0],[7,buffers.combined],[8,buffers.cellSurface]]);
     bakeGroup=bindings(pipelines[9],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.probeSurface],[4,buffers.links]]);
     propagateGroups=[0,1].map(i=>bindings(pipelines[10],[[0,uniforms],[3,buffers.probeSurface],[4,buffers.links],[5,buffers.liveField],[6,buffers[`bounce${i}`]],[7,buffers[`bounce${1-i}`]],[8,buffers.flatField]]));
 
@@ -476,19 +476,19 @@ export async function createRenderer(canvas) {
       // Read the actual transported irradiance, before materials, refraction
       // and tone mapping. Diagnostics only; never used to draw the image.
       const su=new Uint32Array(geometry.surfaces),sf=new Float32Array(geometry.surfaces);
-      const offset=su[24],nx=su[25],ny=su[26],size=nx*ny*16;
+      const offset=su[48],nx=su[49],ny=su[50],size=nx*ny*16;
       const readFloor=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});
       const encFloor=device.createCommandEncoder();encFloor.copyBufferToBuffer(buffers.liveField,offset*16,readFloor,0,size);device.queue.submit([encFloor.finish()]);await readFloor.mapAsync(GPUMapMode.READ);
       const values=new Float32Array(readFloor.getMappedRange());let sum=[0,0,0],peak=0,positive=0;const roi=[];
       for(let y=0;y<ny;y++)for(let x=0;x<nx;x++){
-        const i=(y*nx+x)*4,rgb=Array.from(values.subarray(i,i+3));for(let c=0;c<3;c++)sum[c]+=rgb[c]*sf[30];peak=Math.max(peak,values[i+3]);if(values[i+3]>0)positive++;
+        const i=(y*nx+x)*4,rgb=Array.from(values.subarray(i,i+3));for(let c=0;c<3;c++)sum[c]+=rgb[c]*sf[54];peak=Math.max(peak,values[i+3]);if(values[i+3]>0)positive++;
         const px=-7+(x+.5)*14/nx,pz=-17+(y+.5)*27/ny;if(px>=2&&px<4&&pz>=-1.5&&pz<.5)roi.push(...rgb);
       }
-      floor={sid:3,dimensions:[nx,ny],cellArea:sf[30],integratedRGB:sum,peak,positive,roi:{bounds:[2,4,-1.5,.5],rgb:roi}};readFloor.unmap();readFloor.destroy();
+      floor={sid:3,dimensions:[nx,ny],cellArea:sf[54],integratedRGB:sum,peak,positive,roi:{bounds:[2,4,-1.5,.5],rgb:roi}};readFloor.unmap();readFloor.destroy();
     }
     const receivers={};
     for(const sid of options.receivers||[]){
-      const u=new Uint32Array(geometry.surfaces),o=sid*8,nx=u[o+1],ny=u[o+2],size=nx*ny*16;
+      const u=new Uint32Array(geometry.surfaces),o=sid*16,nx=u[o+1],ny=u[o+2],size=nx*ny*16;
       const rb=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const e=device.createCommandEncoder();e.copyBufferToBuffer(buffers.liveField,u[o]*16,rb,0,size);device.queue.submit([e.finish()]);await rb.mapAsync(GPUMapMode.READ);receivers[sid]={nx,ny,irradiance:Array.from(new Float32Array(rb.getMappedRange()))};rb.unmap();rb.destroy();
     }
     return {

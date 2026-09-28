@@ -20,7 +20,7 @@ struct Uniforms {
   body:vec4f, // actor x,z,radius,height; zero radius disables it
 };
 struct Shape { lo: vec4f, hi: vec4f, info: vec4u, params: vec4f };
-struct Surface { info: vec4u, metric: vec4f };
+struct Surface { info: vec4u, metric: vec4f, chart:vec4f, topology:vec4u };
 struct Flux { r: atomic<u32>, g: atomic<u32>, b: atomic<u32>, c: atomic<u32> };
 struct Hit { t: f32, p: vec3f, n: vec3f, uv: vec2f, sid: u32, material: u32 };
 struct Material { albedo: vec3f, roughness: f32, normal: vec3f, coat: f32 };
@@ -48,12 +48,14 @@ fn wave(p:vec2f)->vec3f {
  return vec3f(U.state.y+dot(row,x),32.*dot(row,dx),32.*dot((3.*d*t.y+2.*c)*t.y+b,x));
 }
 fn emptyHit()->Hit {return Hit(INF,vec3f(0),vec3f(0),vec2f(0),0u,0u);}
+fn lightUV(p:vec3f,sid:u32)->vec2f {
+ let a=surfaces[sid];let face=sid%9u;var q=p.xy;
+ if(a.topology.y==1u){let s=shapes[sid/9u];q=vec2f(archAlong(p.xy-vec2f((s.lo.x+s.hi.x)*.5,s.params.y),s.params.x),p.z);}
+ else if(face<2u){q=p.zy;}else if(face<4u){q=p.xz;}
+ return (q-a.chart.xy)/(a.chart.zw-a.chart.xy);
+}
 fn makeHit(t:f32,ro:vec3f,rd:vec3f,n:vec3f,s:Shape,face:u32)->Hit {
-  let p=ro+rd*t;let size=s.hi.xyz-s.lo.xyz;let q=(p-s.lo.xyz)/size;
-  var uv=q.zy;if(face==2u||face==3u){uv=q.xz;}if(face==4u||face==5u){uv=q.xy;}
-  if(face>=7u){uv=vec2f(q.z,p.y/s.params.y);}
-  if(face==6u){uv=vec2f(atan2(p.y-s.params.y,p.x-(s.lo.x+s.hi.x)*.5)/PI,q.z);}
-  return Hit(t,p,n,clamp(uv,vec2f(0.000001),vec2f(.999999)),s.info.z+face,s.info.x);
+ let p=ro+rd*t;let sid=s.info.z+face;return Hit(t,p,n,clamp(lightUV(p,sid),vec2f(.000001),vec2f(.999999)),sid,s.info.x);
 }
 fn inHole(p:vec3f,s:Shape)->bool {
   let x=p.x-(s.lo.x+s.hi.x)*.5;let y=p.y-s.params.y;let r=s.params.x;
@@ -149,49 +151,29 @@ fn sampleGGX(n:vec3f,v:vec3f,rough:f32,seed:ptr<function,u32>)->vec3f {
 
 // Inverse of makeHit: physical location, orientation and receiving coverage.
 fn surfaceHit(sid:u32,uv:vec2f)->Hit {
-  let s=shapes[sid/9u];let face=sid%9u;let d=s.hi.xyz-s.lo.xyz;
-  var p=s.lo.xyz;var n=vec3f(0);
-  if(face<2u){p=vec3f(select(s.lo.x,s.hi.x,face==1u),s.lo.y+uv.y*d.y,s.lo.z+uv.x*d.z);n.x=select(-1.,1.,face==1u);}
-  else if(face<4u){p=vec3f(s.lo.x+uv.x*d.x,select(s.lo.y,s.hi.y,face==3u),s.lo.z+uv.y*d.z);n.y=select(-1.,1.,face==3u);}
-  else if(face<6u){p=vec3f(s.lo.x+uv.x*d.x,s.lo.y+uv.y*d.y,select(s.lo.z,s.hi.z,face==5u));n.z=select(-1.,1.,face==5u);}
-  else if(face==6u){let a=uv.x*PI;let radial=vec3f(cos(a),sin(a),0);p=vec3f((s.lo.x+s.hi.x)*.5,s.params.y,s.lo.z+uv.y*d.z)+radial*s.params.x;n=-radial;}
-  else {p=vec3f((s.lo.x+s.hi.x)*.5+select(-s.params.x,s.params.x,face==8u),uv.y*s.params.y,s.lo.z+uv.x*d.z);n.x=select(1.,-1.,face==8u);}
-  return Hit(0.,p,n,uv,sid,s.info.x);
+ let s=shapes[sid/9u];let a=surfaces[sid];let face=sid%9u;let q=mix(a.chart.xy,a.chart.zw,uv);var p=s.lo.xyz;var n=vec3f(0);var actualSid=sid;
+ if(a.topology.y==1u){
+  let angle=clamp(q.x/s.params.x,0.,PI);let radial=vec3f(cos(angle),sin(angle),0.);
+  p=vec3f((s.lo.x+s.hi.x)*.5,s.params.y,q.y)+radial*s.params.x;n=-radial;
+  if(q.x<0.){p.y=s.params.y+q.x;actualSid=sid/9u*9u+8u;}
+  else if(q.x>PI*s.params.x){p.y=s.params.y+PI*s.params.x-q.x;actualSid=sid/9u*9u+7u;}
+  else{actualSid=sid/9u*9u+6u;}
+ }else if(face<2u){p=vec3f(select(s.lo.x,s.hi.x,face==1u),q.y,q.x);n.x=select(-1.,1.,face==1u);}
+ else if(face<4u){p=vec3f(q.x,select(s.lo.y,s.hi.y,face==3u),q.y);n.y=select(-1.,1.,face==3u);}
+ else {p=vec3f(q,select(s.lo.z,s.hi.z,face==5u));n.z=select(-1.,1.,face==5u);}
+ return Hit(0.,p,n,uv,actualSid,s.info.x);
 }
-
-// Coplanar arch modules are one receiving plane. Their storage charts are
-// separate, but a chart edge is not a physical boundary. Continue the SAME
-// reconstruction stencil into its aligned neighbour, never widen the kernel.
+// All connected smooth receiving patches share offsets and lattice coordinates.
+// Lookup has no object boundary to clamp against; only real atlas boundaries.
 const NO_CELL:u32=0xffffffffu;
-fn adjacentChart(sid:u32,right:bool)->u32 {
- let face=sid%9u;let index=sid/9u;let a=shapes[index];
- if(a.info.y!=1u||(face!=4u&&face!=5u)){return NO_CELL;}
- let other=i32(index)+select(-1,1,right);
- if(other<0||other>=i32(U.render.w)){return NO_CELL;}
- let b=shapes[u32(other)];let next=u32(other)*9u+face;
- let edge=select(a.lo.x,a.hi.x,right);let adjacentEdge=select(b.hi.x,b.lo.x,right);
- if(b.info.y!=1u||abs(edge-adjacentEdge)>.00001||any(a.lo.yz!=b.lo.yz)||any(a.hi.yz!=b.hi.yz)){return NO_CELL;}
- // Only equal-pitch aligned charts can be addressed by integer neighbours.
- let sa=surfaces[sid];let sb=surfaces[next];
- if(any(sa.info.yz!=sb.info.yz)||any(abs(sa.metric.xy-sb.metric.xy)>vec2f(.00001))){return NO_CELL;}
- return next;
-}
 fn chartCell(sid:u32,xy:vec2i,probe:bool)->u32 {
- var chartSid=sid;var s=surfaces[sid];var dims=s.info.yz;
- if(probe){dims=(dims+u32(s.metric.w)-1u)/u32(s.metric.w);}
- var q=xy;if(q.y<0||q.y>=i32(dims.y)){return NO_CELL;}
- if(q.x<0||q.x>=i32(dims.x)){
-  let right=q.x>=i32(dims.x);chartSid=adjacentChart(sid,right);
-  if(chartSid==NO_CELL){return NO_CELL;}
-  q.x+=select(i32(dims.x),-i32(dims.x),right);s=surfaces[chartSid];
- }
- return select(s.info.x,s.info.w,probe)+u32(q.y)*dims.x+u32(q.x);
+ let s=surfaces[sid];var dims=s.info.yz;if(probe){dims=(dims+u32(s.metric.w)-1u)/u32(s.metric.w);}
+ if(any(xy<vec2i(0))||any(xy>=vec2i(dims))){return NO_CELL;}
+ return select(s.info.x,s.info.w,probe)+u32(xy.y)*dims.x+u32(xy.x);
 }
 fn chartCellClamped(sid:u32,xy:vec2i,probe:bool)->u32 {
  let s=surfaces[sid];var dims=s.info.yz;if(probe){dims=(dims+u32(s.metric.w)-1u)/u32(s.metric.w);}
- let q=vec2i(xy.x,clamp(xy.y,0,i32(dims.y)-1));let cell=chartCell(sid,q,probe);
- if(cell!=NO_CELL){return cell;}
- return select(s.info.x,s.info.w,probe)+u32(q.y)*dims.x+u32(clamp(q.x,0,i32(dims.x)-1));
+ return chartCell(sid,clamp(xy,vec2i(0),vec2i(dims)-1),probe);
 }
 
 // Metre-scale tile construction. Independent seeds stay attached to the world.
@@ -288,8 +270,7 @@ fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
 }
 fn reliefAt(ro:vec3f,rd:vec3f,h:Hit,t:f32,uvRay:vec2f)->Hit {let off=t-h.t;
       var result=h;result.t=t;result.p=ro+rd*t;
-      if(h.sid%9u==6u){result.uv=h.uv+uvRay*off/surfaces[h.sid].metric.xy;}
-      else {let shape=shapes[h.sid/9u];let q=(result.p-shape.lo.xyz)/(shape.hi.xyz-shape.lo.xyz);result.uv=q.xy;if(h.sid%9u<2u){result.uv=q.zy;}if(h.sid%9u==2u||h.sid%9u==3u){result.uv=q.xz;}if(h.sid%9u>=7u){result.uv=vec2f(q.z,result.p.y/shape.params.y);}}
+      result.uv=lightUV(result.p,h.sid);
       return result;
 }
 fn reliefHit(ro:vec3f,rd:vec3f,h:Hit)->Hit {
