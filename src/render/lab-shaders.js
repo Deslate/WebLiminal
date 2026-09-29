@@ -2,7 +2,7 @@
 export function labShader(kind,source,lab){
  let s=source;
  if(kind==='sky'&&lab.gridScale>1)s=s.replace('@workgroup_size(64)','@workgroup_size(128)');
- if(kind==='water'&&lab.waterMode==='transmission')s=s.replace('for(var branch=0u;branch<2u;branch++)','for(var branch=1u;branch<2u;branch++)');
+ if(kind==='water'&&lab.waterMode==='transmission')s=s.replace('for(var branch=0u;branch<2u;branch++)','for(var branch=1u;branch<2u;branch++)').replace('const ENABLE_SKY_REFLECTION:bool=true','const ENABLE_SKY_REFLECTION:bool=false');
  if(kind==='diffuse'&&lab.diffuseDirections!==128)s=s.replace('DIFFUSE_DIRECTIONS:u32=128u',`DIFFUSE_DIRECTIONS:u32=${lab.diffuseDirections}u`);
  if(kind==='sky'&&lab.skySamples!==256)s=s.replaceAll('256u','64u').replaceAll('16u','8u').replaceAll('/16.','/8.').replaceAll('/256.','/64.');
  // Keep physical support approximately fixed when receiver density changes.

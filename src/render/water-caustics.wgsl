@@ -39,9 +39,10 @@ fn receive(h:Hit,power:vec3f,footprint:f32) {
   atomicAdd(&packetCounts[2],1u);atomicAdd(&packetCounts[3],1u);
   if(h.p.y>U.state.y+.1){atomicAdd(&packetCounts[4],1u);}
 }
-fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32,footprint:f32) {
+fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32,footprint:f32,branches:u32) {
   let incoming=-l;let f=fresnel(dot(l,n),1.,1.333);atomicAdd(&packetCounts[1],1u);
   for(var branch=0u;branch<2u;branch++){
+    if((branches & (1u<<branch))==0u){continue;}
     let reflected=branch==0u;let rd=select(refract(incoming,n,1./1.333),reflect(incoming,n),reflected);
     let h=traceDynamicSolid(p+rd*EPS*2.,rd,INF);let outgoing=power*select(1.-f,f,reflected);
     if(h.material==10u){continue;}
@@ -78,10 +79,25 @@ fn solarWaterPacket(i:u32,nSun:u32,l:vec3f) {
       if(hit.t>=distance-.005 && dot(n,l)>0.){
         let area=(hi.x-lo.x)*(hi.y-lo.y)/f32(nSun*nSun*2u);
         let power=sunIrradiance()*max(dot(n,l),0.)/n.y*area*exp(-.004*distance);
-        waterPacket(p,n,l,power,select(99999u,i/1024u,i%1024u==128u),0.);
+        waterPacket(p,n,l,power,select(99999u,i/1024u,i%1024u==128u),0.,3u);
       }
     }
 }
+// Integrate the finite sky aperture rather than treating it as four point sources.
+// Extra angular samples are only for reflected flux. Transmission keeps its
+// existing estimator; both use the same geometric normal and Fresnel partition.
+const ENABLE_SKY_REFLECTION:bool=true;
+const SKY_REFLECTION_SIDE:u32=8u;
+fn skyWaterPacket(p:vec3f,n:vec3f,waterArea:f32,lightArea:f32,uv:vec2f,samples:f32,footprint:f32,branches:u32){
+      let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),6.102,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
+      if(dot(n,l)>0. && traceDynamicSolid(p+l*EPS*2.,l,d).t>=d-.005){
+        let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(samples*d*d)*exp(-.004*d);
+        // Near-axis projection of one source cell through the mean interface.
+        // This is a finite-footprint estimate, not a full curved beam Jacobian.
+        waterPacket(p,n,l,power,99999u,footprint,branches);
+      }
+}
+
 @compute @workgroup_size(64)
 fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_id) local:vec3u) {
   if(local.x<5u){atomicStore(&packetCounts[local.x],0u);}
@@ -100,16 +116,18 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
     let xz=mix(vec2f(-7,-17),vec2f(7,10),(vec2f(f32(i%nx),f32(i/nx))+.5)/vec2f(f32(nx),f32(ny)));
     let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
     let waterArea=14.*27./f32(nx*ny);let lightArea=(U.opening.y-U.opening.x)*(U.opening.w-U.opening.z);
+    let footprint=max(14./f32(nx),27./f32(ny))*(1.+U.state.y/(1.333*max(.1,6.102-U.state.y)));
     for(var k=0u;k<4u;k++){
       let uv=vec2f(.25+f32(k%2u)*.5,.25+f32(k/2u)*.5);
-      let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),6.102,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
-      if(dot(n,l)>0. && traceDynamicSolid(p+l*EPS*2.,l,d).t>=d-.005){
-        let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(4.*d*d)*exp(-.004*d);
-        // Near-axis projection of one source cell through the mean interface.
-        // This is a finite-footprint estimate, not a full curved beam Jacobian.
-        waterPacket(p,n,l,power,99999u,max(14./f32(nx),27./f32(ny))*(1.+U.state.y/(1.333*max(.1,6.102-U.state.y))));
-      }
+      skyWaterPacket(p,n,waterArea,lightArea,uv,4.,footprint,2u);
       atomicAdd(&packetCounts[0],1u);
+    }
+    if(ENABLE_SKY_REFLECTION){
+      for(var k=0u;k<SKY_REFLECTION_SIDE*SKY_REFLECTION_SIDE;k++){
+        let uv=(vec2f(f32(k%SKY_REFLECTION_SIDE),f32(k/SKY_REFLECTION_SIDE))+.5)/f32(SKY_REFLECTION_SIDE);
+        skyWaterPacket(p,n,waterArea,lightArea,uv,f32(SKY_REFLECTION_SIDE*SKY_REFLECTION_SIDE),footprint,1u);
+        atomicAdd(&packetCounts[0],1u);
+      }
     }
   }
   workgroupBarrier();

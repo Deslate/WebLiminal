@@ -100,3 +100,5 @@ The audit integrates each unique receiver cell once, using physical covered area
 
 
 完整反射＋透射上的面积积分与天花板GGX求积修复，见 [本轮诊断](EXPERIMENT-full-light-v159.md)。性能按用户要求待独占GPU时补测，未用重放速度代替帧率。
+
+天花板天光反射的面积光源求积由每水面点4方向改为64方向；透射仍4方向、太阳不变，未加额外微表面散射或扩大光子核。该改动只明显改善暗处天光子分量，整体观感、残余跳变及性能限制见 [v1.61收敛诊断](CEILING-SKY-INTEGRAL-v161.md)。
