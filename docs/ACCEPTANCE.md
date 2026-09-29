@@ -1,3 +1,5 @@
+P0 透射候选：仅恢复真实水面透射及匹配的漫反射增量，首段反射水光仍省略；见 [实验说明](EXPERIMENT-transmission-only.md)。这是独立候选，不是主分支已验收结果。
+
 v1.51 精准回退 A/B 与暗区强度指标见 [验收报告](ACCEPTANCE-v1.51.md)。
 
 v1.47：背景时钟恢复 1.0、60 Hz 有限水深积分、128 方向并行动态漫反射；时间频谱、静置录像、完整 Benchmark 与未达标项见 [ACCEPTANCE-v1.47.md](ACCEPTANCE-v1.47.md)。
