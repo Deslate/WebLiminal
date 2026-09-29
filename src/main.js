@@ -1,3 +1,6 @@
+import {LAB_DEFAULTS,normalizeLab,readLab,saveLab} from "./lab-settings.js";
+import {createLabMenu} from "./lab-menu.js";
+let labPanel=null,labState={...LAB_DEFAULTS},labApplying=false,labPauseAfter=false;
 import {createWakeTrail} from "./wake-trail.js";
 const wakeTrail=createWakeTrail();
 import level from "../levels/poolrooms.json";
@@ -38,12 +41,14 @@ function resize() {
 resize();
 addEventListener("resize", resize);
 addEventListener("keydown", (e) => {
+  if(e.code==="KeyG"){e.preventDefault();if(!e.repeat){keys.clear();dragging=false;labPanel?.toggle();labPanel?.update({paused,frames:frameMs,internal:renderer.resolution});}return;}
+  if(e.code==="Escape"&&labPanel?.isOpen){e.preventDefault();labPanel.close();return;}
   if (e.code === "Tab") {
     e.preventDefault();
-    if (!e.repeat) setPaused(!paused);
+    if (!e.repeat) {if(labApplying)labPauseAfter=!labPauseAfter;else setPaused(!paused);}
     return;
   }
-  if (paused) return;
+  if (paused || labPanel?.isOpen) return;
   if (
     [
       "KeyW",
@@ -119,16 +124,17 @@ function setPaused(value) {
   dragging = false;
   sound.setPaused(value);
   document.body.classList.toggle("paused", value);
+  labPanel?.update({paused,frames:frameMs,internal:renderer.resolution});
   if (value) cancelFrame();
   else { resetClock(); scheduleFrame(); }
 }
 function scheduleFrame(delay=0) {
-  if (paused || document.hidden || tickRunning || frameTimer !== null ||
+  if (labApplying || paused || document.hidden || tickRunning || frameTimer !== null ||
       (targetSamples && renderer.samples >= targetSamples)) return;
   frameTimer = setTimeout(() => { frameTimer = null; tick(performance.now()); }, delay);
 }
 async function tick(now) {
-  if (paused || document.hidden || tickRunning) return;
+  if (labApplying || paused || document.hidden || tickRunning) return;
   if (renderer.busy) { scheduleFrame(16); return; }
   tickRunning = true;
   try {
@@ -189,7 +195,8 @@ async function tick(now) {
       if (completed % 15 === 0)
         document.getElementById("timecode").textContent =
           `00:${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(Math.floor(elapsed) % 60).padStart(2, "0")}`;
-      if (!paused && !holdTime && frameMs.length > 12 && done - lastResize > 300) {
+      labPanel?.update({paused,frames:frameMs,internal:renderer.resolution});
+      if (labState.resolution==="auto" && !paused && !holdTime && frameMs.length > 12 && done - lastResize > 300) {
         const samples = frameMs
           .slice(-12)
           .map((f) => f.ms)
@@ -211,6 +218,25 @@ async function tick(now) {
   // actual render when its predecessor is complete, capped at 60 submissions/s.
   scheduleFrame(Math.max(0,1000/60-(performance.now()-now)));
 }
+async function applyLab(value,persist=true){
+  const next=normalizeLab(value);
+  if(JSON.stringify(next)!==JSON.stringify(labState)){
+    if(labApplying)throw Error("已有一次设置切换正在进行");
+    labApplying=true;labPauseAfter=paused;setPaused(true);
+    try{
+      while(renderer.busy||tickRunning)await new Promise(r=>setTimeout(r,5));
+      await renderer.setLab(next);labState=next;
+      scale=next.resolution==="auto"?Math.min(1,1280/innerWidth):next.resolution;
+      renderer.resize(innerWidth,innerHeight,scale);resizePending=false;
+      elapsed=0;wakeTrail.reset();frameMs=[];lastCompleted=null;resetClock();
+      // Explicit edits refresh one paused frame; Tab during rebuild records intent.
+      renderer.setBody(bodyEnabled?view:null);await renderer.render(cameraPose(),elapsed,false,1);
+    }finally{labApplying=false;if(!labPauseAfter)setPaused(false);}
+  }
+  labPanel?.sync();return persist?saveLab(localStorage,labState):true;
+}
+labPanel=createLabMenu({apply:applyLab,getState:()=>({...labState})});
+await applyLab(readLab(localStorage),false);
 scheduleFrame();
 Object.defineProperty(window, "__POOLROOMS_V1__", {
   value: {
@@ -228,6 +254,9 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       internal: renderer.resolution,
       samples: renderer.samples,
       config: renderer.config,
+      lab: {...labState},
+      labMenuOpen:labPanel.isOpen,
+      labApplying,
       staticExposure: renderer.autoStatic,
       lightingBatches: renderer.lightingBatches,
       cameraHistory: false,
@@ -239,6 +268,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       validPosition: canStand(view.x, view.z, ROOM, renderer.solids),
     }),
     async configure(parameters) {
+      if(parameters.lab)await applyLab(parameters.lab,false);
       setPaused(true);
       while (renderer.busy) await new Promise((r) => setTimeout(r, 5));
       if (parameters.view) Object.assign(view, parameters.view);
@@ -279,6 +309,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       renderer.setBody(view);await renderer.render(camera,time,true,1);
       return {png:capture?canvas.toDataURL():null,view:{...view},dynamics:renderer.dynamics};
     },
+    setLab: (value)=>applyLab(value,false),
     audit: (options) => renderer.audit(options),
   },
 });

@@ -1,3 +1,5 @@
+import {normalizeLab} from '../src/lab-settings.js';
+const labConfig=normalizeLab(JSON.parse(process.env.LAB_CONFIG||'{}'));
 import {provenance} from './roam-v149-provenance.mjs';
 import {chromium} from '@playwright/test';
 import {mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
@@ -41,11 +43,11 @@ for(const variant of variants){
   await page.route(u=>u.pathname==='/src/render/diffuse-transfer.wgsl',r=>r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(replaceOnce(readFileSync('src/render/diffuse-transfer.wgsl','utf8'),'DIFFUSE_DIRECTIONS:u32=128u','DIFFUSE_DIRECTIONS:u32=32u'))}));
   await page.route(u=>u.pathname==='/src/render/water-caustics.wgsl',r=>r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(readFileSync('src/render/water-caustics.wgsl','utf8').replace('solarDiskDirection(k)','sunDirection()').replace('solarDiskDirection(k+2u)','sunDirection()'))}));
  }
- if(['rotated-transfer','dense-transfer','low-transfer'].includes(variant))await page.route(u=>u.pathname==='/src/render/diffuse-transfer.wgsl',r=>{let s=readFileSync('src/render/diffuse-transfer.wgsl','utf8');if(variant==='rotated-transfer')s=replaceOnce(s,'fract(f32(i)*.61803398875)','fract(f32(i)*.61803398875+.125)');else{s=replaceOnce(s,'DIFFUSE_DIRECTIONS:u32=128u',variant==='low-transfer'?'DIFFUSE_DIRECTIONS:u32=32u':'DIFFUSE_DIRECTIONS:u32=256u');}return r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(s)})});
- if(variant==='dense-transfer')await page.route(u=>u.pathname==='/src/render/renderer.js',async r=>{const q=await r.fetch();let s=await q.text();s=replaceOnce(s,'geometry.probeCount*256*16','geometry.probeCount*512*16');await r.fulfill({response:q,body:s})});
+ if(variant==='rotated-transfer')await page.route(u=>u.pathname==='/src/render/diffuse-transfer.wgsl',r=>{const s=replaceOnce(readFileSync('src/render/diffuse-transfer.wgsl','utf8'),'fract(f32(i)*.61803398875)','fract(f32(i)*.61803398875+.125)');return r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(s)})});
+ const effectiveLabConfig={...labConfig,...(variant==='dense-transfer'?{diffuseDirections:256}:variant==='low-transfer'?{diffuseDirections:32}:{})};
  if(['no-diffuse','static-light'].includes(variant))await page.route(u=>u.pathname==='/src/render/compose-light.wgsl',r=>{let s=readFileSync('src/render/compose-light.wgsl','utf8');s=replaceOnce(s,'base.rgb+sum/max(weight,.0001)','base.rgb');if(variant==='static-light')s=replaceOnce(s,'+water[idx]','+water[idx]*select(0.,1.,U.settings.w>10.)');return r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(s)})});
  await page.goto(process.env.VERIFY_URL||'http://127.0.0.1:4173');await page.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs,null,{timeout:120000});
- await page.evaluate(async ({actor,variant})=>{document.body.classList.add('evidence');await __POOLROOMS_V1__.configure({view:actor,seed:7819301,pause:true,freeze:false,scale:1,grain:.004,body:true,focalLength:24,photonCount:variant==='rollback-four'?49152:196608})},{actor:sample(0).actor,variant});
+ await page.evaluate(async ({actor,variant,labConfig})=>{document.body.classList.add('evidence');await __POOLROOMS_V1__.configure({lab:labConfig,view:actor,seed:7819301,pause:true,freeze:false,scale:labConfig.resolution==='auto'?1:labConfig.resolution,grain:.004,body:true,focalLength:24,photonCount:variant==='rollback-four'?49152:labConfig.photonCount})},{actor:sample(0).actor,variant,labConfig:effectiveLabConfig});
  const count=DURATION*FPS;encoder=spawn(process.env.PYTHON||'python3',['scripts/roam-v149-encode.py',out,String(count),String(WIDTH),String(HEIGHT),String(FPS)],{stdio:['pipe','inherit','inherit']});const finished=once(encoder,'exit');
  const start=Date.now();
  for(let i=0;i<count;i++){
@@ -57,7 +59,7 @@ for(const variant of variants){
  }
  encoder.stdin.end();const [code]=await finished;if(code!==0)throw Error('Encoder failed '+code);
  const snapshot=await page.evaluate(()=>__POOLROOMS_V1__.snapshot());if(sourceHash()!==initialHash)throw Error('Source changed during capture; round invalid');
- writeFileSync(out+'/manifest.json',JSON.stringify({schema:2,variant,sourceHash:initialHash,renderEquivalenceHash:source.renderEquivalenceHash,pathHash:createHash('sha256').update(readFileSync('scripts/roam-v149-path.mjs')).digest('hex'),commit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),dirty:execFileSync('git',['status','--short'],{encoding:'utf8'}),method:'Deterministic 30Hz simulation replay from reset, NOT realtime FPS. Film grain retained. Narrative light cue bypassed by evidence API. All actor poses collision validated.',fps:FPS,width:WIDTH,height:HEIGHT,duration:DURATION,segments,frames,errors,snapshot},null,2));
+ writeFileSync(out+'/manifest.json',JSON.stringify({schema:2,variant,labConfig,effectiveLabConfig,sourceHash:initialHash,renderEquivalenceHash:source.renderEquivalenceHash,pathHash:createHash('sha256').update(readFileSync('scripts/roam-v149-path.mjs')).digest('hex'),commit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),dirty:execFileSync('git',['status','--short'],{encoding:'utf8'}),method:'Deterministic 30Hz simulation replay from reset, NOT realtime FPS. Film grain retained. Narrative light cue bypassed by evidence API. All actor poses collision validated.',fps:FPS,width:WIDTH,height:HEIGHT,duration:DURATION,segments,frames,errors,snapshot},null,2));
  console.log('complete',out);
  }finally{encoder?.stdin.destroy();if(encoder?.exitCode===null)encoder.kill();await browser.close()}
 }

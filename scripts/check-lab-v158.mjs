@@ -1,0 +1,6 @@
+import {chromium}from'@playwright/test';import{writeFileSync,mkdirSync}from'node:fs';
+const root='../workroom-v1.58-evidence';mkdirSync(root,{recursive:true});const b=await chromium.launch({channel:'chrome',headless:true});
+try{const p=await b.newPage({viewport:{width:1280,height:832}});p.on('console',m=>{if(m.type()==='error')console.log(m.text())});p.on('pageerror',e=>console.log(e.message));await p.routeWebSocket(/.*/,w=>w.close());await p.goto('http://127.0.0.1:4175');await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs,{timeout:120000});await p.keyboard.press('g');await p.screenshot({path:root+'/menu.png'});
+const cases=[{}, {waterMode:'full'}, {waterMode:'off'}, {diffuseDirections:32}, {skySamples:64},{gridScale:.5},{gridScale:1.5},{filterScale:.5},{filterScale:1.5},{reflectionDepth:1},{photonCount:49152},{resolution:.5}];const a=[];
+for(const value of cases){const r=await p.evaluate(async v=>{await __POOLROOMS_V1__.setLab(v);await __POOLROOMS_V1__.pause();await __POOLROOMS_V1__.renderEvidence(.5,{},false,false);const s=__POOLROOMS_V1__.snapshot();return {lab:s.lab,errors:s.errors,internal:s.internal,dynamics:s.dynamics};},value);console.log(value,r.errors,r.internal);a.push(r);if(r.errors.length)throw Error(JSON.stringify(r.errors));}
+writeFileSync(root+'/switches.json',JSON.stringify(a,null,2));}finally{await b.close()}

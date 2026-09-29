@@ -159,7 +159,7 @@ fn camera(@builtin(global_invocation_id) gid:vec3u) {
 
 @compute @workgroup_size(32)
 fn refineCamera(@builtin(global_invocation_id) gid:vec3u){
- let slot=gid.x;if(slot>=atomicLoad(&refinement.count)){return;}
+ let slot=gid.x+gid.y*65535u*32u;if(slot>=atomicLoad(&refinement.count)){return;}
  let work=refinement.items[slot];let idx=work.pixel;let xy=vec2u(idx%U.render.x,idx/U.render.x);
  var c=image[idx].rgb*2.;var reflected=reflectionLayer[idx].rgb*2.;var lo=work.lo;var hi=work.hi;var count=work.count;
  let offsets=array<vec2f,8>(vec2f(.25,.25),vec2f(.75,.75),vec2f(.25,.75),vec2f(.75,.25),vec2f(.125,.625),vec2f(.625,.875),vec2f(.875,.375),vec2f(.375,.125));
@@ -175,6 +175,7 @@ fn refineCamera(@builtin(global_invocation_id) gid:vec3u){
 
 @compute @workgroup_size(1)
 fn scheduleRefinement(){
- refinement.dispatchX=(atomicLoad(&refinement.count)+31u)/32u;
- refinement.dispatchY=1u;refinement.dispatchZ=1u;
+ let groups=(atomicLoad(&refinement.count)+31u)/32u;
+ refinement.dispatchX=min(groups,65535u);
+ refinement.dispatchY=max(1u,(groups+65534u)/65535u);refinement.dispatchZ=1u;
 }

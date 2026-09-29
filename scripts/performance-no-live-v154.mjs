@@ -1,15 +1,17 @@
+import{recordBackground}from'./environment-lab-v158.mjs';
 // Production scheduler / GPU-completed frames, independent of offline video encoding.
 import {chromium} from '@playwright/test';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {sample,DURATION,segments} from './roam-v149-path.mjs';
 import {provenance} from './roam-v149-provenance.mjs';
 const root=process.env.EVIDENCE_DIR||'../workroom-v1.49-evidence/benchmark';mkdirSync(root,{recursive:true});
+await recordBackground(root);
 const browser=await chromium.launch({channel:'chrome',headless:true});
 try {
  const page=await browser.newPage({viewport:{width:1280,height:832}});await page.routeWebSocket(/.*/,w=>w.close());
  await page.route(u=>u.pathname==='/src/main.js',async r=>{const response=await r.fetch();let s=await response.text();const old='if (!holdTime && elapsed > 34.6 && elapsed < 43)';if(!s.includes(old))throw Error('Narrative cue hook missing');s=s.replace(old,'if (false)');s=s.replace('if (!paused && !holdTime && frameMs.length > 12', 'if (false && !paused && !holdTime && frameMs.length > 12');await r.fulfill({response,body:s})});
  await page.goto(process.env.VERIFY_URL||'http://127.0.0.1:4173');await page.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs,null,{timeout:120000});
- await page.evaluate(async p=>{await __POOLROOMS_V1__.configure({view:p.actor,pause:false,freeze:false,scale:1,body:true});__POOLROOMS_V1__.setObserver(p.camera)},sample(0));
+ await page.evaluate(async p=>{await __POOLROOMS_V1__.configure({lab:{resolution:1},view:p.actor,pause:false,freeze:false,scale:1,body:true});__POOLROOMS_V1__.setObserver(p.camera)},sample(0));
  await page.waitForTimeout(5000);const start=Date.now();const samples=[];const startElapsed=await page.evaluate(()=>__POOLROOMS_V1__.snapshot().elapsed);
  while((Date.now()-start)/1000<DURATION){const t=(Date.now()-start)/1000,state=sample(t);const s=await page.evaluate(p=>{const a=__POOLROOMS_V1__;a.setView(p.actor);a.setObserver(p.camera);const s=a.snapshot();return{completed:s.completedFrames,frameCount:s.frames.length,internal:s.internal,errors:s.errors}},state);if(s.internal[0]!==1280||s.internal[1]!==832)throw Error('Fixed resolution changed: '+s.internal);samples.push({t,segment:state.segment,completed:s.completed,frameCount:s.frameCount,internal:s.internal});if(s.errors.length)throw Error(JSON.stringify(s.errors));await page.waitForTimeout(25);}
  const snapshot=await page.evaluate(async()=>{await __POOLROOMS_V1__.pause();return __POOLROOMS_V1__.snapshot()});

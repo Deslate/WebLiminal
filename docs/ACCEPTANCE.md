@@ -86,3 +86,5 @@ v1.16 回退后的专项调整：背景模拟时间倍率0.28；普通行走身�
 v1.43 墙面局部强明暗：完成光路消融、接收格/入射数收敛对照，合入有限太阳圆盘配对积分与更高精度通量记录。观感只小幅改善，未宣称根治；性能与所有失败组、同机位截图和录像见 [专项报告](ACCEPTANCE-v1.43.md)。
 
 Transmission-only candidate follow-up: matched doorway 100ms p99 is 4/255 → 2/255 (dark subregion 3/255 → 1/255); reference floor bright ROI is 0.774253 → 0.774237. These are targeted criteria, not an unconditional visual/performance pass. Conservative-source audit, final Benchmark, fixed-resolution repeats and remaining limitations are recorded in [the diffuse area integration report](EXPERIMENT-diffuse-area-integral.md) and `../workroom-v1.57-evidence/README.md`.
+
+G laboratory: open/close, saved settings, restore default, Tab during rebuild, paused zero-submit and all control categories are tested. Matched1920×1200 default rendering is pixel-identical to6d4245f; off is pixel-identical to507febb. Details, full Benchmark and shared-load performance limitations are in [LIGHTING-LAB.md](LIGHTING-LAB.md) and `../workroom-v1.58-evidence/README.md`. Experimental high-cost settings are not a30fps guarantee.
