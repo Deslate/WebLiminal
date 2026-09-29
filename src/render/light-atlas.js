@@ -2,7 +2,7 @@
 // Planar connected components share one lattice; a smooth arch intrados uses
 // one unfolded chart. True creases and disconnected surfaces remain separate.
 export const SURFACE_WORDS=16;
-export function buildLightAtlases(shapes){
+export function buildLightAtlases(shapes,gridScale=1){
  const faces=[];
  for(let i=0;i<shapes.length;i++)for(let face=0;face<9;face++){
   const s=shapes[i],d=s.hi.map((v,k)=>v-s.lo[k]),axis=Math.floor(face/2),uvAxes=face<2?[2,1]:face<4?[0,2]:[0,1];
@@ -29,7 +29,7 @@ export function buildLightAtlases(shapes){
   for(const m of g.members){if(m.disabled)continue;const b=m.bounds;if(u<b[0]-1e-7||u>b[2]+1e-7||v<b[1]-1e-7||v>b[3]+1e-7)continue;const p=point(g,u,v),s=shapes[m.i],x=p[0]-(s.lo[0]+s.hi[0])/2,y=p[1]-s.spring;if(s.kind===1&&Math.abs(x)<s.radius&&(y<0||x*x+y*y<s.radius*s.radius))continue;return m.sid;}
   return null;
  };
- for(const g of groups){const [u0,v0,u1,v1]=g.bounds;g.width=u1-u0;g.height=v1-v0;g.nx=Math.max(2,Math.ceil(g.width*g.density));g.ny=Math.max(2,Math.ceil(g.height*g.density));g.offset=totalCells;g.probeOffset=probeCount;g.stride=g.members.some(m=>m.i===0&&m.face===3)?8:4;totalCells+=g.nx*g.ny;probeCount+=Math.ceil(g.nx/g.stride)*Math.ceil(g.ny/g.stride);
+ for(const g of groups){const [u0,v0,u1,v1]=g.bounds;g.width=u1-u0;g.height=v1-v0;g.density*=gridScale;g.nx=Math.max(2,Math.ceil(g.width*g.density));g.ny=Math.max(2,Math.ceil(g.height*g.density));g.offset=totalCells;g.probeOffset=probeCount;g.stride=g.members.some(m=>m.i===0&&m.face===3)?8:4;g.stride*=gridScale;totalCells+=g.nx*g.ny;probeCount+=Math.ceil(g.nx/g.stride)*Math.ceil(g.ny/g.stride);
   for(const m of g.members){const o=m.sid*16;u32.set([g.offset,g.nx,g.ny,g.probeOffset],o);f32.set([g.width,g.height,g.width*g.height/(g.nx*g.ny),g.stride],o+4);f32.set(g.bounds,o+8);u32.set([g.sid,g.curved?1:0,g.members.length,0],o+12);}
  }
  const cellSurfaces=new Uint32Array(totalCells),probeSurfaces=new Uint32Array(probeCount);

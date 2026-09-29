@@ -2,7 +2,7 @@
 import {buildLightAtlases} from "./light-atlas.js";
 import level from "../../levels/poolrooms.json";
 export const ROOM = { ...level.bounds, ceiling: level.ceiling };
-export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
+export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8, gridScale = 1) {
   const shapes = [],
     solids = [];
   const add = (lo, hi, material = 0, kind = 0, radius = 0, spring = 0) => {
@@ -47,5 +47,5 @@ export function makeGeometry(apertureWidth = 4.8, apertureDepth = 5.8) {
   solids.push({ minX: -6.1, maxX: -5.85, minZ: 0.4, maxZ: 9.7 });
   const geometryData=new ArrayBuffer(shapes.length*64),f=new Float32Array(geometryData),u=new Uint32Array(geometryData);
   shapes.forEach((s,i)=>{f.set([...s.lo,0,...s.hi,0],i*16);u.set([s.material,s.kind,i*9,0],i*16+8);f.set([s.radius,s.spring,0,0],i*16+12);});
-  return {shapes,solids,geometryData,...buildLightAtlases(shapes),aperture:[xmin,xmax,zmin,zmax]};
+  return {shapes,solids,geometryData,...buildLightAtlases(shapes,gridScale),aperture:[xmin,xmax,zmin,zmax]};
 }
