@@ -2,11 +2,12 @@ import {chromium} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-const out='../workroom-v1.35-evidence';
+const out=process.env.EVIDENCE_DIR||'../workroom-v1.49-evidence/tab';
+fs.mkdirSync(out,{recursive:true});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function gpu(){const s=execFileSync('ioreg',['-r','-c','AGXAccelerator','-l'],{encoding:'utf8'});return Object.fromEntries([...s.matchAll(/"((?:Device|Renderer|Tiler) Utilization %)"=(\d+)/g)].map(x=>[x[1],+x[2]]));}
 async function sample(n=10){const a=[];for(let i=0;i<n;i++){a.push({wall:Date.now(),...gpu()});await sleep(1000);}return a;}
-const report={};
+const report={}; // Fixed internal scale for a like-for-like resume FPS comparison.
 report.closedBefore=await sample(5);console.log('closed before sampled');
 const browser=await chromium.launch({channel:'chrome',headless:true});
 try {
@@ -14,14 +15,19 @@ try {
  const errors=[];page.on('pageerror',e=>errors.push(String(e)));
  await page.addInitScript(()=>{window.__submits=0;const f=GPUQueue.prototype.submit;GPUQueue.prototype.submit=function(...a){window.__submits++;return f.apply(this,a)};});
  // Observe completed production frames without modifying their render or time.
- await page.route('**/src/main.js*',async route=>{const r=await route.fetch();let s=await r.text();assert(s.includes('completed++;'));s=s.replace('completed++;',`    completed++;
+ await page.route('**/src/main.js*',async route=>{const r=await route.fetch();let s=await r.text();s=s.replace('if (!paused && !holdTime && frameMs.length > 60 && done - lastResize > 900)', 'if (false)');assert(s.includes('completed++;'));s=s.replace('completed++;',`    completed++;
     if(window.__captureNext>0){window.__captureNext--;window.__captured.push({t:elapsed,png:canvas.toDataURL(),dynamics:renderer.dynamics});}`);await route.fulfill({response:r,body:s});});
  await page.goto('http://127.0.0.1:4173');
- await page.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().completedFrames>120,{timeout:120000});
+ await page.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs,null,{timeout:120000});
+ await page.evaluate(()=>__POOLROOMS_V1__.configure({scale:1,pause:false,freeze:false}));
+ await page.waitForTimeout(4000);
  await page.keyboard.press('KeyM'); // exercise audio suspension after a real gesture
  const snap=()=>page.evaluate(()=>({...window.__POOLROOMS_V1__.snapshot(),submits:window.__submits}));
  report.activeStart=await snap();report.active=await sample();report.activeEnd=await snap();
- await page.keyboard.press('Escape');
+ await page.keyboard.press('Escape');assert.equal((await snap()).paused,false);
+ const focus=await page.evaluate(()=>document.activeElement.tagName);
+ await page.keyboard.press('Tab');
+ assert.equal(await page.evaluate(()=>document.activeElement.tagName),focus);
  await page.waitForFunction(()=>{const s=__POOLROOMS_V1__.snapshot();return s.paused&&!s.rendering;});
  report.pauseStart=await snap();console.log('paused');
  const png=await page.evaluate(()=>document.querySelector('canvas').toDataURL());
@@ -32,12 +38,15 @@ try {
  assert.equal(report.pauseStart.elapsed,report.pauseEnd.elapsed);
  assert.equal(report.pauseEnd.frameScheduled,false);
  assert.equal(await page.evaluate(()=>document.querySelector('canvas').toDataURL()),png);
- await page.evaluate(()=>dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',repeat:true})));
+ await page.evaluate(()=>dispatchEvent(new KeyboardEvent('keydown',{code:'Tab',repeat:true})));
  await page.keyboard.press('KeyW');
  assert.deepEqual((await snap()).view,report.pauseStart.view);
  assert.equal((await snap()).paused,true);
+ await page.keyboard.press('Escape');assert.equal((await snap()).paused,true);
+ report.tabDefaultPrevented=await page.evaluate(()=>!dispatchEvent(new KeyboardEvent('keydown',{code:'Tab',repeat:true,cancelable:true})));
+ assert(report.tabDefaultPrevented);
  await page.evaluate(()=>{window.__captureNext=6;window.__captured=[]});
- await page.keyboard.press('Escape');
+ await page.keyboard.press('Tab');
  await page.waitForFunction(()=>window.__captured.length===6).catch(async e=>{console.log('capture failure',await snap(),await page.evaluate(()=>({n:__captureNext,f:__captured.length})),errors);throw e;});
  const frames=await page.evaluate(()=>window.__captured);
  report.resumeFrames=frames.map(({png,...x},i)=>{fs.writeFileSync(`${out}/resume-${i}.png`,Buffer.from(png.split(',')[1],'base64'));return x});
@@ -47,14 +56,14 @@ try {
  await sleep(2000);
  report.resumedStart=await snap();report.resumed=await sample();report.resumedEnd=await snap();
  // Resize while paused must retain backing pixels; apply deferred resize on resume.
- await page.keyboard.press('Escape');await page.waitForFunction(()=>!__POOLROOMS_V1__.snapshot().rendering);
+ await page.keyboard.press('Tab');await page.waitForFunction(()=>!__POOLROOMS_V1__.snapshot().rendering);
  const beforeResize=await page.evaluate(()=>document.querySelector('canvas').toDataURL());
  await page.setViewportSize({width:1100,height:760});
  assert.equal(await page.evaluate(()=>document.querySelector('canvas').toDataURL()),beforeResize);
- await page.keyboard.press('Escape');await page.waitForFunction(()=>document.querySelector('canvas').width===1100);
+ await page.keyboard.press('Tab');await page.waitForFunction(()=>document.querySelector('canvas').width===1100);
  // Rapid toggles must leave one loop, and a final pause must stay stopped.
- for(let i=0;i<8;i++)await page.keyboard.press('Escape');
- await page.keyboard.press('Escape');await page.waitForFunction(()=>__POOLROOMS_V1__.snapshot().paused&&!__POOLROOMS_V1__.snapshot().rendering);
+ for(let i=0;i<8;i++)await page.keyboard.press('Tab');
+ await page.keyboard.press('Tab');await page.waitForFunction(()=>__POOLROOMS_V1__.snapshot().paused&&!__POOLROOMS_V1__.snapshot().rendering);
  const stopped=await snap();await sleep(1000);assert.equal((await snap()).submits,stopped.submits);
  report.errors=errors;assert.deepEqual(errors,[]);
  await page.close();report.closedAfter=await sample(10);

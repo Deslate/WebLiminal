@@ -81,7 +81,7 @@ export function createSoundscape(status) {
     eventTriggered = false;
   function refresh() {
     status.textContent = paused
-      ? "已暂停 · ESC 恢复"
+      ? "已暂停 · Tab 恢复"
       : muted
       ? "声音已关闭 · M 开启"
       : ctx.state === "running"

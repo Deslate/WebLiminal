@@ -38,7 +38,7 @@ function resize() {
 resize();
 addEventListener("resize", resize);
 addEventListener("keydown", (e) => {
-  if (e.code === "Escape") {
+  if (e.code === "Tab") {
     e.preventDefault();
     if (!e.repeat) setPaused(!paused);
     return;
