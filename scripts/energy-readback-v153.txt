@@ -1,0 +1,18 @@
+if(options.energy){
+ const fields={};
+ for(const key of ['irradiance0','fine0','liveField','flatField','energyDelta','combined']){
+  const size=geometry.totalCells*16;const rb=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const e=device.createCommandEncoder();e.copyBufferToBuffer(buffers[key],0,rb,0,size);device.queue.submit([e.finish()]);await rb.mapAsync(GPUMapMode.READ);fields[key]=new Float32Array(rb.getMappedRange()).slice();rb.unmap();rb.destroy();
+ }
+ const sf=new Float32Array(geometry.surfaces),cells=geometry.cellSurfaces;
+ const result={};const names=['all','ceiling','floor','walls'];for(const name of names)result[name]={area:0,fields:Object.fromEntries([...Object.keys(fields),'unclamped','closureError','clampAdded'].map(k=>[k,{flux:0,min:Infinity,max:-Infinity}]))};
+ for(let i=0;i<geometry.totalCells;i++){
+  const packed=cells[i],sid=packed&65535,coverage=(packed>>>16)*.25;if(!coverage)continue;
+  const area=sf[sid*16+6]*coverage,shape=geometry.shapes[Math.floor(sid/9)],face=sid%9;
+  const groups=['all'];if(shape.material===1&&face===2)groups.push('ceiling');if(sid===3)groups.push('floor');if(Math.floor(sid/9)>=1&&Math.floor(sid/9)<=4)groups.push('walls');
+  const vals={};for(const [key,a]of Object.entries(fields))vals[key]=a[i*4]*.2126+a[i*4+1]*.7152+a[i*4+2]*.0722;
+  vals.unclamped=vals.fine0+vals.liveField+vals.energyDelta;vals.closureError=vals.combined-vals.unclamped;vals.clampAdded=0;
+  for(let c=0;c<3;c++){const sum=fields.fine0[i*4+c]+fields.liveField[i*4+c]+fields.energyDelta[i*4+c];vals.clampAdded+=Math.max(0,-sum)*[.2126,.7152,.0722][c];}
+  for(const group of groups){const r=result[group];r.area+=area;for(const [key,v]of Object.entries(vals)){r.fields[key].flux+=v*area;r.fields[key].min=Math.min(r.fields[key].min,v);r.fields[key].max=Math.max(r.fields[key].max,v);}}
+ }
+ return {regions:result,quality,config,errors,simulation:simulation.info,cellCount:geometry.totalCells};
+}

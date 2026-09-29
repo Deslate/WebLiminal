@@ -87,3 +87,13 @@ b̂ 使用局部高斯压力的解析 Fourier 变换，含身体平移的相位�
 ## v1.43：实时水光的有限太阳圆盘
 
 实时太阳水光从单方向改为与缓存一致的0.00465rad角半径，四个对称角度节点由相邻水面采样点配对积分，每点两条相反光线，功率各半。太阳光包294912/帧，天光仍524288/帧。光通量整数记录由24位小数改为30位小数，避免弱反射光包细分后向下量化损失；缓冲尺寸不变。没有改变水面、材质、接收网格及重建核。墙面接收格加密和光源消融表明，已复现区域的强明暗主要来自当前波面聚焦；这次修正仅使角度积分更准确，没有解决背景水波模型的全部真实感问题。测量、性能波动及录像见 [v1.43报告](ACCEPTANCE-v1.43.md)。
+
+### v1.53: energy partition audit
+
+Cached mean-water indirect transport excludes the first solid deposition after water when no diffuse bounce has yet occurred. Runtime `W` supplies that class; the diffuse solver supplies `sum(T^k (W-Wflat), k=1..4)`. Thus the composition is `C + W + delta`, not `C + W + T(W)`.
+
+The flat reference previously changed emission quadrature as well as geometry: its wave envelope uniform had not been initialized, and zeroing wave amplitude changed the projected aperture padding. It now shares the runtime envelope and amplitude; `sampling.w=1` flattens geometry alone. In the zero-wave, body-free GPU fixture, `W-Wflat` and every propagated increment are exactly zero. This removes quadrature mismatch without changing attenuation, filtering or live reflected packets.
+
+Primary GGX continuation already integrates indirect reflected radiance. The old `photons * coat * .08` terminal approximation is now restricted to hits without that continuation (secondary hits and untraced tiny coats), eliminating primary overlap. Secondary rough reflection remains an approximation.
+
+The audit integrates each unique receiver cell once, using physical covered area. These are receiver-event irradiance integrals, not emitted watts: summing multiple diffuse events is not itself an energy violation. The separate full-indirect photon reference includes the omitted first-water class; only its `fine0` is the reference, never its deliberately redundant diagnostic `combined` buffer. Reference reconstruction, finite sampling, transport classes and bounce truncation differ from runtime, so agreement is a consistency check, not proof of exact conservation or of every local value. Evidence: `../workroom-v1.53-evidence/energy-summary.json`.

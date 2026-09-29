@@ -37,7 +37,7 @@ fn directLighting(h:Hit,m:Material,v:vec3f)->vec3f {
   if(any(sky>vec3f(0))){result+=sky*jointVisibility(h,normalize(vec3f((U.opening.x+U.opening.y)*.5,6.102,(U.opening.z+U.opening.w)*.5)-h.p))*m.albedo/PI*(1.-fv)*(1.-m.coat);}
   return result;
 }
-fn shadeMaterial(h:Hit,rd:vec3f,underwater:bool,material:Material)->vec3f {
+fn shadeMaterial(h:Hit,rd:vec3f,underwater:bool,material:Material,approximateEnvironment:bool)->vec3f {
   if(h.t>=INF){return skyRadiance(rd);}
   var m=material;if(dot(m.normal,rd)>0.){m.normal=-m.normal;}
   let nv=max(dot(m.normal,-rd),.001);let photons=photonEstimate(h);
@@ -49,7 +49,9 @@ fn shadeMaterial(h:Hit,rd:vec3f,underwater:bool,material:Material)->vec3f {
   if(!underwater){c+=directLighting(h,m,-rd);}
   // Rough glaze environment is a bounded irradiance approximation, not a
   // stochastic GGX continuation capable of producing fireflies.
-  c+=photons.rgb*m.coat*.08*U.settings.z;
+  // Only terminal secondary hits need the bounded continuation approximation.
+  // Primary GGX rays already integrate this reflected environment.
+  if(approximateEnvironment){c+=photons.rgb*m.coat*.08*U.settings.z;}
   if(underwater){return c*waterTransmittance(h.t);}
   let tr=exp(-.004*h.t);
   return c*tr+vec3f(.065,.085,.09)*(1.-tr);
@@ -63,7 +65,7 @@ fn shadeBody(h:Hit,rd:vec3f,underwater:bool)->vec3f {
 fn shadeHit(h:Hit,rd:vec3f,underwater:bool)->vec3f {
   if(h.material==10u){return shadeBody(h,rd,underwater);}
   if(h.t>=INF){return skyRadiance(rd);}
-  return shadeMaterial(h,rd,underwater,filteredMaterial(h));
+  return shadeMaterial(h,rd,underwater,filteredMaterial(h),true);
 }
 fn shadeSolid(ro:vec3f,rd:vec3f,underwater:bool)->vec3f {
   return shadeHit(traceDynamicSolid(ro,rd,INF),rd,underwater);
@@ -121,7 +123,7 @@ fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->CameraLayers {
     }
     guide=vec4f(f32(h.sid+1u),h.t,0.,1.);
   }
-  return CameraLayers(shadeMaterial(h,rd,false,m),a,guide);
+  return CameraLayers(shadeMaterial(h,rd,false,m,m.coat<=.009),a,guide);
 }
 @compute @workgroup_size(8,8)
 fn camera(@builtin(global_invocation_id) gid:vec3u) {

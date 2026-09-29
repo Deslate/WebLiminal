@@ -18,7 +18,7 @@ for(const variant of variants){
  const page=await browser.newPage({viewport:{width:WIDTH,height:HEIGHT}});page.on('pageerror',e=>errors.push(e.message));await page.routeWebSocket(/.*/,w=>w.close());
  // Test-only hook passes actual stationary/moving state and validates collision.
  await page.route(u=>u.pathname==='/src/main.js',async r=>{let s=await(await r.fetch()).text();s=replaceOnce(s,'camera,capture=true){','camera,capture=true,moving=true){');s=replaceOnce(s,'renderer.render(camera,time,true,1)','renderer.render(camera,time,moving,1)');await r.fulfill({contentType:'text/javascript',body:s})});
- if(!['current','repeat','no-diffuse','static-light','rotated-transfer','dense-transfer','low-transfer','rollback-four'].includes(variant))await page.route(u=>u.pathname==='/src/render/camera.wgsl',async r=>{
+ if(!['current','repeat','no-diffuse','static-light','rotated-transfer','dense-transfer','low-transfer','rollback-four','legacy-energy'].includes(variant))await page.route(u=>u.pathname==='/src/render/camera.wgsl',async r=>{
  let s=readFileSync('src/render/camera.wgsl','utf8');
  if(variant==='no-glaze')s=replaceOnce(s,'if(m.coat>.009){','if(false){');
  else if(variant==='rotated')s=replaceOnce(s,'fract(f32(k)*.61803398875)','fract(f32(k)*.61803398875+.125)');
@@ -26,6 +26,16 @@ for(const variant of variants){
  else throw Error('Unknown variant '+variant);
  await r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(s)});
  });
+ if(variant==='legacy-energy'){
+  // Reproduce the pre-v1.53 implementation without changing the working tree.
+  for(const file of ['common.wgsl','camera.wgsl'])await page.route(u=>u.pathname==='/src/render/'+file,r=>{
+   let s=readFileSync('src/render/'+file,'utf8');
+   if(file==='common.wgsl')s=replaceOnce(s,'if(U.sampling.w==1u || (U.state.z==0. && U.body.z==0.))','if(U.state.z==0. && U.body.z==0.)');
+   else s=replaceOnce(s,'if(approximateEnvironment){c+=photons.rgb*m.coat*.08*U.settings.z;}','c+=photons.rgb*m.coat*.08*U.settings.z;');
+   return r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(s)});
+  });
+  await page.route(u=>u.pathname==='/src/render/renderer.js',async r=>{const q=await r.fetch();let s=await q.text();s=replaceOnce(s,'      f.set([wakeEnvelope,config.reflectionCone,quality*quality*(3-2*quality),config.reflectionFilter],44);','');s=replaceOnce(s,'u[43]=1;device.queue.writeBuffer(uniforms,0,data);','f[22]=0;device.queue.writeBuffer(uniforms,0,data);');s=replaceOnce(s,'u[43]=0;f.set(activeWakes,52);','f[22]=config.waveAmplitude;f.set(activeWakes,52);');await r.fulfill({response:q,body:s});});
+ }
  if(variant==='rollback-four'){
   await page.route(u=>u.pathname==='/src/render/sky.wgsl',r=>r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(readFileSync('src/render/sky.wgsl','utf8').replaceAll('256','64').replaceAll('16','8'))}));
   await page.route(u=>u.pathname==='/src/render/diffuse-transfer.wgsl',r=>r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(replaceOnce(readFileSync('src/render/diffuse-transfer.wgsl','utf8'),'DIFFUSE_DIRECTIONS:u32=128u','DIFFUSE_DIRECTIONS:u32=32u'))}));

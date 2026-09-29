@@ -357,6 +357,7 @@ export async function createRenderer(canvas) {
         [geometry.totalCells, geometry.surfaceCount, sceneBatches, config.seed],
         36,
       );
+      f.set([wakeEnvelope,config.reflectionCone,quality*quality*(3-2*quality),config.reflectionFilter],44);
       u.set([config.photonCount,0,1,0],40);
       u.set([config.sunGrid,config.skyGridX,config.skyGridY,geometry.probeCount],48);
       device.queue.writeBuffer(uniforms, 0, data);
@@ -391,11 +392,12 @@ export async function createRenderer(canvas) {
         for(let b=1;b<=baseBudget;b++)photonBatch(0,lastWaveTime,b);
         const bakeEncoder=device.createCommandEncoder();compute(bakeEncoder,pipelines[9],bakeGroup,geometry.probeCount,64);device.queue.submit([bakeEncoder.finish()]);
         const activeWakes=f.slice(52);f.fill(0,52);
-        f[22]=0;device.queue.writeBuffer(uniforms,0,data);
+        // Keep identical emission quadrature; only flatten the water geometry.
+        u[43]=1;device.queue.writeBuffer(uniforms,0,data);
         const flatEncoder=device.createCommandEncoder();flatEncoder.clearBuffer(buffers.liveFlux);flatEncoder.clearBuffer(counters);flatEncoder.clearBuffer(pathAudit);
         compute(flatEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
         compute(flatEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);compute(flatEncoder,pipelines[8],flatResolveGroup,geometry.totalCells);
-        device.queue.submit([flatEncoder.finish()]);f[22]=config.waveAmplitude;f.set(activeWakes,52);
+        device.queue.submit([flatEncoder.finish()]);u[43]=0;f.set(activeWakes,52);
       }
       // No keyframes. Every water-light buffer is replaced at this frame's exact
       // phase before camera rays are submitted. The static field carries the mean-water diffuse solution.

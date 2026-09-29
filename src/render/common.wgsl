@@ -39,7 +39,7 @@ fn fresnel(cosIn:f32,etaI:f32,etaT:f32)->f32 {let c=clamp(abs(cosIn),0.,1.);let 
 // Runtime simulation storage, shared verbatim by camera and photon paths.
 @group(0) @binding(9) var<storage,read> waveField:array<vec4f>;
 fn wave(p:vec2f)->vec3f {
- if(U.state.z==0. && U.body.z==0.){return vec3f(U.state.y,0.,0.);}
+ if(U.sampling.w==1u || (U.state.z==0. && U.body.z==0.)){return vec3f(U.state.y,0.,0.);}
  let q=clamp((p-vec2f(-7.,-17.))*32.-.5,vec2f(0.),vec2f(447.,863.));
  let base=vec2u(floor(q));let t=fract(q);let offset=(base.y*448u+base.x)*4u;
  let a=waveField[offset];let b=waveField[offset+1u];let c=waveField[offset+2u];let d=waveField[offset+3u];
