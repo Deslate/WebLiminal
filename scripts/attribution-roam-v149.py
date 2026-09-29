@@ -12,7 +12,7 @@ for seg in m['segments']:
  if seg['name']=='water-body':eligible=meta[:,:,0]==-9
  mask=(eligible.reshape(h//8,8,w//8,8).mean((1,3))>=.9)&(a.mean(0)>2/255)&(a.mean(0)<.4)
  d=(a[3:]-a[:-3])[:,mask];rms=float(np.sqrt(np.mean(d*d))) if mask.any() else 0;entry={'darkBlocks':int(mask.sum()),'baselineDeltaRMS':rms,'controls':{}}
- for n in ['repeat','no-glaze','rotated','no-diffuse','static-light','rotated-transfer','dense-transfer']:
+ for n in ['repeat','no-glaze','rotated','no-diffuse','static-light','rotated-transfer','dense-transfer','low-transfer']:
   p=r/n/'manifest.json'
   if not p.exists():continue
   mm=json.loads(p.read_text())

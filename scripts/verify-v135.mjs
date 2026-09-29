@@ -15,7 +15,7 @@ try {
  const errors=[];page.on('pageerror',e=>errors.push(String(e)));
  await page.addInitScript(()=>{window.__submits=0;const f=GPUQueue.prototype.submit;GPUQueue.prototype.submit=function(...a){window.__submits++;return f.apply(this,a)};});
  // Observe completed production frames without modifying their render or time.
- await page.route('**/src/main.js*',async route=>{const r=await route.fetch();let s=await r.text();s=s.replace('if (!paused && !holdTime && frameMs.length > 60 && done - lastResize > 900)', 'if (false)');assert(s.includes('completed++;'));s=s.replace('completed++;',`    completed++;
+ await page.route('**/src/main.js*',async route=>{const r=await route.fetch();let s=await r.text();if(!process.env.KEEP_ADAPTIVE)s=s.replace(/if \(!paused && !holdTime && frameMs.length > \d+ && done - lastResize > \d+\)/, 'if (false)');assert(s.includes('completed++;'));s=s.replace('completed++;',`    completed++;
     if(window.__captureNext>0){window.__captureNext--;window.__captured.push({t:elapsed,png:canvas.toDataURL(),dynamics:renderer.dynamics});}`);await route.fulfill({response:r,body:s});});
  await page.goto('http://127.0.0.1:4173');
  await page.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs,null,{timeout:120000});

@@ -14,3 +14,16 @@ test('finite-depth operator has positive energy and <3.1% frequency error across
   }
  }
 });
+
+test('background 60 Hz symplectic step is stable and adds less than 1% modal frequency error',()=>{
+ const text=readFileSync(new URL('../src/render/wave-simulation.js',import.meta.url),'utf8');
+ const dt=1/Number(text.match(/dt:1\/(\d+)/)[1]);
+ for(const depth of [.12,.42,1.05]){
+  const f=dispersionPolynomial(depth,Math.max(12,Math.min(80,Math.ceil(32*depth/.42))));
+  for(let j=1;j<=2000;j++){
+   const s=f.limit*j/2000,G=s*polynomial(f.coefficients,2*s/f.limit-1),omega=Math.sqrt((9.81+.000073*s)*G);
+   const q=omega*dt;assert(q<2,'symplectic stability bound');
+   assert(2*Math.asin(q/2)/q-1<.01,'time integration must not retime short waves materially');
+  }
+ }
+});

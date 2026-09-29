@@ -1,7 +1,7 @@
 import {createFiniteDepth} from './finite-depth.js';
 import code from './wave-simulation.wgsl?raw';
 import {createBodyWaves} from './body-waves.js';
-export const WAVE_GRID={nx:448,nz:864,dx:1/32,dt:1/120};
+export const WAVE_GRID={nx:448,nz:864,dx:1/32,dt:1/60};
 export async function createWaveSimulation(device){
  const bodyWaves=await createBodyWaves(device);
  const {nx,nz,dx,dt}=WAVE_GRID,count=nx*nz,size=count*8;

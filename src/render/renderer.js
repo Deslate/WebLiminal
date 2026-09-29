@@ -24,9 +24,9 @@ export async function createRenderer(canvas) {
     requiredLimits: {
       maxStorageBufferBindingSize: Math.min(
         adapter.limits.maxStorageBufferBindingSize,
-        256 * 1024 * 1024,
+        1024 * 1024 * 1024,
       ),
-      maxBufferSize: Math.min(adapter.limits.maxBufferSize, 256 * 1024 * 1024),
+      maxBufferSize: Math.min(adapter.limits.maxBufferSize, 1024 * 1024 * 1024),
     },
   });
   const errors = [];
@@ -240,7 +240,7 @@ export async function createRenderer(canvas) {
     buffers.liveField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.flatField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.probeSurface=buffer("diffuse probe surfaces",geometry.probeSurfaces);
-    buffers.links=device.createBuffer({size:geometry.probeCount*64*32,usage:GPUBufferUsage.STORAGE});
+    buffers.links=device.createBuffer({size:geometry.probeCount*256*16,usage:GPUBufferUsage.STORAGE});
     for(let i=0;i<2;i++)buffers[`bounce${i}`]=device.createBuffer({size:geometry.probeCount*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
     sceneBatches = 0;
     history = 0;
@@ -407,7 +407,7 @@ export async function createRenderer(canvas) {
       compute(waterEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);
       compute(waterEncoder,pipelines[8],liveResolveGroup,geometry.totalCells);
       waterEncoder.clearBuffer(buffers.bounce0);
-      for(let i=0;i<config.diffuseIterations;i++)compute(waterEncoder,pipelines[10],propagateGroups[i%2],geometry.probeCount);
+      for(let i=0;i<config.diffuseIterations;i++)compute(waterEncoder,pipelines[10],propagateGroups[i%2],geometry.probeCount*32);
       compute(waterEncoder,pipelines[11],composeGroup,geometry.totalCells);
       device.queue.submit([waterEncoder.finish()]);liveTime=lastWaveTime;lastPhotonTime=lastWaveTime;liveFrames++;
       if(config.profile)await device.queue.onSubmittedWorkDone();
@@ -543,7 +543,7 @@ export async function createRenderer(canvas) {
     },
     get autoStatic() { return autoStatic; },
     get lightingBatches() { return sceneBatches; },
-    get dynamics() {return {simulation:simulation.info,frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:256,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:config.sunGrid**2*2,skyPackets:config.skyGridX*config.skyGridY*4,diffuseLinks:geometry.probeCount*64,diffuseIterations:config.diffuseIterations};},
+    get dynamics() {return {simulation:simulation.info,frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:256,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:config.sunGrid**2*2,skyPackets:config.skyGridX*config.skyGridY*4,diffuseLinks:geometry.probeCount*256,diffuseIterations:config.diffuseIterations};},
     get busy() {
       return activeJobs > 0;
     },
