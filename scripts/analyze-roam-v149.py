@@ -49,6 +49,13 @@ for folder in [root/'current']+sorted(p for p in root.iterdir() if p.is_dir() an
   series=block(a);series-=series.mean(0);power=(abs(np.fft.rfft(series*np.hanning(len(series))[:,None,None],axis=0))**2)[:,mask].sum(1);freq=np.fft.rfftfreq(len(series),1/fps);den=max(float(power[1:].sum()),1e-20)
   pix=abs(a[lag:]-a[:-lag]);pixelMask=np.repeat(np.repeat(mask,8,0),8,1)
   entry={'alert':alert,'region':'inner arch excluding direct solar visibility' if 'door-interior' in seg['name'] else 'non-directly-sunlit primary surface','eligiblePixelFraction':float(eligible.mean()),'darkBlocks':int(mask.sum()),'delta100msBlockP99':float(np.percentile(abs(d[:,mask]),99)) if mask.any() else 0,'delta100msBlockMax':float(abs(d[:,mask]).max()) if mask.any() else 0,'maxConnectedBlocks':max(clusters),'maxDarkAreaFraction':max(areas),'flaggedFrameCount':int(flagged.sum()),'worstTime':idx/fps,'worstBoxPixels':[int(x*8) for x in boxes[worst]],'temporalCentroidHz':float((power[1:]*freq[1:]).sum()/den),'powerAbove3Hz':float(power[freq>3].sum()/den),'isolatedPixelEvents':int((pix[:,pixelMask]>TH['isolatedPixelDelta']).sum()),'decodedVsSourceBlockDeltaMAE':float(abs(dv-d).mean()),'sameTimeVsCurrentMAE':float(abs(a-b).mean())}
+  # Strength diagnosis is separate from temporal flicker alerts. Fixed mask
+  # uses the matched static-light reference, not the potentially bright caustic.
+  referencePath=root/'static-light'/'source-luma.npy'
+  reference=np.load(referencePath,mmap_mode='r')[lo:hi].astype('float32')/255 if referencePath.exists() else b
+  referenceMean=reference.mean(0);strengthMask=eligible&(referenceMean>2/255)&(referenceMean<.30)
+  vals=a[:,strengthMask];lightAdded=np.maximum(a-reference,0)[:,strengthMask]
+  entry['strength']={'mask':'primary eligible surface, matched static-light mean luma 2/255..0.30; display units, not irradiance','pixels':int(strengthMask.sum()),'mean':float(vals.mean()) if vals.size else 0,'p99':float(np.percentile(vals,99)) if vals.size else 0,'temporalRangeP95':float(np.percentile(np.percentile(vals,95,axis=0)-np.percentile(vals,5,axis=0),95)) if vals.size else 0,'positiveExcessVsStaticP99':float(np.percentile(lightAdded,99)) if vals.size else 0,'positiveExcessOver10PctFraction':float((lightAdded>.10).mean()) if vals.size else 0}
   report['holds'][seg['name']]=entry
   contact=Image.new('RGB',(w*3,h+32));dr=ImageDraw.Draw(contact)
   for j,k in enumerate([max(lo,idx-3),idx,idx+lag]):
@@ -69,4 +76,8 @@ for folder in [root/'current']+sorted(p for p in root.iterdir() if p.is_dir() an
 lines=['# Automated roaming triage','',summary['meaning'],'','Thresholds: `'+json.dumps(TH)+'`','', '| Case / hold | 100ms block p99 | Max cluster (8px blocks) | Flagged frames | Status |','|---|---:|---:|---:|---|']
 for name,r in summary['cases'].items():
  for hold,e in r['holds'].items():lines.append(f'| {name} / {hold} | {e["delta100msBlockP99"]:.5f} | {e["maxConnectedBlocks"]} | {e["flaggedFrameCount"]} | {"REVIEW" if e["alert"] else "no alert"} |')
+lines+=['','## Dark-region strength (separate from flicker)','', 'Fixed dark masks use the matched static-light reference. Positive excess includes baseline changes in rollback cases; it is not a pure water-path attribution for those cases. All values are display luma, not radiometric irradiance.','', '| Case / hold | Mean luma | Luma p99 | Temporal range p95 | Positive excess p99 vs static |','|---|---:|---:|---:|---:|']
+for name,r in summary['cases'].items():
+ for hold,e in r['holds'].items():
+  q=e['strength'];lines.append(f'| {name} / {hold} | {q["mean"]:.5f} | {q["p99"]:.5f} | {q["temporalRangeP95"]:.5f} | {q["positiveExcessVsStaticP99"]:.5f} |')
 (root/'REPORT.md').write_text('\n'.join(lines)+'\n')

@@ -18,7 +18,7 @@ for(const variant of variants){
  const page=await browser.newPage({viewport:{width:WIDTH,height:HEIGHT}});page.on('pageerror',e=>errors.push(e.message));await page.routeWebSocket(/.*/,w=>w.close());
  // Test-only hook passes actual stationary/moving state and validates collision.
  await page.route(u=>u.pathname==='/src/main.js',async r=>{let s=await(await r.fetch()).text();s=replaceOnce(s,'camera,capture=true){','camera,capture=true,moving=true){');s=replaceOnce(s,'renderer.render(camera,time,true,1)','renderer.render(camera,time,moving,1)');await r.fulfill({contentType:'text/javascript',body:s})});
- if(!['current','repeat','no-diffuse','static-light','rotated-transfer','dense-transfer','low-transfer'].includes(variant))await page.route(u=>u.pathname==='/src/render/camera.wgsl',async r=>{
+ if(!['current','repeat','no-diffuse','static-light','rotated-transfer','dense-transfer','low-transfer','rollback-four'].includes(variant))await page.route(u=>u.pathname==='/src/render/camera.wgsl',async r=>{
  let s=readFileSync('src/render/camera.wgsl','utf8');
  if(variant==='no-glaze')s=replaceOnce(s,'if(m.coat>.009){','if(false){');
  else if(variant==='rotated')s=replaceOnce(s,'fract(f32(k)*.61803398875)','fract(f32(k)*.61803398875+.125)');
@@ -26,11 +26,16 @@ for(const variant of variants){
  else throw Error('Unknown variant '+variant);
  await r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(s)});
  });
+ if(variant==='rollback-four'){
+  await page.route(u=>u.pathname==='/src/render/sky.wgsl',r=>r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(readFileSync('src/render/sky.wgsl','utf8').replaceAll('256','64').replaceAll('16','8'))}));
+  await page.route(u=>u.pathname==='/src/render/diffuse-transfer.wgsl',r=>r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(replaceOnce(readFileSync('src/render/diffuse-transfer.wgsl','utf8'),'DIFFUSE_DIRECTIONS:u32=128u','DIFFUSE_DIRECTIONS:u32=32u'))}));
+  await page.route(u=>u.pathname==='/src/render/water-caustics.wgsl',r=>r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(readFileSync('src/render/water-caustics.wgsl','utf8').replace('solarDiskDirection(k)','sunDirection()').replace('solarDiskDirection(k+2u)','sunDirection()'))}));
+ }
  if(['rotated-transfer','dense-transfer','low-transfer'].includes(variant))await page.route(u=>u.pathname==='/src/render/diffuse-transfer.wgsl',r=>{let s=readFileSync('src/render/diffuse-transfer.wgsl','utf8');if(variant==='rotated-transfer')s=replaceOnce(s,'fract(f32(i)*.61803398875)','fract(f32(i)*.61803398875+.125)');else{s=replaceOnce(s,'DIFFUSE_DIRECTIONS:u32=128u',variant==='low-transfer'?'DIFFUSE_DIRECTIONS:u32=32u':'DIFFUSE_DIRECTIONS:u32=256u');}return r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(s)})});
  if(variant==='dense-transfer')await page.route(u=>u.pathname==='/src/render/renderer.js',async r=>{const q=await r.fetch();let s=await q.text();s=replaceOnce(s,'geometry.probeCount*256*16','geometry.probeCount*512*16');await r.fulfill({response:q,body:s})});
  if(['no-diffuse','static-light'].includes(variant))await page.route(u=>u.pathname==='/src/render/compose-light.wgsl',r=>{let s=readFileSync('src/render/compose-light.wgsl','utf8');s=replaceOnce(s,'base.rgb+sum/max(weight,.0001)','base.rgb');if(variant==='static-light')s=replaceOnce(s,'+water[idx]','+water[idx]*select(0.,1.,U.settings.w>10.)');return r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(s)})});
  await page.goto(process.env.VERIFY_URL||'http://127.0.0.1:4173');await page.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs,null,{timeout:120000});
- await page.evaluate(async actor=>{document.body.classList.add('evidence');await __POOLROOMS_V1__.configure({view:actor,seed:7819301,pause:true,freeze:false,scale:1,grain:.004,body:true,focalLength:24})},sample(0).actor);
+ await page.evaluate(async ({actor,variant})=>{document.body.classList.add('evidence');await __POOLROOMS_V1__.configure({view:actor,seed:7819301,pause:true,freeze:false,scale:1,grain:.004,body:true,focalLength:24,photonCount:variant==='rollback-four'?49152:196608})},{actor:sample(0).actor,variant});
  const count=DURATION*FPS;encoder=spawn(process.env.PYTHON||'python3',['scripts/roam-v149-encode.py',out,String(count),String(WIDTH),String(HEIGHT),String(FPS)],{stdio:['pipe','inherit','inherit']});const finished=once(encoder,'exit');
  const start=Date.now();
  for(let i=0;i<count;i++){
