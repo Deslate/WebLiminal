@@ -1,0 +1,4 @@
+import{writeFileSync}from'node:fs';
+const results=[];
+for(const port of [49209,49214,58669,58670]){try{const tabs=await(await fetch(`http://127.0.0.1:${port}/json/list`)).json();for(const tab of tabs){if(!/^http:\/\/127\.0\.0\.1:417[35]\/?$/.test(tab.url))continue;const result=await new Promise((resolve,reject)=>{const w=new WebSocket(tab.webSocketDebuggerUrl);w.onopen=()=>w.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression:'(async()=>{await window.__POOLROOMS_V1__?.pause();return window.__POOLROOMS_V1__?.snapshot().paused})()',awaitPromise:true,returnByValue:true}}));w.onmessage=e=>{w.close();resolve(JSON.parse(e.data))};w.onerror=reject;});results.push({port,url:tab.url,result});}}catch{}}
+console.log(JSON.stringify(results));writeFileSync('../workroom-v1.54-evidence/paused-project-pages.json',JSON.stringify(results,null,2));
