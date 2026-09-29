@@ -113,13 +113,16 @@ fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->CameraLayers {
     // Deterministic GGX angular quadrature. Every contribution traces geometry;
     // no post-process blur stands in for unresolved normal variance.
     let frame=basis(m.normal);
-    for(var j=0u;j<8u;j++){
-      let k=j*2u+(sampleIndex&1u);let u=(f32(k)+.5)/16.;
+    // Resolve the existing rough-BRDF angular lobe with actual traced directions.
+    // More directions on the rough ceiling prevent discrete reflected-image copies.
+    let rays=select(48u,64u,h.material==1u);
+    for(var j=0u;j<rays;j++){
+      let k=j*2u+(sampleIndex&1u);let u=(f32(k)+.5)/f32(rays*2u);
       let phi=2.*PI*fract(f32(k)*.61803398875);let radius=alpha*sqrt(u/(1.-u));
       let hn=normalize(frame*vec3f(radius*cos(phi),radius*sin(phi),1.));let vh=max(dot(v,hn),0.);
       let reflected=reflect(rd,hn);let nl=dot(m.normal,reflected);if(nl<=0.||vh<=0.){continue;}
       let receiver=trace(origin,reflected,INF);let weight=smithG1(nv,alpha)*smithG1(nl,alpha)*vh/max(nv*dot(m.normal,hn),.00001);
-      a+=environmentHit(receiver,origin,reflected,sampleIndex)*schlick(vh,m.coat)*weight/8.;
+      a+=environmentHit(receiver,origin,reflected,sampleIndex)*schlick(vh,m.coat)*weight/f32(rays);
     }
     guide=vec4f(f32(h.sid+1u),h.t,0.,1.);
   }

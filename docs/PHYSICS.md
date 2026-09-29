@@ -97,3 +97,6 @@ The flat reference previously changed emission quadrature as well as geometry: i
 Primary GGX continuation already integrates indirect reflected radiance. The old `photons * coat * .08` terminal approximation is now restricted to hits without that continuation (secondary hits and untraced tiny coats), eliminating primary overlap. Secondary rough reflection remains an approximation.
 
 The audit integrates each unique receiver cell once, using physical covered area. These are receiver-event irradiance integrals, not emitted watts: summing multiple diffuse events is not itself an energy violation. The separate full-indirect photon reference includes the omitted first-water class; only its `fine0` is the reference, never its deliberately redundant diagnostic `combined` buffer. Reference reconstruction, finite sampling, transport classes and bounce truncation differ from runtime, so agreement is a consistency check, not proof of exact conservation or of every local value. Evidence: `../workroom-v1.53-evidence/energy-summary.json`.
+
+
+完整反射＋透射上的面积积分与天花板GGX求积修复，见 [本轮诊断](EXPERIMENT-full-light-v159.md)。性能按用户要求待独占GPU时补测，未用重放速度代替帧率。
