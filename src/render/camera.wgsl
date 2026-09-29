@@ -1,3 +1,7 @@
+// Queue only pixels requiring the existing 4/8 sample refinement. No sample removed.
+struct RefineWork { pixel:u32, count:u32, lo:vec3f, hi:vec3f };
+struct RefineQueue { count:atomic<u32>, dispatchX:u32, dispatchY:u32, dispatchZ:u32, items:array<RefineWork> };
+@group(0) @binding(10) var<storage,read_write> refinement:RefineQueue;
 @group(0) @binding(3) var<storage,read> irradiance: array<vec4f>;
 @group(0) @binding(4) var<storage,read_write> image: array<vec4f>;
 @group(0) @binding(5) var<storage,read_write> reflectionLayer:array<vec4f>;
@@ -24,7 +28,7 @@ fn integratedSky(h:Hit)->vec3f {
 fn directLighting(h:Hit,m:Material,v:vec3f)->vec3f {
   let n=m.normal;let nv=max(dot(n,v),.001);let fv=schlick(nv,m.coat);let ro=h.p+h.n*.012;var result=vec3f(0);
   let sun=sunDirection();let nl=max(dot(n,sun),0.);
-  if(nl>0. && traceSolid(ro,sun,INF).t>=INF){
+  if(nl>0. && !occludedSolid(ro,sun,INF)){
     let hv=normalize(sun+v);let nh=max(dot(n,hv),0.);let vh=max(dot(v,hv),0.);let a=max(m.roughness*m.roughness,.035);
     let spec=ggxD(nh,a)*smithG1(nl,a)*smithG1(nv,a)*schlick(vh,m.coat)/max(4.*nl*nv,.00001);
     result+=jointVisibility(h,sun)*sunIrradiance()*nl*(m.albedo/PI*(1.-fv)*(1.-schlick(nl,m.coat))+vec3f(spec));
@@ -125,14 +129,14 @@ fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->CameraLayers {
   }
   return CameraLayers(shadeMaterial(h,rd,false,m,m.coat<=.009),a,guide);
 }
-@compute @workgroup_size(8,8)
+@compute @workgroup_size(8,4)
 fn camera(@builtin(global_invocation_id) gid:vec3u) {
   if(gid.x>=U.render.x||gid.y>=U.render.y){return;}
   let idx=gid.y*U.render.x+gid.x;var c=vec3f(0);var reflected=vec3f(0);var guide=vec4f(0);var lo=vec3f(1e6);var hi=vec3f(0);
   let offsets=array<vec2f,8>(vec2f(.25,.25),vec2f(.75,.75),vec2f(.25,.75),vec2f(.75,.25),vec2f(.125,.625),vec2f(.625,.875),vec2f(.875,.375),vec2f(.375,.125));
   var count=2u;
   // One shading path for ordinary and edge samples; no temporal jitter/history.
-  for(var i=0u;i<count;i++){
+  for(var i=0u;i<2u;i++){
     let pixel=(vec2f(gid.xy)+offsets[i])/vec2f(U.render.xy);
     let sensor=(pixel*2.-1.)*vec2f(U.lens.x,-1.);
     let rd=normalize(U.forward.xyz+U.right.xyz*sensor.x*U.lens.y+U.up.xyz*sensor.y*U.lens.y);
@@ -148,6 +152,29 @@ fn camera(@builtin(global_invocation_id) gid:vec3u) {
     }
     if(i==3u && contrast>.3){count=8u;}
   }
-  image[idx]=vec4f(c/f32(count),1.);
-  reflectionLayer[idx]=vec4f(reflected/f32(count),1.);reflectionGuide[idx]=guide;
+  image[idx]=vec4f(c*.5+select(vec3f(0),reflected*.5,count==2u&&guide.x!=10000.),1.);
+  reflectionLayer[idx]=vec4f(reflected*.5,1.);reflectionGuide[idx]=guide;
+  if(count>2u){let slot=atomicAdd(&refinement.count,1u);refinement.items[slot]=RefineWork(idx,count,lo,hi);}
+}
+
+@compute @workgroup_size(32)
+fn refineCamera(@builtin(global_invocation_id) gid:vec3u){
+ let slot=gid.x;if(slot>=atomicLoad(&refinement.count)){return;}
+ let work=refinement.items[slot];let idx=work.pixel;let xy=vec2u(idx%U.render.x,idx/U.render.x);
+ var c=image[idx].rgb*2.;var reflected=reflectionLayer[idx].rgb*2.;var lo=work.lo;var hi=work.hi;var count=work.count;
+ let offsets=array<vec2f,8>(vec2f(.25,.25),vec2f(.75,.75),vec2f(.25,.75),vec2f(.75,.25),vec2f(.125,.625),vec2f(.625,.875),vec2f(.875,.375),vec2f(.375,.125));
+ for(var i=2u;i<count;i++){
+  let pixel=(vec2f(xy)+offsets[i])/vec2f(U.render.xy);let sensor=(pixel*2.-1.)*vec2f(U.lens.x,-1.);
+  let rd=normalize(U.forward.xyz+U.right.xyz*sensor.x*U.lens.y+U.up.xyz*sensor.y*U.lens.y);
+  let layers=radiance(U.camera.xyz,rd,i%4u);let value=layers.base+layers.reflection;c+=layers.base;reflected+=layers.reflection;
+  lo=min(lo,value);hi=max(hi,value);let contrast=max(max(hi.x-lo.x,hi.y-lo.y),hi.z-lo.z);
+  if(i==3u&&contrast>.3){count=8u;}
+ }
+ image[idx]=vec4f(c/f32(count)+select(vec3f(0),reflected/f32(count),reflectionGuide[idx].x!=10000.),1.);reflectionLayer[idx]=vec4f(reflected/f32(count),1.);
+}
+
+@compute @workgroup_size(1)
+fn scheduleRefinement(){
+ refinement.dispatchX=(atomicLoad(&refinement.count)+31u)/32u;
+ refinement.dispatchY=1u;refinement.dispatchZ=1u;
 }

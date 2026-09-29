@@ -22,6 +22,7 @@ export async function createRenderer(canvas) {
   if (!adapter) throw new Error("WebGPU 无可用适配器。");
   const device = await adapter.requestDevice({
     requiredLimits: {
+      maxStorageBuffersPerShaderStage:9,
       maxStorageBufferBindingSize: Math.min(
         adapter.limits.maxStorageBufferBindingSize,
         1024 * 1024 * 1024,
@@ -90,6 +91,9 @@ export async function createRenderer(canvas) {
     ...["bakeTransfer","propagate"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[6],entryPoint}})),
     device.createComputePipelineAsync({label:"compose current light",layout:"auto",compute:{module:shaderModules[7],entryPoint:"compose"}}),
     ...["horizontalReflection","verticalReflection"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[8],entryPoint}})),
+    device.createComputePipelineAsync({label:"finite-volume diffuse source",layout:"auto",compute:{module:shaderModules[6],entryPoint:"restrictPatches"}}),
+    device.createComputePipelineAsync({label:"queued camera refinement",layout:"auto",compute:{module:shaderModules[2],entryPoint:"refineCamera"}}),
+    device.createComputePipelineAsync({label:"schedule refinement",layout:"auto",compute:{module:shaderModules[2],entryPoint:"scheduleRefinement"}}),
   ]);
   const uniforms = device.createBuffer({
     label: "physical parameters",
@@ -147,8 +151,8 @@ export async function createRenderer(canvas) {
     activeJobs = 0;
   const lightBatches=()=>config.lightBatches;
   let lastPhotonTime=0,quality=0,lastRenderTime=null,frameCost=null;
-  let composeGroup,reflectionHorizontalGroup,reflectionVerticalGroup;
-  let reflectionBuffer,reflectionGuideBuffer,reflectionRowsBuffer;
+  let composeGroup,reflectionHorizontalGroup,reflectionVerticalGroup,restrictGroup;
+  let reflectionBuffer,reflectionGuideBuffer,reflectionRowsBuffer,refinementBuffer,refinementIndirect,refinementGroup,refinementScheduleGroup;
   let resolveGroups=[],skyGroup,horizontalGroup,liveEmitGroup,liveHorizontalGroup,liveResolveGroup,flatResolveGroup,bakeGroup,propagateGroups=[];
   let liveTime=0,liveFrames=0;
   const buffer = (label, data, usage = GPUBufferUsage.STORAGE) => {
@@ -185,13 +189,15 @@ export async function createRenderer(canvas) {
       null,
       bindings(pipelines[2], [
         ...shared,
-        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field],
+        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field],[10,refinementBuffer],
       ]),
       bindings(pipelines[3], [
         [0, imageBuffer],
         [1, displayUniform],
       ]),
     ];
+    refinementScheduleGroup=bindings(pipelines[16],[[10,refinementBuffer]]);
+    refinementGroup=bindings(pipelines[15],[...shared,[3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field],[10,refinementBuffer]]);
     reflectionHorizontalGroup=bindings(pipelines[12],[[0,uniforms],[3,reflectionBuffer],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer]]);
     reflectionVerticalGroup=bindings(pipelines[13],[[0,uniforms],[4,reflectionGuideBuffer],[5,reflectionRowsBuffer],[6,imageBuffer]]);
     resolveGroups=[0].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface],[6,buffers[`fine${i}`]],[7,buffers.rows]]));
@@ -202,8 +208,9 @@ export async function createRenderer(canvas) {
     liveResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.liveField],[5,buffers.cellSurface],[8,buffers.rows]]);
     flatResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.flatField],[5,buffers.cellSurface],[8,buffers.rows]]);
     composeGroup=bindings(pipelines[11],[[0,uniforms],[2,buffers.surfaces],[3,buffers.irradiance0],[4,buffers.fine0],[5,buffers.liveField],[6,buffers.bounce0],[7,buffers.combined],[8,buffers.cellSurface]]);
-    bakeGroup=bindings(pipelines[9],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.probeSurface],[4,buffers.links]]);
-    propagateGroups=[0,1].map(i=>bindings(pipelines[10],[[0,uniforms],[3,buffers.probeSurface],[4,buffers.links],[5,buffers.liveField],[6,buffers[`bounce${i}`]],[7,buffers[`bounce${1-i}`]],[8,buffers.flatField]]));
+    restrictGroup=bindings(pipelines[14],[[0,uniforms],[2,buffers.surfaces],[3,buffers.probeSurface],[10,buffers.liveField],[11,buffers.flatField],[12,buffers.cellSurface],[13,buffers.patchDelta]]);
+    bakeGroup=bindings(pipelines[9],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.probeSurface],[4,buffers.links],[14,buffers.linkCounts]]);
+    propagateGroups=[0,1].map(i=>bindings(pipelines[10],[[0,uniforms],[3,buffers.probeSurface],[4,buffers.links],[5,buffers.patchDelta],[6,buffers[`bounce${i}`]],[7,buffers[`bounce${1-i}`]],[14,buffers.linkCounts]]));
 
   }
   function rebuild() {
@@ -240,6 +247,8 @@ export async function createRenderer(canvas) {
     buffers.liveField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.flatField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.probeSurface=buffer("diffuse probe surfaces",geometry.probeSurfaces);
+    buffers.linkCounts=device.createBuffer({size:geometry.probeCount*4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+    buffers.patchDelta=device.createBuffer({size:geometry.probeCount*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.links=device.createBuffer({size:geometry.probeCount*256*16,usage:GPUBufferUsage.STORAGE});
     for(let i=0;i<2;i++)buffers[`bounce${i}`]=device.createBuffer({size:geometry.probeCount*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
     sceneBatches = 0;
@@ -257,9 +266,11 @@ export async function createRenderer(canvas) {
       size: width * height * 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
-    for(const b of [reflectionBuffer,reflectionGuideBuffer,reflectionRowsBuffer])if(b)b.destroy();
+    for(const b of [reflectionBuffer,reflectionGuideBuffer,reflectionRowsBuffer,refinementBuffer,refinementIndirect])if(b)b.destroy();
     const reflectionStorage=()=>device.createBuffer({size:width*height*16,usage:GPUBufferUsage.STORAGE});
     reflectionBuffer=reflectionStorage();reflectionGuideBuffer=reflectionStorage();reflectionRowsBuffer=reflectionStorage();
+    refinementIndirect=device.createBuffer({size:12,usage:GPUBufferUsage.INDIRECT|GPUBufferUsage.COPY_DST});
+    refinementBuffer=device.createBuffer({size:16+width*height*48,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST|GPUBufferUsage.COPY_SRC});
     history = 0;
     regroup();
   }
@@ -408,6 +419,7 @@ export async function createRenderer(canvas) {
       compute(waterEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
       compute(waterEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);
       compute(waterEncoder,pipelines[8],liveResolveGroup,geometry.totalCells);
+      compute(waterEncoder,pipelines[14],restrictGroup,geometry.probeCount,64);
       waterEncoder.clearBuffer(buffers.bounce0);
       for(let i=0;i<config.diffuseIterations;i++)compute(waterEncoder,pipelines[10],propagateGroups[i%2],geometry.probeCount*32);
       compute(waterEncoder,pipelines[11],composeGroup,geometry.totalCells);
@@ -417,12 +429,16 @@ export async function createRenderer(canvas) {
       f[34]=sun;
       device.queue.writeBuffer(uniforms,0,data);
       const encoder=device.createCommandEncoder();
+      encoder.clearBuffer(refinementBuffer,0,4);
       let pass;
       pass = encoder.beginComputePass();
       pass.setPipeline(pipelines[2]);
       pass.setBindGroup(0, groups[2]);
-      pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
+      pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 4));
       pass.end();
+      compute(encoder,pipelines[16],refinementScheduleGroup,1,1);
+      encoder.copyBufferToBuffer(refinementBuffer,4,refinementIndirect,0,12);
+      {const rp=encoder.beginComputePass();rp.setPipeline(pipelines[15]);rp.setBindGroup(0,refinementGroup);rp.dispatchWorkgroupsIndirect(refinementIndirect,0);rp.end();}
       compute(encoder,pipelines[12],reflectionHorizontalGroup,width*height);
       compute(encoder,pipelines[13],reflectionVerticalGroup,width*height);
       const draw = encoder.beginRenderPass({

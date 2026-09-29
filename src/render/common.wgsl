@@ -96,6 +96,32 @@ fn traceSolid(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
   }
   return best;
 }
+// Visibility-only traversal: identical solid intersections, early exit on any blocker.
+// Shading/receiving rays still use closest-hit traversal with full surface data.
+fn occludedSolid(ro:vec3f,rd:vec3f,maxT:f32)->bool {
+ let inv=1./select(vec3f(.0000001),rd,abs(rd)>vec3f(.0000001));
+ for(var i=0u;i<U.render.w;i++){
+  let s=shapes[i];let aa=(s.lo.xyz-ro)*inv;let bb=(s.hi.xyz-ro)*inv;
+  let near=min(aa,bb);let far=max(aa,bb);let tn=max(max(near.x,near.y),near.z);let tf=min(min(far.x,far.y),far.z);
+  if(tf<max(tn,EPS)||tn>maxT){continue;}
+  for(var exit=0u;exit<2u;exit++){
+   let t=select(tn,tf,exit==1u);if(t<EPS||t>=maxT){continue;}
+   if(s.info.y!=1u||!inHole(ro+rd*t,s)){return true;}
+  }
+  if(s.info.y!=1u){continue;}
+  let cx=(s.lo.x+s.hi.x)*.5;let r=s.params.x;let spring=s.params.y;
+  for(var side=0u;side<2u;side++){
+   let x=cx+select(-r,r,side==1u);let t=(x-ro.x)*inv.x;let p=ro+rd*t;
+   if(t>EPS&&t<maxT&&p.z>s.lo.z&&p.z<s.hi.z&&p.y>=0.&&p.y<spring){return true;}
+  }
+  let o=ro.xy-vec2f(cx,spring);let a=dot(rd.xy,rd.xy);let b=dot(o,rd.xy);let c=dot(o,o)-r*r;let disc=b*b-a*c;
+  if(disc>=0.&&a>.00001){for(var k=0u;k<2u;k++){
+   let t=(-b+select(-sqrt(disc),sqrt(disc),k==1u))/a;let p=ro+rd*t;
+   if(t>EPS&&t<maxT&&p.y>=spring&&p.z>s.lo.z&&p.z<s.hi.z){return true;}
+  }}
+ }
+ return false;
+}
 fn traceWater(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
   var h=emptyHit();
   if(abs(rd.y)<.00001){return h;}
