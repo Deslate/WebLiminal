@@ -34,7 +34,8 @@
     "verify:body": "node scripts/simulation-v116.mjs",
     "verify:body-stop": "node scripts/stop-v115.mjs",
     "verify:body-motion": "node scripts/motion-v115.mjs",
-    "verify:body-coupling": "node scripts/coupling-v115.mjs"
+    "verify:body-coupling": "node scripts/coupling-v115.mjs",
+    "benchmark": "node scripts/benchmark-v149.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.55.1",
