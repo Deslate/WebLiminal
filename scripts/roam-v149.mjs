@@ -14,7 +14,9 @@ function sourceHash(){return provenance().sourceHash;}
 function replaceOnce(s,a,b){if(!s.includes(a))throw Error('Diagnostic hook missing: '+a);return s.replace(a,b)}
 for(const variant of variants){
  const out=resolve(root,variant);if(existsSync(out+'/manifest.json'))throw Error('Refuse to overwrite completed round: '+out);mkdirSync(out,{recursive:true});
- const source=provenance();writeFileSync(out+'/source-snapshot.json',JSON.stringify(source));const initialHash=source.sourceHash,errors=[],frames=[];let encoder;
+ const source=provenance();
+ // Query git before capturing so a spawn failure cannot discard a finished 76 s round.
+ const commit=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),dirty=execFileSync('git',['status','--short'],{encoding:'utf8'});writeFileSync(out+'/source-snapshot.json',JSON.stringify(source));const initialHash=source.sourceHash,errors=[],frames=[];let encoder;
  const browser=await chromium.launch({channel:'chrome',headless:true});
  try {
  const page=await browser.newPage({viewport:{width:WIDTH,height:HEIGHT}});page.on('pageerror',e=>errors.push(e.message));await page.routeWebSocket(/.*/,w=>w.close());
@@ -59,7 +61,7 @@ for(const variant of variants){
  }
  encoder.stdin.end();const [code]=await finished;if(code!==0)throw Error('Encoder failed '+code);
  const snapshot=await page.evaluate(()=>__POOLROOMS_V1__.snapshot());if(sourceHash()!==initialHash)throw Error('Source changed during capture; round invalid');
- writeFileSync(out+'/manifest.json',JSON.stringify({schema:2,variant,labConfig,effectiveLabConfig,sourceHash:initialHash,renderEquivalenceHash:source.renderEquivalenceHash,pathHash:createHash('sha256').update(readFileSync('scripts/roam-v149-path.mjs')).digest('hex'),commit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),dirty:execFileSync('git',['status','--short'],{encoding:'utf8'}),method:'Deterministic 30Hz simulation replay from reset, NOT realtime FPS. Film grain retained. Narrative light cue bypassed by evidence API. All actor poses collision validated.',fps:FPS,width:WIDTH,height:HEIGHT,duration:DURATION,segments,frames,errors,snapshot},null,2));
+ writeFileSync(out+'/manifest.json',JSON.stringify({schema:2,variant,labConfig,effectiveLabConfig,sourceHash:initialHash,renderEquivalenceHash:source.renderEquivalenceHash,pathHash:createHash('sha256').update(readFileSync('scripts/roam-v149-path.mjs')).digest('hex'),commit,dirty,method:'Deterministic 30Hz simulation replay from reset, NOT realtime FPS. Film grain retained. Narrative light cue bypassed by evidence API. All actor poses collision validated.',fps:FPS,width:WIDTH,height:HEIGHT,duration:DURATION,segments,frames,errors,snapshot},null,2));
  console.log('complete',out);
  }finally{encoder?.stdin.destroy();if(encoder?.exitCode===null)encoder.kill();await browser.close()}
 }
