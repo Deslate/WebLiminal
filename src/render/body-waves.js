@@ -36,5 +36,5 @@ export async function createBodyWaves(device){
  }
  // The .14s pressure pulse ends before the next allowed contact (.4s).
  // Its radiated height/velocity remain in the state after the source expires.
- return{field:states[0],reset,advance,addWake(w){contact={...w,time:w.time??last??0};impacts.push(...kickImpacts(contact));},get info(){return{method:'finite-depth gravity-capillary spectral initial-value solver',grid:[256,512],dx:.125,domain:[32,64],last}}};
+ return{field:states[0],reset,advance,addWake(w){contact={...w,time:w.time??last??0};if(config.kickImpacts)impacts.push(...kickImpacts(contact));},get info(){return{method:'finite-depth gravity-capillary spectral initial-value solver',grid:[256,512],dx:.125,domain:[32,64],last}}};
 }

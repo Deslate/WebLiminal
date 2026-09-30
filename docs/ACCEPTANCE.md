@@ -1,3 +1,5 @@
+连续弓浪回退：恢复 v1.36 前的宽体前后压力与原脚步压力，默认关闭逐步踢水冲量；尾迹重新呈锥形／V 形（渲染中较淡），bowR.30 候选未采用。数据、录像、性能与未达标项见 [ACCEPTANCE-cone.md](ACCEPTANCE-cone.md)。
+
 v1.51 精准回退 A/B 与暗区强度指标见 [验收报告](ACCEPTANCE-v1.51.md)。
 
 v1.47：背景时钟恢复 1.0、60 Hz 有限水深积分、128 方向并行动态漫反射；时间频谱、静置录像、完整 Benchmark 与未达标项见 [ACCEPTANCE-v1.47.md](ACCEPTANCE-v1.47.md)。
