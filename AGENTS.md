@@ -1,27 +1,111 @@
-# Poolrooms v1.16 — contributor instructions
+# Workroom — agent and contributor guide
 
-Read the requested version in BRIEF.md. This delivery adds a stateful finite-depth dispersive body wake and high-angle observer view, preserving current-time lighting and single-image reflections. Do not configure or push remotes. Preserve unrelated `.flops/` user data.
+## Vision
 
-- Zero bitmap source/deployment assets. Evidence goes outside this repository under `../workroom-v1.16-evidence/`.
-- Preserve the stateful GPU wave equation and real locomotion pressure sources, transported caustics, deterministic camera branches and subtle film grain. Never freeze water to stabilize lighting.
-- Camera frames remain independent; the physical simulation deliberately has memory. Replay the simulation from reset for comparisons: do not seek analytically to an arbitrary time, or expect a foot disturbance to vanish exactly when its source turns off. Do not blur image history or introduce random camera sampling.
-- Grout uses actual primary-ray height-field intersections and local visibility. Do not replace the relief with painted seams. Secondary/photon area-average approximations are documented in docs/PHYSICS.md.
-- Caustics must result from photon transport, with Fresnel/Snell/absorption and receiver-area normalization. Keep CSG holes out of receiving-area denominators.
-- Never reintroduce light keyframes or temporal image blending. Verify stop refinement within one second at both 60Hz and 30Hz time steps.
-- `surfaceMaterial(Hit) -> Material` is the near material slot. `filteredMaterial` is for secondary footprints; photon-porcelain is the area-average transport BRDF.
+Workroom is a real-time, physically based renderer for the Backrooms, growing from one hand-built scene into a set of explorable levels:
 
-Checks: `npm test`, `npm run build`, `npm run verify`, `npm run verify:near`, `npm run verify:floor`, `npm run verify:layout`, `npm run verify:joint`, `npm run verify:seams`, `npm run verify:record`, `npm run verify:wakes`, `npm run verify:wake-coupling`, `node scripts/nonloop-v113.mjs`, `npm run verify:wake-performance`, `npm run verify:motion`, `npm run verify:reference`, `npm run verify:analyze`, `npm run proof`. Use EVIDENCE_DIR to keep independent rounds and versions apart; REFERENCE_PATH selects a matching material/version reference for analysis.
+1. **Multiple levels.** Poolrooms is the first. Each further level (offices, corridors, parking structures, ...) reuses the same rendering base with its own geometry, materials, water or no water, and lighting.
+2. **Endless maps.** Levels are generated procedurally and streamed around the player from a seed, so a level has no edge and the same seed produces the same world.
+3. **Online exploration.** Several players explore the same seeded world together, see each other, and disturb the same water.
 
-Measure GPU-completed frames, not RAF counts. Run performance without another GPU task, capture, or edits. Report internal resolution, first frame, p95 and minimum one-second fps. Real-time browser video includes recording overhead and is separate from the performance benchmark. A stepped PNG sequence is not a real-time benchmark. Inspect close grout, reflections, bright column edges, dark regions and stop/start transitions; pixel heuristics cannot prove all visual quality. Inspect coherent rapid shimmer as well as isolated noise. Compare raw wave temporal/spatial spectra; floor tile images cannot measure simulation anisotropy.
+The renderer that exists today is the **foundation**, not the product. Work should move the project toward the three goals above. Do not spend open-ended effort tuning the look of the current scene; change the rendering base only when a feature needs it or it blocks one of the goals.
 
-`node scripts/static-server.mjs` serves dist at `/poolrooms/` on port 4174; VERIFY_URL selects it. Keep the dev server at localhost:4173 running in the background. Read docs/PHYSICS.md and docs/ACCEPTANCE.md for approximations, measurements and untested cases. Do not claim full photorealism or arbitrary-device guarantees.
+## Current state
 
-Player displacement is a soft forcing potential, not an exact moving impermeable boundary. Keep that approximation explicit. Player and observer positions are independent. Wading speed is capped at 1.6m/s after a failed 2.4m/s near-critical-wave stress test; do not silently restore faster water movement. Body is visible to camera/refraction/reflection and blocks current water photons, but uses approximate shading and does not receive a full indirect-light solve.
+- One level, Poolrooms (`levels/poolrooms.json`), about 14 x 27 m, hand-authored in `src/render/geometry.js` as 13 analytic shapes.
+- WebGPU + vanilla JavaScript + Vite. No runtime dependencies, no bitmap assets; all materials are procedural WGSL.
+- Stateful GPU water (finite-depth background field plus a spectral body wake), photon-traced caustics, finite-volume diffuse transfer, deterministic path-traced camera with GGX reflections, and an in-app light transport lab (G). See `docs/PHYSICS.md` and `docs/LIGHTING-LAB.md`.
+- Performance is the main constraint for scaling up. At a fixed 100% internal resolution the scene runs at roughly 10–12 fps on an Apple M3 Max, and about 18 fps at 70%; by default an adaptive internal resolution keeps it interactive. About 86% of frame time is the camera pass, and most of that is secondary GGX reflection rays. Larger and streamed worlds need a new performance budget; plan for it rather than assuming the current cost scales.
+- The git tag `stable-1` marks the last accepted render baseline.
 
-v1.15 checks: `node scripts/simulation-v115.mjs`, `node scripts/coupling-v115.mjs`, `node scripts/record-v115.mjs`, `node scripts/stop-v115.mjs`, `node scripts/motion-v115.mjs`; inspect decoded recording and stop frames. The isolated floor-optics fixture intentionally uses `body:false`; body coupling is independently tested with the same cylinder/shadows/footsteps in both variants. Common shader uniforms now occupy 416 bytes.
+## Architecture
 
+### Today
 
-v1.16 replaces radial shallow-water body forcing with a stateful finite-depth spectral body response. Read current PHYSICS.md for important linear-superposition, internal-wall and missing-vorticity limitations. Do not claim exact 19.5 degree wakes at arbitrary finite depth. The body pressure has a calibrated leading footprint, not a prescribed V-shaped pattern. New primary body checks: `node scripts/simulation-v116.mjs`, `node scripts/record-v116.mjs`, `node scripts/performance-v116.mjs`; v1.15 simulation exact-30/60 and old meniscus numbers are historical, not unchanged invariants. Wading now has .8m/s slow and Shift1.6m/s fast, never2.4m/s. Evidence cameras must include the player for the whole path.
+```
+index.html, src/style.css   page shell and overlay UI
+src/main.js                 input, player, camera, clock, pause, lab, automation API
+src/collision.js            player vs. 2D solid footprints
+src/audio.js                procedural spatial audio
+src/wake-trail.js, src/kick-impacts.js   body/footstep sources for the water
+src/lab-settings.js, src/lab-menu.js     light transport lab settings and UI
+src/render/
+  renderer.js               WebGPU device, buffers, pipelines, per-frame pass order
+  geometry.js               scene shapes + solids (currently Poolrooms only)
+  light-atlas.js            shared world-space receiver grids for photon flux
+  wave-simulation.*         background water field + composition
+  finite-depth.*            finite-depth dispersion operator on the wet domain
+  body-waves.*              spectral body wake (FFT)
+  common.wgsl               shared scene intersection, water, shading helpers
+  photons.wgsl, water-caustics.wgsl, resolve.wgsl, sky.wgsl,
+  diffuse-transfer.wgsl, compose-light.wgsl         light transport passes
+  camera.wgsl, reflection-filter.wgsl, present.wgsl  camera and display
+  lab-shaders.js            shader specialisation for lab settings
+materials/                  procedural WGSL materials (near + photon BRDF)
+levels/                     level data (currently optics, spawn, bounds)
+scripts/                    content validation, unit tests, visual benchmark
+docs/                       physical model and lab reference
+```
 
-## v1.49 visual benchmark
-After changes that can affect rendered light, material, camera, wave motion, or interaction, run `npm run benchmark` (set `PYTHON` to a Python with numpy/Pillow/PyAV/OpenCV). Inspect the main video and flagged clips; report the semantic doorway metrics and matched-control attribution. Use a fresh source-hashed output or a verified complete cached run. A REVIEW result is not a visual pass. A 30 Hz replay is not a realtime FPS measurement. Do not claim a dark region cannot receive indirect/reflected light; diagnose with controlled comparisons. Do not blur/clamp an alert away. Preserve raw luma, source provenance, masks, and interrupted evidence.
+Per frame: advance water to real elapsed time, emit live photons through the current surface, resolve irradiance, propagate diffuse transfer, compose light, trace the camera, filter reflections, present.
+
+Coupling to remove before multi-level work: `renderer.js`, `geometry.js` and `main.js` import `levels/poolrooms.json` directly; scene geometry is code, not data; shaders assume one static shape list with no acceleration structure; the water domain is a fixed grid over one pool.
+
+### Target (proposed, not implemented)
+
+- **Engine vs. level.** A level is a module that provides a scene description: shapes and solids, materials, water bodies, light sources, spawn and optics. The renderer consumes that description and knows no level by name. Poolrooms becomes the first level module and must render the same as today.
+- **Chunked world.** The world is divided into chunks. `generate(seed, level, chunkCoord) -> chunk` is deterministic and pure. A chunk manager loads chunks around the observer, uploads their geometry, builds or reuses their light caches, and evicts distant ones. Intersection moves to an acceleration structure once shape count grows beyond a handful.
+- **Local simulation windows.** Water and light caches are computed in windows that follow the player instead of covering a whole level.
+- **Networking.** A small authoritative Node server owns sessions, seeds and player state. Clients share seed, level edits and player poses; the world is regenerated locally from the seed. Water and light stay local visual simulation; remote players are injected as body sources so everyone sees each other's wakes.
+
+These are directions, not decisions. Record the decision in this file when a piece is actually designed.
+
+## Roadmap
+
+1. **Level abstraction.** Define the scene description, move Poolrooms geometry into data or a level module, remove direct `poolrooms.json` imports from the renderer. Verify with `npm run benchmark` that the output is unchanged.
+2. **Scale.** Acceleration structure, chunked light atlases, streaming and eviction, moving water window. Set a frame budget per chunk.
+3. **Procedural Poolrooms.** Seeded chunk generator; endless layout with coherent rooms, pools and ceiling apertures.
+4. **Second level.** Prove the abstraction with a level that has different geometry, materials and lighting.
+5. **Multiplayer.** Server, presence, remote bodies as wake sources, shared seeds.
+
+## Rendering base invariants
+
+Keep these unless a roadmap item explicitly needs to change one; if it does, say so in the change.
+
+- No bitmap source or deployment assets. Materials and patterns are procedural.
+- Caustics come from photon transport through the live water surface (Fresnel, Snell, absorption, receiver-area normalisation). No painted caustics; CSG holes stay out of receiver-area denominators.
+- Camera frames are independent: deterministic branches, no random per-frame camera sampling, no temporal image blending or history blur. Film grain stays subtle.
+- Water is stateful. Advance it from a reset with real elapsed time; never seek analytically to an arbitrary time and never freeze water to stabilise lighting.
+- The player body is a soft forcing potential, not an exact moving boundary. In-water walking is capped at 1.6 m/s (0.8 m/s default); do not raise it without re-testing near-critical waves.
+- Grout and tile relief come from real primary-ray height-field intersections, not painted seams.
+- `surfaceMaterial(Hit) -> Material` is the near material slot; `filteredMaterial` is for secondary footprints; `photon-porcelain` is the area-average transport BRDF.
+- Do not claim full photorealism or guarantees on arbitrary devices.
+
+## Commands
+
+```sh
+npm install
+npm run dev          # Vite dev server on http://127.0.0.1:4173/ (WebGPU desktop browser)
+npm run build        # validate level content, then build dist/
+npm run preview      # serve dist/
+npm test             # unit tests in scripts/*.test.mjs
+npm run benchmark    # visual benchmark: 76 s scripted walk, controls, analysis, performance
+```
+
+`npm run benchmark` needs the dev server running, Playwright, and a Python with numpy, Pillow, PyAV and OpenCV (set `PYTHON`). Output goes outside the repository (default `../workroom-v1.49-evidence/benchmark/`; override with `EVIDENCE_DIR`). `VERIFY_URL` selects the page, `LAB_CONFIG` passes lab settings, `CASES` limits the control cases, `SKIP_PERFORMANCE=1` skips the timing run. Source provenance needs `rg` (ripgrep) on `PATH`, and the background-load recorder in `scripts/environment-lab-v158.mjs` uses macOS `ioreg`/`ps`, so the full benchmark currently runs on macOS only. A REVIEW result is not a visual pass, and a 30 Hz replay is not a real-time fps measurement.
+
+Run the benchmark after changes that can affect rendered light, materials, camera, water motion or interaction. For performance, measure GPU-completed frames at a fixed internal resolution with no other GPU load, and report resolution, p95 and minimum one-second fps.
+
+## Repository rules
+
+- **English only.** Code, comments, docs, script output and commit messages.
+- **No history in the tree.** No requirement logs, acceptance records, metric snapshots or version-numbered one-off scripts. Git history is the history. Measurements and captures go outside the repository (for example `../workroom-evidence/`), never into it.
+- Keep `docs/` describing the present system. Update it in the same change as the code.
+- Local commits only. Do not configure or push remotes.
+- Leave `.flops/` alone; it is user data.
+
+## Known cleanup debt
+
+- UI strings in `src/` (audio status, lab panel, renderer errors) are still Chinese. `src/` was frozen during the remaster; translate them in the first change that touches those files.
+- Benchmark scripts still carry version suffixes (`*-v149`, `*-v157`, `*-v158`) because the pipeline hash covers their paths; renaming them invalidates cached runs.
+- Names such as `poolrooms-v1` (package, level id) and `window.__POOLROOMS_V1__` predate the multi-level plan.
