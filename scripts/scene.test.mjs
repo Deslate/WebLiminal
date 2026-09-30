@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {sceneShaderPrelude,validateScene,waterGrid,packScene} from '../src/render/scene.js';
+import {poolroomsScene} from './geometry-fixture.mjs';
+const box=(lo,hi,extra={})=>({lo,hi,kind:0,material:0,radius:0,spring:0,...extra});
+const onTop=v=>Array.from({length:9},(_,face)=>face===3?v:undefined);
+const minimal=(shapes=[box([0,-1,0],[4,0,4])])=>({bounds:{minX:0,maxX:4,minZ:0,maxZ:4,ceiling:3},shapes,solids:[],water:{minX:0,maxX:4,minZ:0,maxZ:4,cell:.25},aperture:{minX:1,maxX:2,minZ:1,maxZ:2,y:3},floor:{shape:0,face:3}});
+test('Poolrooms compiles to the historical water grid, aperture plane and floor receiver',()=>{
+ const p=sceneShaderPrelude(poolroomsScene());
+ for(const line of ['const WATER_MIN=vec2f(-7.,-17.);','const WATER_MAX=vec2f(7.,10.);','const WATER_NX:u32=448u;','const WATER_NZ:u32=864u;','const WATER_DX=0.03125;','const WATER_CELLS_PER_METRE=32.;','const OPENING_Y=6.1;','const FLOOR_SID:u32=3u;'])assert(p.includes(line),line);
+});
+test('shader constants do not depend on the runtime aperture size',()=>{
+ assert.equal(sceneShaderPrelude(poolroomsScene(2,3)),sceneShaderPrelude(poolroomsScene(7.8,9)));
+});
+test('water grid must tile the water rectangle exactly',()=>{
+ assert.deepEqual(waterGrid({minX:0,maxX:4,minZ:-1,maxZ:1,cell:.25}),{nx:16,nz:8,dx:.25,dt:1/60,minX:0,minZ:-1});
+ assert.throws(()=>waterGrid({minX:0,maxX:4.1,minZ:0,maxZ:1,cell:.25}));
+});
+test('scene validation rejects empty shapes and engine-reserved materials',()=>{
+ assert.doesNotThrow(()=>validateScene(minimal()));
+ assert.throws(()=>validateScene(minimal([box([0,0,0],[0,1,1])])),/lo >= hi/);
+ for(const material of [9,10])assert.throws(()=>validateScene(minimal([box([0,-1,0],[4,0,4],{material})])),/material/);
+ assert.throws(()=>validateScene({...minimal(),floor:{shape:3,face:3}}),/floor/);
+});
+test('per-face receiver density and probe stride come from shape data',()=>{
+ const plain=packScene(minimal()),fine=packScene(minimal([box([0,-1,0],[4,0,4],{density:onTop(48),probeStride:onTop(8)})]));
+ const top=g=>{const u=new Uint32Array(g.surfaces),f=new Float32Array(g.surfaces);return {nx:u[3*16+1],stride:f[3*16+7]};};
+ assert.deepEqual(top(plain),{nx:48,stride:4});
+ assert.deepEqual(top(fine),{nx:192,stride:8});
+ assert.equal(fine.floorSid,3);
+});

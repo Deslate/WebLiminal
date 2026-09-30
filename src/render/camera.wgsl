@@ -41,7 +41,7 @@ fn directLighting(h:Hit,m:Material,v:vec3f)->vec3f {
   // A zero sky integral needs no local grout visibility walk.
   if(any(sky>vec3f(0))){
     if(!havePrep){jointPrep=jointVisibilityPrepare(h);}
-    result+=sky*jointVisibilityMarch(jointPrep,h,normalize(vec3f((U.opening.x+U.opening.y)*.5,6.102,(U.opening.z+U.opening.w)*.5)-h.p))*m.albedo/PI*(1.-fv)*(1.-m.coat);
+    result+=sky*jointVisibilityMarch(jointPrep,h,normalize(vec3f((U.opening.x+U.opening.y)*.5,OPENING_Y+.002,(U.opening.z+U.opening.w)*.5)-h.p))*m.albedo/PI*(1.-fv)*(1.-m.coat);
   }
   return result;
 }

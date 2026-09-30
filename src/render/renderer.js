@@ -2,9 +2,6 @@ import {LAB_DEFAULTS,normalizeLab} from "../lab-settings.js";
 import {labShader} from "./lab-shaders.js";
 import { createWaveSimulation } from "./wave-simulation.js";
 import common from "./common.wgsl?raw";
-import photonPorcelain from "../../materials/photon-porcelain.wgsl?raw";
-import porcelain from "../../materials/porcelain.wgsl?raw";
-import level from "../../levels/poolrooms.json";
 import photons from "./photons.wgsl?raw";
 import sky from "./sky.wgsl?raw";
 import resolve from "./resolve.wgsl?raw";
@@ -14,9 +11,11 @@ import composeLight from "./compose-light.wgsl?raw";
 import diffuseTransfer from "./diffuse-transfer.wgsl?raw";
 import reflectionFilter from "./reflection-filter.wgsl?raw";
 import present from "./present.wgsl?raw";
-import { makeGeometry } from "./geometry.js";
+import { packScene, sceneShaderPrelude, waterGrid } from "./scene.js";
 
-export async function createRenderer(canvas) {
+// `level` is a level module (see docs/LEVELS.md): optics, limits, material
+// WGSL and a scene(options) builder. The renderer knows no level by name.
+export async function createRenderer(canvas, level) {
   if (!navigator.gpu) throw new Error("This version needs a desktop browser with WebGPU support.");
   const adapter = await navigator.gpu.requestAdapter({
     powerPreference: "high-performance",
@@ -36,7 +35,12 @@ export async function createRenderer(canvas) {
     errors.push(e.error.message);
     console.error(e.error.message);
   });
-  const simulation = await createWaveSimulation(device);
+  // Water rectangle, aperture plane and floor receiver are fixed per level and
+  // compiled into every shader; the aperture rectangle stays a uniform.
+  const initialScene = level.scene(level.optics);
+  const prelude = sceneShaderPrelude(initialScene);
+  const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude });
+  const { near: nearMaterial, photon: photonMaterial } = level.materials;
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque" });
@@ -44,15 +48,15 @@ export async function createRenderer(canvas) {
   let lab={...LAB_DEFAULTS},pipelines;
   async function compileLab(){
   const shaderModules = [
-    module("photon transport", common + photonPorcelain + photons),
-    module("world irradiance estimate", common + labShader("resolve",resolve,lab)),
-    module("camera transport", common + porcelain + labShader("camera",camera,lab)),
+    module("photon transport", prelude + common + photonMaterial + photons),
+    module("world irradiance estimate", prelude + common + labShader("resolve",resolve,lab)),
+    module("camera transport", prelude + common + nearMaterial + labShader("camera",camera,lab)),
     module("lens and film", present),
-    module("area sky integral", common + labShader("sky",sky,lab)),
-    module("current water flux", common + labShader("water",waterCaustics,lab)),
-    module("instant diffuse transfer", common + photonPorcelain + labShader("diffuse",diffuseTransfer,lab)),
-    module("assemble current lighting",common+composeLight),
-    module("continuous reflection footprint",common+reflectionFilter),
+    module("area sky integral", prelude + common + labShader("sky",sky,lab)),
+    module("current water flux", prelude + common + labShader("water",waterCaustics,lab)),
+    module("instant diffuse transfer", prelude + common + photonMaterial + labShader("diffuse",diffuseTransfer,lab)),
+    module("assemble current lighting",prelude+common+composeLight),
+    module("continuous reflection footprint",prelude+common+reflectionFilter),
   ];
   const infos = await Promise.all(
     shaderModules.map((m) => m.getCompilationInfo()),
@@ -216,7 +220,9 @@ export async function createRenderer(canvas) {
   }
   function rebuild() {
     for (const b of Object.values(buffers)) b.destroy();
-    geometry = makeGeometry(config.apertureWidth, config.apertureDepth,lab.gridScale);
+    const scene = level.scene(config);
+    if (sceneShaderPrelude(scene) !== prelude) throw new Error("The level changed its water, aperture plane or floor receiver after load.");
+    geometry = packScene(scene, lab.gridScale);
     simulation.reset(config,geometry);
     buffers.geometry = buffer("analytic scene geometry", geometry.geometryData);
     buffers.surfaces = buffer(
@@ -292,8 +298,9 @@ export async function createRenderer(canvas) {
       0.001,
       Math.min(0.14, config.waveAmplitude),
     );
-    config.apertureWidth = Math.max(0.5, Math.min(7.8, config.apertureWidth));
-    config.apertureDepth = Math.max(0.5, Math.min(9, config.apertureDepth));
+    const clampTo = (v, [lo, hi]) => Math.max(lo, Math.min(hi, v));
+    config.apertureWidth = clampTo(config.apertureWidth, level.limits.apertureWidth);
+    config.apertureDepth = clampTo(config.apertureDepth, level.limits.apertureDepth);
     if (wasWidth !== config.apertureWidth || wasDepth !== config.apertureDepth)
       rebuild();
     simulation.reset(config,geometry);
@@ -496,15 +503,15 @@ export async function createRenderer(canvas) {
       // Read the actual transported irradiance, before materials, refraction
       // and tone mapping. Diagnostics only; never used to draw the image.
       const su=new Uint32Array(geometry.surfaces),sf=new Float32Array(geometry.surfaces);
-      const offset=su[48],nx=su[49],ny=su[50],size=nx*ny*16;
+      const sid=geometry.floorSid,o=sid*16,offset=su[o],nx=su[o+1],ny=su[o+2],size=nx*ny*16,chart=sf.slice(o+8,o+12);
       const readFloor=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});
       const encFloor=device.createCommandEncoder();encFloor.copyBufferToBuffer(buffers.liveField,offset*16,readFloor,0,size);device.queue.submit([encFloor.finish()]);await readFloor.mapAsync(GPUMapMode.READ);
       const values=new Float32Array(readFloor.getMappedRange());let sum=[0,0,0],peak=0,positive=0;const roi=[];
       for(let y=0;y<ny;y++)for(let x=0;x<nx;x++){
-        const i=(y*nx+x)*4,rgb=Array.from(values.subarray(i,i+3));for(let c=0;c<3;c++)sum[c]+=rgb[c]*sf[54];peak=Math.max(peak,values[i+3]);if(values[i+3]>0)positive++;
-        const px=-7+(x+.5)*14/nx,pz=-17+(y+.5)*27/ny;if(px>=2&&px<4&&pz>=-1.5&&pz<.5)roi.push(...rgb);
+        const i=(y*nx+x)*4,rgb=Array.from(values.subarray(i,i+3));for(let c=0;c<3;c++)sum[c]+=rgb[c]*sf[o+6];peak=Math.max(peak,values[i+3]);if(values[i+3]>0)positive++;
+        const px=chart[0]+(x+.5)*(chart[2]-chart[0])/nx,pz=chart[1]+(y+.5)*(chart[3]-chart[1])/ny;if(px>=2&&px<4&&pz>=-1.5&&pz<.5)roi.push(...rgb);
       }
-      floor={sid:3,dimensions:[nx,ny],cellArea:sf[54],integratedRGB:sum,peak,positive,roi:{bounds:[2,4,-1.5,.5],rgb:roi}};readFloor.unmap();readFloor.destroy();
+      floor={sid,dimensions:[nx,ny],cellArea:sf[o+6],integratedRGB:sum,peak,positive,roi:{bounds:[2,4,-1.5,.5],rgb:roi}};readFloor.unmap();readFloor.destroy();
     }
     const receivers={};
     for(const sid of options.receivers||[]){
@@ -550,6 +557,9 @@ export async function createRenderer(canvas) {
     audit,
     get solids() {
       return geometry.solids;
+    },
+    get bounds() {
+      return { ...geometry.bounds };
     },
     get config() {
       return { ...config };

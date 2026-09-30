@@ -1,7 +1,7 @@
 import {kickImpacts} from '../kick-impacts.js';
 import code from './body-waves.wgsl?raw';
-export async function createBodyWaves(device){
- const module=device.createShaderModule({code,label:'finite-depth dispersive body wake'});
+export async function createBodyWaves(device,prelude){
+ const module=device.createShaderModule({code:prelude+code,label:'finite-depth dispersive body wake'});
  for(const m of(await module.getCompilationInfo()).messages)if(m.type==='error')throw Error(`body waves ${m.lineNum}: ${m.message}`);
  const pipelines=await Promise.all(['fft','evolve','absorb'].map(entryPoint=>device.createComputePipelineAsync({layout:'auto',compute:{module,entryPoint}})));
  const size=256*512*16,states=[0,1].map(i=>device.createBuffer({label:`body wake state ${i}`,size,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST}));

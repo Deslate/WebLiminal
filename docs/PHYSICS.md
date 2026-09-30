@@ -10,7 +10,7 @@ The visible water surface is the linear sum of two independent solvers. Both are
 
 ### Background field (`src/render/wave-simulation.*`, `src/render/finite-depth.*`)
 
-- 448 x 864 grid at 1/32 m, integrated at 60 Hz.
+- A grid over the level's water rectangle at the level's cell size, integrated at 60 Hz (Poolrooms: 448 x 864 at 1/32 m).
 - Propagation uses the finite-depth operator `sqrt(L) tanh(H sqrt(L))` on the wet-domain graph Laplacian `L` with no-flux (Neumann) boundaries at the real pool geometry. `G(s)/s` is fitted by a Chebyshev polynomial so that the constant mode is exactly null.
 - Explicit dissipation removes short waves; a band-limited random pressure over the whole wet domain replenishes them. The forcing is not a looping animation and has no fixed phase.
 - Approximation: uniform depth in the operator, grid resolution limits, and a polynomial fit of the dispersion relation.

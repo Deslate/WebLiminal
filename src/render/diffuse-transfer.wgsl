@@ -60,7 +60,7 @@ fn bakeTransfer(@builtin(global_invocation_id) gid:vec3u) {
     let rd=basis(h.n)*vec3f(r*cos(angle),r*sin(angle),sqrt(1.-r*r));let ro=h.p+h.n*EPS*3.;
     let solid=traceSolid(ro,rd,INF);let wet=ro.y<U.state.y;let waterT=(U.state.y-ro.y)/rd.y;
     let wp=ro+rd*waterT;
-    if(waterT<=EPS||waterT>=solid.t||wp.x<=-7.||wp.x>=7.||wp.z<=-17.||wp.z>=10.){
+    if(waterT<=EPS||waterT>=solid.t||wp.x<=WATER_MIN.x||wp.x>=WATER_MAX.x||wp.z<=WATER_MIN.y||wp.z>=WATER_MAX.y){
       storeLink(slot,solid,rd,select(vec3f(exp(-.004*solid.t)),waterTransmittance(solid.t),wet),false);continue;
     }
     let n=vec3f(0,select(1.,-1.,wet),0);let ni=select(1.,1.333,wet);let nt=select(1.333,1.,wet);let f=fresnel(-dot(rd,n),ni,nt);

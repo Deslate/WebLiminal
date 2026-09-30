@@ -3,14 +3,20 @@ import {createLabMenu} from "./lab-menu.js";
 let labPanel=null,labState={...LAB_DEFAULTS},labApplying=false,labPauseAfter=false;
 import {createWakeTrail} from "./wake-trail.js";
 const wakeTrail=createWakeTrail();
-import level from "../levels/poolrooms.json";
+import { selectLevel } from "../levels/index.js";
 import { createRenderer } from "./render/renderer.js";
-import { ROOM } from "./render/geometry.js";
 import { movePlayer, canStand } from "./collision.js";
 import { createSoundscape } from "./audio.js";
 const canvas = document.createElement("canvas");
 document.querySelector("#experience").appendChild(canvas);
 const sound = createSoundscape(document.getElementById("audio-status"));
+let level;
+try {
+  level = selectLevel(new URLSearchParams(location.search).get("level"));
+} catch (e) {
+  document.getElementById("audio-status").textContent = e.message;
+  throw e;
+}
 const view = { ...level.spawn };
 let observer=null,bodyEnabled=true;
 function cameraPose(){return observer||view;}
@@ -27,11 +33,12 @@ let dragging = false,
   holdTime = false,
   targetSamples = 0;
 const runId = crypto.randomUUID();
-const renderer = await createRenderer(canvas).catch((e) => {
+const renderer = await createRenderer(canvas, level).catch((e) => {
   document.getElementById("audio-status").textContent = e.message;
   console.error(e);
   throw e;
 });
+const ROOM = renderer.bounds;
 let resizePending = false;
 function resize() {
   if (paused) { resizePending = true; return; }
@@ -70,7 +77,7 @@ addEventListener("keydown", (e) => {
     else {
       const x=Math.max(ROOM.minX+.6,Math.min(ROOM.maxX-.6,view.x+(view.x>3?-2.8:2.8)));
       const z=Math.max(ROOM.minZ+.6,Math.min(ROOM.maxZ-.6,view.z+(view.z>5?-3.6:3.6)));
-      observer={x,y:4.7,z,yaw:Math.atan2(x-view.x,z-view.z),pitch:Math.atan2(.42-4.7,Math.hypot(x-view.x,z-view.z))};
+      observer={x,y:4.7,z,yaw:Math.atan2(x-view.x,z-view.z),pitch:Math.atan2(level.optics.waterLevel-4.7,Math.hypot(x-view.x,z-view.z))};
     }
   }
   if (e.code === "KeyM" && !e.repeat) sound.toggle();

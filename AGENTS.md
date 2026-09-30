@@ -12,7 +12,7 @@ The renderer that exists today is the **foundation**, not the product. Work shou
 
 ## Current state
 
-- One level, Poolrooms (`levels/poolrooms.json`), about 14 x 27 m, hand-authored in `src/render/geometry.js` as 13 analytic shapes.
+- One level, Poolrooms, about 14 x 27 m, a level module (`levels/poolrooms.js`) whose scene is hand-authored in `levels/poolrooms-scene.js` as 15 analytic shapes. The renderer consumes a scene description and knows no level by name; see `docs/LEVELS.md`.
 - WebGPU + vanilla JavaScript + Vite. No runtime dependencies, no bitmap assets; all materials are procedural WGSL.
 - Stateful GPU water (finite-depth background field plus a spectral body wake), photon-traced caustics, finite-volume diffuse transfer, deterministic path-traced camera with GGX reflections, and an in-app light transport lab (G). See `docs/PHYSICS.md` and `docs/LIGHTING-LAB.md`.
 - Performance is the main constraint for scaling up. At a fixed 100% internal resolution the scene runs at roughly 10–12 fps on an Apple M3 Max, and about 18 fps at 70%; by default an adaptive internal resolution keeps it interactive. About 86% of frame time is the camera pass, and most of that is secondary GGX reflection rays. Larger and streamed worlds need a new performance budget; plan for it rather than assuming the current cost scales.
@@ -31,7 +31,7 @@ src/wake-trail.js, src/kick-impacts.js   body/footstep sources for the water
 src/lab-settings.js, src/lab-menu.js     light transport lab settings and UI
 src/render/
   renderer.js               WebGPU device, buffers, pipelines, per-frame pass order
-  geometry.js               scene shapes + solids (currently Poolrooms only)
+  scene.js                  scene description: validation, GPU packing, WGSL constants
   light-atlas.js            shared world-space receiver grids for photon flux
   wave-simulation.*         background water field + composition
   finite-depth.*            finite-depth dispersion operator on the wet domain
@@ -42,27 +42,30 @@ src/render/
   camera.wgsl, reflection-filter.wgsl, present.wgsl  camera and display
   lab-shaders.js            shader specialisation for lab settings
 materials/                  procedural WGSL materials (near + photon BRDF)
-levels/                     level data (currently optics, spawn, bounds)
+levels/                     level registry and level modules (data, scene builder, materials)
 scripts/                    content validation, unit tests, visual benchmark
-docs/                       physical model and lab reference
+docs/                       physical model, level format and lab reference
 ```
 
 Per frame: advance water to real elapsed time, emit live photons through the current surface, resolve irradiance, propagate diffuse transfer, compose light, trace the camera, filter reflections, present.
 
-Coupling to remove before multi-level work: `renderer.js`, `geometry.js` and `main.js` import `levels/poolrooms.json` directly; scene geometry is code, not data; shaders assume one static shape list with no acceleration structure; the water domain is a fixed grid over one pool.
+Coupling still to remove before large or streamed worlds: shaders test one static shape list with no acceleration structure; water rectangle, aperture plane and floor receiver are compile-time constants for a loaded level; the body-wake FFT window is fixed around the world origin; a level has exactly one water body and one sky aperture.
 
 ### Target (proposed, not implemented)
 
-- **Engine vs. level.** A level is a module that provides a scene description: shapes and solids, materials, water bodies, light sources, spawn and optics. The renderer consumes that description and knows no level by name. Poolrooms becomes the first level module and must render the same as today.
 - **Chunked world.** The world is divided into chunks. `generate(seed, level, chunkCoord) -> chunk` is deterministic and pure. A chunk manager loads chunks around the observer, uploads their geometry, builds or reuses their light caches, and evicts distant ones. Intersection moves to an acceleration structure once shape count grows beyond a handful.
 - **Local simulation windows.** Water and light caches are computed in windows that follow the player instead of covering a whole level.
 - **Networking.** A small authoritative Node server owns sessions, seeds and player state. Clients share seed, level edits and player poses; the world is regenerated locally from the seed. Water and light stay local visual simulation; remote players are injected as body sources so everyone sees each other's wakes.
 
 These are directions, not decisions. Record the decision in this file when a piece is actually designed.
 
+### Decisions
+
+- **Engine vs. level (implemented).** A level is a module (`id`, `spawn`, `optics`, `limits`, `materials`, `scene(options)`); `scene()` returns plain data: bounds, shapes with per-face receiver density, solids, one water rectangle, one sky aperture and the floor receiver. `src/render/scene.js` validates and packs it and derives a WGSL constant prelude; `levels/index.js` is the registry and `src/main.js` selects by `?level=`. Nothing under `src/render/` may import `levels/` or `materials/` (enforced by `npm run validate`). Poolrooms was moved over with byte-identical GPU buffers. Format: `docs/LEVELS.md`.
+
 ## Roadmap
 
-1. **Level abstraction.** Define the scene description, move Poolrooms geometry into data or a level module, remove direct `poolrooms.json` imports from the renderer. Verify with `npm run benchmark` that the output is unchanged.
+1. **Level abstraction.** Done: scene description, Poolrooms level module, renderer free of level imports (see Decisions). Multiple water bodies, other light sources and a no-water level wait for step 4.
 2. **Scale.** Acceleration structure, chunked light atlases, streaming and eviction, moving water window. Set a frame budget per chunk.
 3. **Procedural Poolrooms.** Seeded chunk generator; endless layout with coherent rooms, pools and ceiling apertures.
 4. **Second level.** Prove the abstraction with a level that has different geometry, materials and lighting.

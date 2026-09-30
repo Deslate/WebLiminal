@@ -6,7 +6,7 @@ struct SimParams { clock:vec4f, settings:vec4f, sources:array<vec4f,24>, shapes:
 @group(0) @binding(2) var<storage,read_write> next:array<vec2f>;
 @group(0) @binding(3) var<storage,read> depth:array<f32>;
 @group(0) @binding(4) var<storage,read_write> display:array<vec4f>;
-const NX:i32=448;const NZ:i32=864;const DX:f32=.03125;
+const NX:i32=i32(WATER_NX);const NZ:i32=i32(WATER_NZ);const DX:f32=WATER_DX;
 fn idx(p:vec2i)->u32 {let q=clamp(p,vec2i(0),vec2i(NX-1,NZ-1));return u32(q.y*NX+q.x);}
 fn sampleHeight(p:vec2i,center:f32)->f32 {let i=idx(p);return select(center,previous[i].x,depth[i]>0.);}
 @group(0) @binding(12) var<storage,read> bodyField:array<vec4f>;
@@ -23,7 +23,7 @@ fn bodySample(world:vec2f)->vec2f {
  let i=id.x;if(i>=u32(NX*NZ)){return;}
  // First-order velocity extrapolation shorter than one simulation step prevents
  // display stair steps at 60 / 59 / 30 Hz. No accumulated camera history.
- let q=previous[i];let world=(vec2f(f32(i%u32(NX)),f32(i/u32(NX)))+.5)*DX+vec2f(-7.,-17.);
+ let q=previous[i];let world=(vec2f(f32(i%u32(NX)),f32(i/u32(NX)))+.5)*DX+WATER_MIN;
  let wake=bodySample(world)*select(0.,1.,depth[i]>0.);
  display[i]=vec4f(q.x+q.y*P.clock.z+wake.x,q.y+wake.y,depth[i],0.);
 }

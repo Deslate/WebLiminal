@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import{readFileSync}from'node:fs';
+import{WATER_DT}from'../src/render/scene.js';
 const source=readFileSync(new URL('../src/render/finite-depth.js',import.meta.url),'utf8').replace("import code from './finite-depth.wgsl?raw';",'const code="";');
 const{dispersionPolynomial}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 function polynomial(a,x){let b=0,c=0;for(let n=a.length-1;n>=1;n--){const v=2*x*b-c+a[n];c=b;b=v;}return x*b-c+a[0];}
@@ -16,8 +17,7 @@ test('finite-depth operator has positive energy and <3.1% frequency error across
 });
 
 test('background 60 Hz symplectic step is stable and adds less than 1% modal frequency error',()=>{
- const text=readFileSync(new URL('../src/render/wave-simulation.js',import.meta.url),'utf8');
- const dt=1/Number(text.match(/dt:1\/(\d+)/)[1]);
+ const dt=WATER_DT;
  for(const depth of [.12,.42,1.05]){
   const f=dispersionPolynomial(depth,Math.max(12,Math.min(80,Math.ceil(32*depth/.42))));
   for(let j=1;j<=2000;j++){

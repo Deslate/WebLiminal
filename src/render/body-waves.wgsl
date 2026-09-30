@@ -97,7 +97,7 @@ fn reverse(v:u32,bits:u32)->u32{return reverseBits(v)>>(32u-bits);}
  let world=vec2f(f32(i%NX),f32(i/NX))*.125-vec2f(16.,32.);
  // Broad exterior sponge: the padded FFT domain is computational, not a
  // periodic pool. Waves are absorbed before reaching its periodic seam.
- let exterior=max(max(abs(world.x)-7.,-world.y-17.),world.y-10.);
+ let exterior=max(max(max(WATER_MIN.x-world.x,world.x-WATER_MAX.x),WATER_MIN.y-world.y),world.y-WATER_MAX.y);
  let damping=exp(-P.clock.y*8.*pow(smoothstep(0.,5.,exterior),2.));
  output[i]=input[i]*damping;
 }

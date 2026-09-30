@@ -40,12 +40,12 @@ fn fresnel(cosIn:f32,etaI:f32,etaT:f32)->f32 {let c=clamp(abs(cosIn),0.,1.);let 
 @group(0) @binding(9) var<storage,read> waveField:array<vec4f>;
 fn wave(p:vec2f)->vec3f {
  if(U.sampling.w==1u || (U.state.z==0. && U.body.z==0.)){return vec3f(U.state.y,0.,0.);}
- let q=clamp((p-vec2f(-7.,-17.))*32.-.5,vec2f(0.),vec2f(447.,863.));
- let base=vec2u(floor(q));let t=fract(q);let offset=(base.y*448u+base.x)*4u;
+ let q=clamp((p-WATER_MIN)*WATER_CELLS_PER_METRE-.5,vec2f(0.),vec2f(f32(WATER_NX-1u),f32(WATER_NZ-1u)));
+ let base=vec2u(floor(q));let t=fract(q);let offset=(base.y*WATER_NX+base.x)*4u;
  let a=waveField[offset];let b=waveField[offset+1u];let c=waveField[offset+2u];let d=waveField[offset+3u];
  let x=vec4f(1.,t.x,t.x*t.x,t.x*t.x*t.x);let dx=vec4f(0.,1.,2.*t.x,3.*t.x*t.x);
  let row=((d*t.y+c)*t.y+b)*t.y+a;
- return vec3f(U.state.y+dot(row,x),32.*dot(row,dx),32.*dot((3.*d*t.y+2.*c)*t.y+b,x));
+ return vec3f(U.state.y+dot(row,x),WATER_CELLS_PER_METRE*dot(row,dx),WATER_CELLS_PER_METRE*dot((3.*d*t.y+2.*c)*t.y+b,x));
 }
 fn emptyHit()->Hit {return Hit(INF,vec3f(0),vec3f(0),vec2f(0),0u,0u);}
 fn lightUV(p:vec3f,sid:u32)->vec2f {
@@ -137,16 +137,16 @@ fn traceWater(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
   if(max(lo,hi)<EPS||min(lo,hi)>maxT){return h;}
   var a=max(EPS,min(lo,hi));var b=min(maxT,max(lo,hi));
   if(a>=b){return h;}
-  // The water patch only spans x in (-7,7), z in (-17,10) (see the final
+  // The water patch only spans WATER_MIN..WATER_MAX in x,z (see the final
   // p.x/p.z check below). If the ray's line never has both inside that box
   // for ANY t, no t in [a,b] can pass the final check either, so bail out
   // before the Newton solve. This only rejects when the whole bracket is
   // provably dead; it never narrows [a,b] itself, so it cannot change which
   // root a partially-overlapping bracket converges to.
   let invX=1./select(.0000001,rd.x,abs(rd.x)>.0000001);
-  let xt0=(-7.-ro.x)*invX;let xt1=(7.-ro.x)*invX;
+  let xt0=(WATER_MIN.x-ro.x)*invX;let xt1=(WATER_MAX.x-ro.x)*invX;
   let invZ=1./select(.0000001,rd.z,abs(rd.z)>.0000001);
-  let zt0=(-17.-ro.z)*invZ;let zt1=(10.-ro.z)*invZ;
+  let zt0=(WATER_MIN.y-ro.z)*invZ;let zt1=(WATER_MAX.y-ro.z)*invZ;
   let xzLo=max(min(xt0,xt1),min(zt0,zt1));let xzHi=min(max(xt0,xt1),max(zt0,zt1));
   if(xzLo>=xzHi||xzLo>=b||xzHi<=a){return h;}
   var fa=(ro+rd*a).y-wave((ro+rd*a).xz).x;
@@ -165,7 +165,7 @@ fn traceWater(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
     t=next;
   }
   let p=ro+rd*t;let w=wave(p.xz);
-  if(t>EPS&&t<maxT&&p.x>-7.&&p.x<7.&&p.z>-17.&&p.z<10.){h=Hit(t,p,normalize(vec3f(-w.y,1.,-w.z)),vec2f(0),0u,9u);}
+  if(t>EPS&&t<maxT&&p.x>WATER_MIN.x&&p.x<WATER_MAX.x&&p.z>WATER_MIN.y&&p.z<WATER_MAX.y){h=Hit(t,p,normalize(vec3f(-w.y,1.,-w.z)),vec2f(0),0u,9u);}
   return h;
 }
 // Visible simplified immersed body. Kept out of static baked receiver tables.

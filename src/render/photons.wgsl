@@ -24,7 +24,7 @@ fn photons(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_id
   let dims=U.opening.yw-U.opening.xz;
   let stratum=vec2f(f32(i%512u),f32(i/512u));
   let uv=(stratum+vec2f(rnd(&seed),rnd(&seed)))/vec2f(512.,f32(U.sampling.x/512u));
-  var ro=vec3f(U.opening.x+uv.x*dims.x,6.101,U.opening.z+uv.y*dims.y);
+  var ro=vec3f(U.opening.x+uv.x*dims.x,OPENING_Y+.001,U.opening.z+uv.y*dims.y);
   var rd=-sampleSun(&seed);var power=sunIrradiance()*dims.x*dims.y*abs(rd.y)/.75;
   if(rnd(&seed)>.75){rd=cosineDirection(vec3f(0,-1,0),&seed);power=skyRadiance(-rd)*PI*dims.x*dims.y/.25;}
   atomicAdd(&groupCounts[0],1u);
@@ -33,7 +33,7 @@ fn photons(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_id
     var h=traceSolid(ro,rd,INF);
     if(U.sampling.z==1u){
       let t=(U.state.y-ro.y)/rd.y;let p=ro+rd*t;
-      if(t>EPS&&t<h.t&&p.x>-7.&&p.x<7.&&p.z>-17.&&p.z<10.){h=Hit(t,p,vec3f(0,1,0),vec2f(0),0u,9u);}
+      if(t>EPS&&t<h.t&&p.x>WATER_MIN.x&&p.x<WATER_MAX.x&&p.z>WATER_MIN.y&&p.z<WATER_MAX.y){h=Hit(t,p,vec3f(0,1,0),vec2f(0),0u,9u);}
     }else{h=trace(ro,rd,INF);}
     if(h.t>=INF){break;}
     if(underwater){power*=waterTransmittance(h.t);}else{power*=exp(-.004*h.t);}

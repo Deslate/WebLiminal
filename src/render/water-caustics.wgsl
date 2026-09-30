@@ -15,7 +15,7 @@ fn receive(h:Hit,power:vec3f,footprint:f32) {
   let s=surfaces[h.sid];let p=h.uv*vec2f(s.info.yz)-.5;let base=vec2i(floor(p));let f=fract(p);
   // A sky packet represents a finite water patch, not a point. Reconstruct
   // that footprint on the floor; retain the fine solar and wall estimator.
-  if(footprint>0. && h.sid==3u){
+  if(footprint>0. && h.sid==FLOOR_SID){
     let width=max(vec2f(1.),vec2f(footprint)*vec2f(s.info.yz)/s.metric.xy);
     let radius=vec2i(ceil(width));var norm=vec2f(0.);
     for(var x=1-radius.x;x<=radius.x;x++){norm.x+=max(0.,width.x-abs(f32(x)-f.x));}
@@ -50,7 +50,7 @@ fn waterPacket(p:vec3f,n:vec3f,l:vec3f,power:vec3f,auditIndex:u32,footprint:f32,
     if(!reflected){transmitted*=waterTransmittance(h.t);}else{transmitted*=exp(-.004*h.t);}
     receive(h,transmitted*(1.-schlick(abs(dot(rd,h.n)),.043)),footprint);
     if(auditIndex<256u && h.t<INF){
-      let ai=(auditIndex*2u+branch)*8u;let source=p+l*((6.101-p.y)/l.y);
+      let ai=(auditIndex*2u+branch)*8u;let source=p+l*(((OPENING_Y+.001)-p.y)/l.y);
       opticalPaths[ai]=vec4f(source,0);opticalPaths[ai+1u]=vec4f(incoming,1.);
       opticalPaths[ai+2u]=vec4f(p,1.333);opticalPaths[ai+3u]=vec4f(n,f);
       opticalPaths[ai+4u]=vec4f(rd,select(0.,1.,reflected));opticalPaths[ai+5u]=vec4f(h.p,f32(h.sid));
@@ -71,11 +71,11 @@ fn solarDiskDirection(k:u32)->vec3f {
 fn solarWaterPacket(i:u32,nSun:u32,l:vec3f) {
     // Sample the projected aperture footprint in horizontal water coordinates.
     // A margin encloses its displacement over the entire wave envelope.
-    let shift=-l.xz/l.y*(6.101-U.state.y);let margin=max(vec2f(.12),(U.state.z*1.07+U.lighting.x)*abs(l.xz/l.y)+.005);let lo=U.opening.xz+shift-margin;let hi=U.opening.yw+shift+margin;
+    let shift=-l.xz/l.y*((OPENING_Y+.001)-U.state.y);let margin=max(vec2f(.12),(U.state.z*1.07+U.lighting.x)*abs(l.xz/l.y)+.005);let lo=U.opening.xz+shift-margin;let hi=U.opening.yw+shift+margin;
     let q=(vec2f(f32(i%nSun),f32(i/nSun))+.5)/f32(nSun);let xz=mix(lo,hi,q);
-    if(xz.x>-7.&&xz.x<7.&&xz.y>-17.&&xz.y<10.){
+    if(xz.x>WATER_MIN.x&&xz.x<WATER_MAX.x&&xz.y>WATER_MIN.y&&xz.y<WATER_MAX.y){
       let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
-      let distance=(6.102-p.y)/l.y;
+      let distance=((OPENING_Y+.002)-p.y)/l.y;
       if(dot(n,l)>0. && !traceDynamicSolidAny(p+l*EPS*2.,l,distance-.005)){
         let area=(hi.x-lo.x)*(hi.y-lo.y)/f32(nSun*nSun*2u);
         let power=sunIrradiance()*max(dot(n,l),0.)/n.y*area*exp(-.004*distance);
@@ -89,7 +89,7 @@ fn solarWaterPacket(i:u32,nSun:u32,l:vec3f) {
 const ENABLE_SKY_REFLECTION:bool=true;
 const SKY_REFLECTION_SIDE:u32=8u;
 fn skyWaterPacket(p:vec3f,n:vec3f,waterArea:f32,lightArea:f32,uv:vec2f,samples:f32,footprint:f32,branches:u32){
-      let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),6.102,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
+      let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),OPENING_Y+.002,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
       if(dot(n,l)>0. && !traceDynamicSolidAny(p+l*EPS*2.,l,d-.005)){
         let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(samples*d*d)*exp(-.004*d);
         // Near-axis projection of one source cell through the mean interface.
@@ -113,10 +113,10 @@ fn emitWater(@builtin(global_invocation_id) gid:vec3u,@builtin(local_invocation_
   }
   let nx=U.live.y;let ny=U.live.z;
   if(i<nx*ny){
-    let xz=mix(vec2f(-7,-17),vec2f(7,10),(vec2f(f32(i%nx),f32(i/nx))+.5)/vec2f(f32(nx),f32(ny)));
+    let xz=mix(WATER_MIN,WATER_MAX,(vec2f(f32(i%nx),f32(i/nx))+.5)/vec2f(f32(nx),f32(ny)));
     let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
-    let waterArea=14.*27./f32(nx*ny);let lightArea=(U.opening.y-U.opening.x)*(U.opening.w-U.opening.z);
-    let footprint=max(14./f32(nx),27./f32(ny))*(1.+U.state.y/(1.333*max(.1,6.102-U.state.y)));
+    let waterArea=WATER_SIZE.x*WATER_SIZE.y/f32(nx*ny);let lightArea=(U.opening.y-U.opening.x)*(U.opening.w-U.opening.z);
+    let footprint=max(WATER_SIZE.x/f32(nx),WATER_SIZE.y/f32(ny))*(1.+U.state.y/(1.333*max(.1,(OPENING_Y+.002)-U.state.y)));
     for(var k=0u;k<4u;k++){
       let uv=vec2f(.25+f32(k%2u)*.5,.25+f32(k/2u)*.5);
       skyWaterPacket(p,n,waterArea,lightArea,uv,4.,footprint,2u);

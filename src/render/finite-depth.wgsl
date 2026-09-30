@@ -13,8 +13,9 @@ struct SimParams { clock:vec4f, settings:vec4f, sources:array<vec4f,24>, shapes:
 @group(0) @binding(8) var<storage,read> links:array<u32>;
 struct Control { coefficient:f32, limit:f32, order:u32, pad:u32 };
 @group(0) @binding(9) var<uniform> C:Control;
-const N:u32=448u*864u;
-const OFFSETS=array<i32,8>(-1,1,-448,448,-449,-447,447,449);
+const N:u32=WATER_NX*WATER_NZ;
+const W:i32=i32(WATER_NX);
+const OFFSETS=array<i32,8>(-1,1,-W,W,-W-1,-W+1,W-1,W+1);
 fn weight(j:u32)->f32{return select(2./3.,1./6.,j>=4u)*1024.;}
 fn lapState(i:u32)->vec2f {
  var r=vec2f(0);let center=state[i];for(var j=0u;j<8u;j++){if((links[i]&(1u<<j))!=0u){r+=weight(j)*(center-state[u32(i32(i)+OFFSETS[j])]);}}return r;
