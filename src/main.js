@@ -221,7 +221,7 @@ async function tick(now) {
 async function applyLab(value,persist=true){
   const next=normalizeLab(value);
   if(JSON.stringify(next)!==JSON.stringify(labState)){
-    if(labApplying)throw Error("已有一次设置切换正在进行");
+    if(labApplying)throw Error("A settings change is already in progress");
     labApplying=true;labPauseAfter=paused;setPaused(true);
     try{
       while(renderer.busy||tickRunning)await new Promise(r=>setTimeout(r,5));

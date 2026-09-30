@@ -2,7 +2,7 @@
 export function createSoundscape(status) {
   const Context = window.AudioContext || window.webkitAudioContext;
   if (!Context) {
-    status.textContent = "此浏览器无法播放空间声音";
+    status.textContent = "This browser cannot play spatial audio";
     return {
       update() {},
       unlock() {},
@@ -81,12 +81,12 @@ export function createSoundscape(status) {
     eventTriggered = false;
   function refresh() {
     status.textContent = paused
-      ? "已暂停 · Tab 恢复"
+      ? "Paused · Tab to resume"
       : muted
-      ? "声音已关闭 · M 开启"
+      ? "Sound off · M to turn on"
       : ctx.state === "running"
         ? ""
-        : "任意键 / 点击 · 唤醒声音";
+        : "Any key / click · enable sound";
   }
   function startSources() {
     if (ctx.state === "running") {

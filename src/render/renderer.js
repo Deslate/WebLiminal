@@ -17,11 +17,11 @@ import present from "./present.wgsl?raw";
 import { makeGeometry } from "./geometry.js";
 
 export async function createRenderer(canvas) {
-  if (!navigator.gpu) throw new Error("此版本需要支持 WebGPU 的桌面浏览器。");
+  if (!navigator.gpu) throw new Error("This version needs a desktop browser with WebGPU support.");
   const adapter = await navigator.gpu.requestAdapter({
     powerPreference: "high-performance",
   });
-  if (!adapter) throw new Error("WebGPU 无可用适配器。");
+  if (!adapter) throw new Error("No WebGPU adapter is available.");
   const device = await adapter.requestDevice({
     requiredLimits: {
       maxStorageBufferBindingSize: Math.min(

@@ -106,6 +106,5 @@ Run the benchmark after changes that can affect rendered light, materials, camer
 
 ## Known cleanup debt
 
-- UI strings in `src/` (audio status, lab panel, renderer errors) are still Chinese. `src/` was frozen during the remaster; translate them in the first change that touches those files.
 - Benchmark scripts still carry version suffixes (`*-v149`, `*-v157`, `*-v158`) because the pipeline hash covers their paths; renaming them invalidates cached runs.
 - Names such as `poolrooms-v1` (package, level id) and `window.__POOLROOMS_V1__` predate the multi-level plan.
