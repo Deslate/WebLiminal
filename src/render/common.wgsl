@@ -137,6 +137,18 @@ fn traceWater(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
   if(max(lo,hi)<EPS||min(lo,hi)>maxT){return h;}
   var a=max(EPS,min(lo,hi));var b=min(maxT,max(lo,hi));
   if(a>=b){return h;}
+  // The water patch only spans x in (-7,7), z in (-17,10) (see the final
+  // p.x/p.z check below). If the ray's line never has both inside that box
+  // for ANY t, no t in [a,b] can pass the final check either, so bail out
+  // before the Newton solve. This only rejects when the whole bracket is
+  // provably dead; it never narrows [a,b] itself, so it cannot change which
+  // root a partially-overlapping bracket converges to.
+  let invX=1./select(.0000001,rd.x,abs(rd.x)>.0000001);
+  let xt0=(-7.-ro.x)*invX;let xt1=(7.-ro.x)*invX;
+  let invZ=1./select(.0000001,rd.z,abs(rd.z)>.0000001);
+  let zt0=(-17.-ro.z)*invZ;let zt1=(10.-ro.z)*invZ;
+  let xzLo=max(min(xt0,xt1),min(zt0,zt1));let xzHi=min(max(xt0,xt1),max(zt0,zt1));
+  if(xzLo>=xzHi||xzLo>=b||xzHi<=a){return h;}
   var fa=(ro+rd*a).y-wave((ro+rd*a).xz).x;
   let fb=(ro+rd*b).y-wave((ro+rd*b).xz).x;
   if(fa*fb>0.){return h;}
@@ -286,9 +298,14 @@ fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
   if(mode==1u){let course=archCourse(uv.x,shape.params.x);cell.x=course.x;center.x=course.y;size.x=course.z;}
   let seed=tileSeed(sid,mode);
   let id=hash2(cell+vec2f(seed*17.19,0));
-  let r=vec4f(hash2(cell+vec2f(13.1+seed*31.,7.3)),hash2(cell+vec2f(28.7,9.1+seed*11.)),hash2(cell+vec2f(97.3+id*31.,43.7)),hash2(cell+vec2f(29.1,61.3+id*71.)));
-  let angle=0.;let local=uv-center;
-  let rotation=mat2x2f(cos(angle),-sin(angle),sin(angle),cos(angle));let q=rotation*local;
+  // Only r.x/r.y (tilt, bevel) are ever read; the other two hash2() lanes
+  // this struct used to carry were computed and discarded on every call.
+  let r=vec2f(hash2(cell+vec2f(13.1+seed*31.,7.3)),hash2(cell+vec2f(28.7,9.1+seed*11.)));
+  // The per-tile rotation this used to carry is fixed at angle=0 (identity):
+  // no code path ever sets it otherwise. q=local directly instead of paying
+  // for cos/sin and a matrix multiply (twice: here and in the slope below)
+  // to reconstruct the same vector.
+  let q=uv-center;
   let halfSize=size*.5-vec2f(GROUT_HALF_WIDTH);
   let radius=.0012+.0012*id;
   let d=abs(q)-halfSize+radius;
@@ -310,7 +327,7 @@ fn tileProfile(uv:vec2f,sid:u32,material:u32,mode:u32)->TileProfile {
   if(any(d>vec2f(0))){ge=-sign(q)*normalize(max(d,vec2f(0)));}
   if(atOpening){ge=joint.yz;}
   let u=clamp(edge/bevel,0.,1.);
-  var slope=transpose(rotation)*((r.xy-.5)*.009*shoulder+ge*(face-bed)*6.*u*(1.-u)/bevel);
+  var slope=(r.xy-.5)*.009*shoulder+ge*(face-bed)*6.*u*(1.-u)/bevel;
   slope+=joint.yz*(-.0022/.0052)*6.*bedT*(1.-bedT)*(1.-shoulder);
   return TileProfile(height,edge,id,bevel,slope);
 }
