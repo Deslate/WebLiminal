@@ -1,5 +1,0 @@
-import {readFileSync} from 'node:fs';
-export async function installWater(p,name){if(!name.startsWith('candidate'))return;
-if(name==='candidate-slow')await p.route(u=>u.pathname==='/levels/poolrooms.json',async r=>{const level=JSON.parse(readFileSync('levels/poolrooms.json','utf8'));level.optics.waveSpeed=.1;await r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(level)})});
-await p.route(u=>u.pathname==='/src/render/wave-simulation.wgsl',r=>{let s=readFileSync('src/render/wave-simulation.wgsl','utf8');s=s.replace('*.52*P.settings.x','*.26*P.settings.x').replaceAll('7.2','28.8').replace('count>=24u','count>=64u').replace('let r=.7*mix(.095,.32','let r=.35*mix(.095,.32').replace('*.75*P.settings.x','*.525*P.settings.x');return r.fulfill({contentType:'text/javascript',body:'export default '+JSON.stringify(s)})});
-await p.route(u=>u.pathname==='/src/render/wave-simulation.js',async r=>{const response=await r.fetch();let s=await response.text();s=s.replace('const radius=.7*','const radius=.5*');await r.fulfill({response,body:s})});}

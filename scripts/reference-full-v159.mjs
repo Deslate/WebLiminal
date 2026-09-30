@@ -1,7 +1,0 @@
-import {chromium} from '/Users/steven/Projects/workroom/node_modules/@playwright/test/index.mjs';
-import {writeFileSync,mkdirSync} from 'node:fs';
-import{provenance}from'./roam-v149-provenance.mjs';
-const out='/Users/steven/Projects/workroom-v1.59-evidence/reference';
-mkdirSync(out,{recursive:true});writeFileSync(out+'/source.json',JSON.stringify(provenance()));
-for(const port of [49209,49214,58669,58670]){try{const b=await chromium.connectOverCDP('http://127.0.0.1:'+port,{timeout:1200});for(const c of b.contexts())for(const p of c.pages())if(/^http:\/\/127.0.0.1:417[35]\//.test(p.url()))await p.evaluate(async()=>{await window.__POOLROOMS_V1__?.pause()});await b.close()}catch{}}
-for(const [name,port]of [['full',4173]]){const b=await chromium.launch({channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1920,height:1200}});await p.routeWebSocket(/.*/,w=>w.close());await p.goto('http://127.0.0.1:'+port);await p.waitForFunction(()=>window.__POOLROOMS_V1__?.snapshot().firstFrameMs,null,{timeout:180000});const s=await p.evaluate(async()=>{document.body.classList.add('evidence');const a=window.__POOLROOMS_V1__,v={x:-3.6,y:1.62,z:8,yaw:-.29,pitch:.028};await a.configure({view:v,body:false,pause:true,freeze:false,scale:.85,focalLength:28,exposure:.85,seed:7819301,grain:0});for(let i=0;i<=360;i++)await a.renderEvidence(i/30,v,false,false);return a.snapshot()});await p.screenshot({path:out+'/'+name+'.png'});writeFileSync(out+'/'+name+'.json',JSON.stringify(s,null,2));console.log(name,s.internal,s.errors)}finally{await b.close()}}

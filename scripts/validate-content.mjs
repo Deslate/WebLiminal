@@ -1,7 +1,8 @@
 import {readFileSync,readdirSync,existsSync} from 'node:fs';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
-const root=new URL('../',import.meta.url).pathname;
+const root=fileURLToPath(new URL('../',import.meta.url));
 const level=JSON.parse(readFileSync(join(root,'levels/poolrooms.json')));
 assert.equal(level.id,'poolrooms-v1');
 assert(level.spawn.x>level.bounds.minX&&level.spawn.x<level.bounds.maxX);

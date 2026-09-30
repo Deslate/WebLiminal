@@ -1,8 +1,0 @@
-import{readFileSync,writeFileSync,mkdirSync}from'node:fs';
-const text=readFileSync('src/render/finite-depth.js','utf8').replace("import code from './finite-depth.wgsl?raw';",'const code="";');
-const{dispersionPolynomial}=await import('data:text/javascript;base64,'+Buffer.from(text).toString('base64'));
-const out='../workroom-v1.44-evidence';mkdirSync(out,{recursive:true});
-const evalCheb=(a,x)=>{let p=0,q=0;for(let i=a.length-1;i>=1;i--){const v=2*x*p-q+a[i];q=p;p=v;}return x*p-q+a[0];};
-const rows=[];for(const H of [.12,.42,1.05]){const f=dispersionPolynomial(H,Math.max(12,Math.min(80,Math.ceil(32*H/.42))));let max=0,min=1e9;for(let j=0;j<20000;j++){const s=.001*Math.pow(f.limit/.001,j/19999),exact=Math.sqrt(s)*Math.tanh(H*Math.sqrt(s)),g=s*evalCheb(f.coefficients,2*s/f.limit-1);max=Math.max(max,Math.abs(Math.sqrt(g/exact)-1));min=Math.min(min,g);}rows.push({H,maxFrequencyError:max,minimumG:min});}
-const f=dispersionPolynomial(.42),modes=[];for(const wavelength of [.08,.1,.13,.2,.3,.5,1,2,5]){const k=2*Math.PI/wavelength,s=4/(1/32)**2*Math.sin(k/32/2)**2,correct=Math.sqrt((9.81*k+.000073*k**3)*Math.tanh(.42*k)),semi=Math.sqrt((9.81+.000073*s)*Math.sqrt(s)*Math.tanh(.42*Math.sqrt(s))),fit=Math.sqrt((9.81+.000073*s)*s*evalCheb(f.coefficients,2*s/f.limit-1)),stepped=2*120*Math.asin(fit/240);modes.push({wavelength,continuumOmega:correct,gridOmega:semi,polynomialOmega:fit,steppedOmega:stepped,oldShallowOmega:Math.sqrt(.42*(9.81*s+.000073*s*s)),renderPeriodSeconds:2*Math.PI/(stepped*.21),totalRelativeError:stepped/correct-1});}
-writeFileSync(out+'/dispersion.json',JSON.stringify({fit:rows,modes},null,2));console.log(JSON.stringify({fit:rows,modes},null,2));

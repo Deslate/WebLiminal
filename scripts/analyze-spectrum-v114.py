@@ -1,4 +1,0 @@
-import json,numpy as np,sys
-for path in sys.argv[1:]:
- d=json.load(open(path));a=np.array(d['frames']);a=a.reshape(-1,64,64);w=np.hanning(len(a));ft=np.fft.rfft((a-a.mean(0))*w[:,None,None],axis=0);power=(abs(ft)**2).sum((1,2));f=np.fft.rfftfreq(len(a),1/d['hz']);sp=abs(np.fft.fftshift(np.fft.fft2((a-a.mean((1,2),keepdims=True))*np.outer(np.hanning(64),np.hanning(64)))))**2;k=np.fft.fftshift(np.fft.fftfreq(64,d['dx']));x,y=np.meshgrid(k,k);r=np.hypot(x,y);angle=np.arctan2(y,x);mask=(r>1)&(r<6);p=sp.mean(0);anis=abs((p[mask]*np.exp(4j*angle[mask])).sum())/p[mask].sum()
- print(path,json.dumps({'heightRMSmm':float(np.sqrt((a*a).mean())*1000),'temporalPowerAbove5Hz':float(power[f>5].sum()/power.sum()),'temporalPowerAbove8Hz':float(power[f>8].sum()/power.sum()),'fourfoldAnisotropy':float(anis),'slopePowerWavelengthBelow25cm':float((p*r*r)[r>4].sum()/(p*r*r).sum())}))
