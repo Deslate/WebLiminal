@@ -24,17 +24,25 @@ fn integratedSky(h:Hit)->vec3f {
 fn directLighting(h:Hit,m:Material,v:vec3f)->vec3f {
   let n=m.normal;let nv=max(dot(n,v),.001);let fv=schlick(nv,m.coat);let ro=h.p+h.n*.012;var result=vec3f(0);
   let sun=sunDirection();let nl=max(dot(n,sun),0.);
-  if(nl>0. && traceSolid(ro,sun,INF).t>=INF){
+  // The grout-visibility setup for this hit is identical for the sun and sky
+  // terms below (it depends only on h); compute it at most once, lazily, and
+  // share it instead of walking tileFrame/tileUV/tileProfile twice.
+  var jointPrep=JointPrep(0.,0.,0.,vec3f(0),vec3f(0),vec2f(0),0u,0u,0u);var havePrep=false;
+  if(nl>0. && !traceSolidAny(ro,sun,INF)){
+    jointPrep=jointVisibilityPrepare(h);havePrep=true;
     let hv=normalize(sun+v);let nh=max(dot(n,hv),0.);let vh=max(dot(v,hv),0.);let a=max(m.roughness*m.roughness,.035);
     let spec=ggxD(nh,a)*smithG1(nl,a)*smithG1(nv,a)*schlick(vh,m.coat)/max(4.*nl*nv,.00001);
-    result+=jointVisibility(h,sun)*sunIrradiance()*nl*(m.albedo/PI*(1.-fv)*(1.-schlick(nl,m.coat))+vec3f(spec));
+    result+=jointVisibilityMarch(jointPrep,h,sun)*sunIrradiance()*nl*(m.albedo/PI*(1.-fv)*(1.-schlick(nl,m.coat))+vec3f(spec));
   }
   // The 256-point world-space sky integral is already available in both modes.
   // Reuse it for moving primary and glaze rays instead of retracing four points
   // and four grout visibility walks per shading invocation.
   let sky=integratedSky(h);
   // A zero sky integral needs no local grout visibility walk.
-  if(any(sky>vec3f(0))){result+=sky*jointVisibility(h,normalize(vec3f((U.opening.x+U.opening.y)*.5,6.102,(U.opening.z+U.opening.w)*.5)-h.p))*m.albedo/PI*(1.-fv)*(1.-m.coat);}
+  if(any(sky>vec3f(0))){
+    if(!havePrep){jointPrep=jointVisibilityPrepare(h);}
+    result+=sky*jointVisibilityMarch(jointPrep,h,normalize(vec3f((U.opening.x+U.opening.y)*.5,6.102,(U.opening.z+U.opening.w)*.5)-h.p))*m.albedo/PI*(1.-fv)*(1.-m.coat);
+  }
   return result;
 }
 fn shadeMaterial(h:Hit,rd:vec3f,underwater:bool,material:Material,approximateEnvironment:bool)->vec3f {

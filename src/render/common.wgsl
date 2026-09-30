@@ -61,40 +61,74 @@ fn inHole(p:vec3f,s:Shape)->bool {
   let x=p.x-(s.lo.x+s.hi.x)*.5;let y=p.y-s.params.y;let r=s.params.x;
   return abs(x)<r && (y<0. || x*x+y*y<r*r);
 }
+// Winning candidate is tracked as scalars/normal/shape/face only; the actual
+// Hit (material UV, chart lookup) is assembled once at the end for whichever
+// candidate wins, instead of on every intermediate improvement during the sweep.
 fn traceSolid(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
-  var best=emptyHit();best.t=maxT;
+  var bestT=maxT;var bestN=vec3f(0);var bestFace=0u;var bestShape=shapes[0];var found=false;
   let inv=1./select(vec3f(.0000001),rd,abs(rd)>vec3f(.0000001));
   for(var i=0u;i<U.render.w;i++) {
     let s=shapes[i];let aa=(s.lo.xyz-ro)*inv;let bb=(s.hi.xyz-ro)*inv;
     let near=min(aa,bb);let far=max(aa,bb);let tn=max(max(near.x,near.y),near.z);let tf=min(min(far.x,far.y),far.z);
-    if(tf<max(tn,EPS)||tn>best.t){continue;}
+    if(tf<max(tn,EPS)||tn>bestT){continue;}
     for(var exit=0u;exit<2u;exit++) {
-      let t=select(tn,tf,exit==1u);if(t<EPS||t>=best.t){continue;}
+      let t=select(tn,tf,exit==1u);if(t<EPS||t>=bestT){continue;}
       let p=ro+rd*t;if(s.info.y==1u&&inHole(p,s)){continue;}
       let ns=select(near,far,exit==1u);var axis=0u;
       if(abs(ns.y-t)<.0005){axis=1u;}if(abs(ns.z-t)<.0005){axis=2u;}
       var n=vec3f(0);n[axis]=select(-sign(rd[axis]),sign(rd[axis]),exit==1u);
       let face=axis*2u+select(0u,1u,n[axis]>0.);
-      best=makeHit(t,ro,rd,n,s,face);
+      bestT=t;bestN=n;bestFace=face;bestShape=s;found=true;
     }
     if(s.info.y!=1u){continue;}
     let cx=(s.lo.x+s.hi.x)*.5;let r=s.params.x;let spring=s.params.y;
     for(var side=0u;side<2u;side++) {
       let x=cx+select(-r,r,side==1u);let t=(x-ro.x)*inv.x;let p=ro+rd*t;
-      if(t>EPS&&t<best.t&&p.z>s.lo.z&&p.z<s.hi.z&&p.y>=0.&&p.y<spring){
+      if(t>EPS&&t<bestT&&p.z>s.lo.z&&p.z<s.hi.z&&p.y>=0.&&p.y<spring){
         let n=vec3f(select(1.,-1.,side==1u),0,0);
-        best=makeHit(t,ro,rd,n,s,select(7u,8u,side==1u));
+        bestT=t;bestN=n;bestFace=select(7u,8u,side==1u);bestShape=s;found=true;
       }
     }
     let o=ro.xy-vec2f(cx,spring);let a=dot(rd.xy,rd.xy);let b=dot(o,rd.xy);let c=dot(o,o)-r*r;let disc=b*b-a*c;
     if(disc>=0.&&a>.00001){
       for(var k=0u;k<2u;k++){
         let t=(-b+select(-sqrt(disc),sqrt(disc),k==1u))/a;let p=ro+rd*t;
-        if(t>EPS&&t<best.t&&p.y>=spring&&p.z>s.lo.z&&p.z<s.hi.z){best=makeHit(t,ro,rd,normalize(vec3f(cx-p.x,spring-p.y,0)),s,6u);}
+        if(t>EPS&&t<bestT&&p.y>=spring&&p.z>s.lo.z&&p.z<s.hi.z){bestT=t;bestN=normalize(vec3f(cx-p.x,spring-p.y,0));bestFace=6u;bestShape=s;found=true;}
       }
     }
   }
-  return best;
+  if(!found){return Hit(maxT,vec3f(0),vec3f(0),vec2f(0),0u,0u);}
+  return makeHit(bestT,ro,rd,bestN,bestShape,bestFace);
+}
+// Occlusion-only query: stops at the first opaque hit and never assembles
+// material UV/chart attributes. For shadow/visibility rays that only need
+// "is anything in the way", this is bit-exact with `traceSolid(...).t<maxT`.
+fn traceSolidAny(ro:vec3f,rd:vec3f,maxT:f32)->bool {
+  let inv=1./select(vec3f(.0000001),rd,abs(rd)>vec3f(.0000001));
+  for(var i=0u;i<U.render.w;i++) {
+    let s=shapes[i];let aa=(s.lo.xyz-ro)*inv;let bb=(s.hi.xyz-ro)*inv;
+    let near=min(aa,bb);let far=max(aa,bb);let tn=max(max(near.x,near.y),near.z);let tf=min(min(far.x,far.y),far.z);
+    if(tf<max(tn,EPS)||tn>maxT){continue;}
+    for(var exit=0u;exit<2u;exit++) {
+      let t=select(tn,tf,exit==1u);if(t<EPS||t>=maxT){continue;}
+      let p=ro+rd*t;if(s.info.y==1u&&inHole(p,s)){continue;}
+      return true;
+    }
+    if(s.info.y!=1u){continue;}
+    let cx=(s.lo.x+s.hi.x)*.5;let r=s.params.x;let spring=s.params.y;
+    for(var side=0u;side<2u;side++) {
+      let x=cx+select(-r,r,side==1u);let t=(x-ro.x)*inv.x;let p=ro+rd*t;
+      if(t>EPS&&t<maxT&&p.z>s.lo.z&&p.z<s.hi.z&&p.y>=0.&&p.y<spring){return true;}
+    }
+    let o=ro.xy-vec2f(cx,spring);let a=dot(rd.xy,rd.xy);let b=dot(o,rd.xy);let c=dot(o,o)-r*r;let disc=b*b-a*c;
+    if(disc>=0.&&a>.00001){
+      for(var k=0u;k<2u;k++){
+        let t=(-b+select(-sqrt(disc),sqrt(disc),k==1u))/a;let p=ro+rd*t;
+        if(t>EPS&&t<maxT&&p.y>=spring&&p.z>s.lo.z&&p.z<s.hi.z){return true;}
+      }
+    }
+  }
+  return false;
 }
 fn traceWater(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
   var h=emptyHit();
@@ -135,6 +169,18 @@ fn traceBody(ro:vec3f,rd:vec3f,maxT:f32)->Hit {
  return h;
 }
 fn traceDynamicSolid(ro:vec3f,rd:vec3f,maxT:f32)->Hit {let h=traceSolid(ro,rd,maxT);let b=traceBody(ro,rd,h.t);if(b.material==10u){return b;}return h;}
+fn traceBodyAny(ro:vec3f,rd:vec3f,maxT:f32)->bool {
+ if(U.body.z<=0.){return false;}
+ let o=ro.xz-U.body.xy;let a=dot(rd.xz,rd.xz);let b=dot(o,rd.xz);let c=dot(o,o)-U.body.z*U.body.z;
+ let disc=b*b-a*c;
+ if(disc>=0. && a>.000001){for(var k=0;k<2;k++){
+  let t=(-b+select(-sqrt(disc),sqrt(disc),k==1))/a;let p=ro+t*rd;
+  if(t>EPS && t<maxT && p.y>=.015 && p.y<=U.body.w){return true;}
+ }}
+ if(abs(rd.y)>.000001){for(var k=0;k<2;k++){let y=select(.015,U.body.w,k==1);let t=(y-ro.y)/rd.y;let p=ro+t*rd;if(t>EPS&&t<maxT&&distance(p.xz,U.body.xy)<U.body.z){return true;}}}
+ return false;
+}
+fn traceDynamicSolidAny(ro:vec3f,rd:vec3f,maxT:f32)->bool {return traceSolidAny(ro,rd,maxT)||traceBodyAny(ro,rd,maxT);}
 fn trace(ro:vec3f,rd:vec3f,maxT:f32)->Hit {var h=traceDynamicSolid(ro,rd,maxT);let w=traceWater(ro,rd,h.t);if(w.t<h.t){h=w;}return h;}
 fn waterTransmittance(distance:f32)->vec3f{return exp(-vec3f(.34,.075,.037)*distance);}
 fn skyRadiance(d:vec3f)->vec3f {return mix(vec3f(.68,.80,.97),vec3f(.31,.52,.88),pow(max(d.y,0.),.45))*.62;}
@@ -297,20 +343,31 @@ fn reliefHit(ro:vec3f,rd:vec3f,h:Hit)->Hit {
   }
   return h;
 }
-fn jointVisibility(h:Hit,l:vec3f)->f32 {
-  let detail=1.-smoothstep(2.5,4.,length(h.p-U.camera.xyz));if(detail<=0.||h.material==1u){return 1.;}
+// jointVisibility's setup (frame/uv/mode/early-out/marching start height) depends
+// only on the hit point, never on the light direction `l`. Split it so callers
+// that query the same hit against two directions (sun, then sky) share the
+// setup instead of recomputing it, and skip it entirely if unused by either.
+struct JointPrep { valid:f32, detail:f32, start:f32, dirX:vec3f, dirY:vec3f, uv:vec2f, sid:u32, material:u32, mode:u32 };
+fn jointVisibilityPrepare(h:Hit)->JointPrep {
+  let none=JointPrep(0.,0.,0.,vec3f(0),vec3f(0),vec2f(0),0u,0u,0u);
+  let detail=1.-smoothstep(2.5,4.,length(h.p-U.camera.xyz));if(detail<=0.||h.material==1u){return none;}
   let f=tileFrame(h);let uv=tileUV(h);let mode=tileMode(h);let shape=shapes[h.sid/9u];
   var border=min(fract(uv/.25),1.-fract(uv/.25))*.25;
   if(mode==1u){let course=archCourse(uv.x,shape.params.x);border.x=course.z*.5-abs(uv.x-course.y);}
   var clear=min(min(border.x,border.y),openingJoint(uv,h.sid,mode).x);
-  if(clear>.010){return 1.;}
-  let profile=tileProfile(uv,h.sid,h.material,mode);if(profile.edge>profile.bevel+.0003){return 1.;}let start=profile.height;
-  let dir=vec2f(dot(l,f[0]),dot(l,f[1]));let nl=dot(h.n,l);var visible=1.;
+  if(clear>.010){return none;}
+  let profile=tileProfile(uv,h.sid,h.material,mode);if(profile.edge>profile.bevel+.0003){return none;}
+  return JointPrep(1.,detail,profile.height,f[0],f[1],uv,h.sid,h.material,mode);
+}
+fn jointVisibilityMarch(prep:JointPrep,h:Hit,l:vec3f)->f32 {
+  if(prep.valid<=0.){return 1.;}
+  let dir=vec2f(dot(l,prep.dirX),dot(l,prep.dirY));let nl=dot(h.n,l);var visible=1.;
   for(var i=1u;i<=32u;i++){
-    let t=f32(i)*.0004;let obstacle=tileProfile(uv+dir*t,h.sid,h.material,tileMode(h)).height;
-    visible=min(visible,smoothstep(-.00012,.00020,start+nl*t-obstacle+.00012));
+    let t=f32(i)*.0004;let obstacle=tileProfile(prep.uv+dir*t,prep.sid,prep.material,prep.mode).height;
+    visible=min(visible,smoothstep(-.00012,.00020,prep.start+nl*t-obstacle+.00012));
     // min() cannot recover from zero: remaining occlusion steps are redundant.
     if(visible==0.){break;}
   }
-  return mix(1.,visible,detail);
+  return mix(1.,visible,prep.detail);
 }
+fn jointVisibility(h:Hit,l:vec3f)->f32 { return jointVisibilityMarch(jointVisibilityPrepare(h),h,l); }

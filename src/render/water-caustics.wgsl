@@ -75,8 +75,8 @@ fn solarWaterPacket(i:u32,nSun:u32,l:vec3f) {
     let q=(vec2f(f32(i%nSun),f32(i/nSun))+.5)/f32(nSun);let xz=mix(lo,hi,q);
     if(xz.x>-7.&&xz.x<7.&&xz.y>-17.&&xz.y<10.){
       let w=wave(xz);let p=vec3f(xz.x,w.x,xz.y);let n=normalize(vec3f(-w.y,1,-w.z));
-      let distance=(6.102-p.y)/l.y;let hit=traceDynamicSolid(p+l*EPS*2.,l,distance);
-      if(hit.t>=distance-.005 && dot(n,l)>0.){
+      let distance=(6.102-p.y)/l.y;
+      if(dot(n,l)>0. && !traceDynamicSolidAny(p+l*EPS*2.,l,distance-.005)){
         let area=(hi.x-lo.x)*(hi.y-lo.y)/f32(nSun*nSun*2u);
         let power=sunIrradiance()*max(dot(n,l),0.)/n.y*area*exp(-.004*distance);
         waterPacket(p,n,l,power,select(99999u,i/1024u,i%1024u==128u),0.,3u);
@@ -90,7 +90,7 @@ const ENABLE_SKY_REFLECTION:bool=true;
 const SKY_REFLECTION_SIDE:u32=8u;
 fn skyWaterPacket(p:vec3f,n:vec3f,waterArea:f32,lightArea:f32,uv:vec2f,samples:f32,footprint:f32,branches:u32){
       let lp=vec3f(mix(U.opening.x,U.opening.y,uv.x),6.102,mix(U.opening.z,U.opening.w,uv.y));let delta=lp-p;let d=length(delta);let l=delta/d;
-      if(dot(n,l)>0. && traceDynamicSolid(p+l*EPS*2.,l,d).t>=d-.005){
+      if(dot(n,l)>0. && !traceDynamicSolidAny(p+l*EPS*2.,l,d-.005)){
         let power=skyRadiance(l)*max(dot(n,l),0.)/n.y*waterArea*max(l.y,0.)*lightArea/(samples*d*d)*exp(-.004*d);
         // Near-axis projection of one source cell through the mean interface.
         // This is a finite-footprint estimate, not a full curved beam Jacobian.
