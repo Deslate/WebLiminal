@@ -1,7 +1,8 @@
 import {LAB_DEFAULTS,normalizeLab} from "../lab-settings.js";
 import {labShader} from "./lab-shaders.js";
 import { createWaveSimulation } from "./wave-simulation.js";
-import common from "./common.wgsl?raw";
+import commonSource from "./common.wgsl?raw";
+import { curvedShader } from "./curved-shapes.js";
 import photons from "./photons.wgsl?raw";
 import sky from "./sky.wgsl?raw";
 import resolve from "./resolve.wgsl?raw";
@@ -38,6 +39,7 @@ export async function createRenderer(canvas, level) {
   // Water rectangle, aperture plane and floor receiver are fixed per level and
   // compiled into every shader; the aperture rectangle stays a uniform.
   const initialScene = level.scene(level.optics);
+  const common = curvedShader(commonSource, initialScene);
   const prelude = sceneShaderPrelude(initialScene);
   const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude });
   const { near: nearMaterial, photon: photonMaterial } = level.materials;
@@ -546,6 +548,11 @@ export async function createRenderer(canvas, level) {
     };
   }
   return {
+    async destroy() {
+      await device.queue.onSubmittedWorkDone();
+      context.unconfigure();
+      device.destroy();
+    },
     render,
     setBody(p){body=p?{...p}:null;simulation.setBody(body);},
     addWake(w){simulation.addWake(w);wakes.push(w);wakes=wakes.slice(-12);},

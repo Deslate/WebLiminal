@@ -4,6 +4,7 @@ let labPanel=null,labState={...LAB_DEFAULTS},labApplying=false,labPauseAfter=fal
 import {createWakeTrail} from "./wake-trail.js";
 const wakeTrail=createWakeTrail();
 import { selectLevel } from "../levels/index.js";
+import { loadWindow, regionIndex, worldPosition } from "./world.js";
 import { createRenderer } from "./render/renderer.js";
 import { movePlayer, canStand } from "./collision.js";
 import { createSoundscape } from "./audio.js";
@@ -17,7 +18,10 @@ try {
   document.getElementById("audio-status").textContent = e.message;
   throw e;
 }
-const view = { ...level.spawn };
+const bookmarks = level.world?.bookmarks ?? [{ name: level.id, address: { x: 0, z: 0 } }];
+let activeRegion = 0, regionChanging = false;
+let windowLevel = loadWindow(level, bookmarks[0].address);
+const view = { ...windowLevel.spawn };
 let observer=null,bodyEnabled=true;
 function cameraPose(){return observer||view;}
 const keys = new Set();
@@ -33,12 +37,12 @@ let dragging = false,
   holdTime = false,
   targetSamples = 0;
 const runId = crypto.randomUUID();
-const renderer = await createRenderer(canvas, level).catch((e) => {
+let renderer = await createRenderer(canvas, windowLevel).catch((e) => {
   document.getElementById("audio-status").textContent = e.message;
   console.error(e);
   throw e;
 });
-const ROOM = renderer.bounds;
+let ROOM = renderer.bounds;
 let resizePending = false;
 function resize() {
   if (paused) { resizePending = true; return; }
@@ -48,6 +52,14 @@ function resize() {
 resize();
 addEventListener("resize", resize);
 addEventListener("keydown", (e) => {
+  if (e.target.closest?.('input, select, textarea, [contenteditable="true"]')) return;
+  const destination = regionIndex(e.code, activeRegion, bookmarks.length);
+  if (destination !== null && !labPanel?.isOpen) {
+    e.preventDefault();
+    if (!e.repeat && !regionChanging) teleport(destination).catch(console.error);
+    return;
+  }
+  if (regionChanging) return;
   if(e.code==="KeyG"){e.preventDefault();if(!e.repeat){keys.clear();dragging=false;labPanel?.toggle();labPanel?.update({paused,frames:frameMs,internal:renderer.resolution});}return;}
   if(e.code==="Escape"&&labPanel?.isOpen){e.preventDefault();labPanel.close();return;}
   if (e.code === "Tab") {
@@ -64,8 +76,6 @@ addEventListener("keydown", (e) => {
       "KeyD",
       "ArrowUp",
       "ArrowDown",
-      "ArrowLeft",
-      "ArrowRight",
       "ShiftLeft",
     ].includes(e.code)
   ) {
@@ -77,7 +87,7 @@ addEventListener("keydown", (e) => {
     else {
       const x=Math.max(ROOM.minX+.6,Math.min(ROOM.maxX-.6,view.x+(view.x>3?-2.8:2.8)));
       const z=Math.max(ROOM.minZ+.6,Math.min(ROOM.maxZ-.6,view.z+(view.z>5?-3.6:3.6)));
-      observer={x,y:4.7,z,yaw:Math.atan2(x-view.x,z-view.z),pitch:Math.atan2(level.optics.waterLevel-4.7,Math.hypot(x-view.x,z-view.z))};
+      observer={x,y:4.7,z,yaw:Math.atan2(x-view.x,z-view.z),pitch:Math.atan2(windowLevel.optics.waterLevel-4.7,Math.hypot(x-view.x,z-view.z))};
     }
   }
   if (e.code === "KeyM" && !e.repeat) sound.toggle();
@@ -136,12 +146,12 @@ function setPaused(value) {
   else { resetClock(); scheduleFrame(); }
 }
 function scheduleFrame(delay=0) {
-  if (labApplying || paused || document.hidden || tickRunning || frameTimer !== null ||
+  if (regionChanging || labApplying || paused || document.hidden || tickRunning || frameTimer !== null ||
       (targetSamples && renderer.samples >= targetSamples)) return;
   frameTimer = setTimeout(() => { frameTimer = null; tick(performance.now()); }, delay);
 }
 async function tick(now) {
-  if (labApplying || paused || document.hidden || tickRunning) return;
+  if (regionChanging || labApplying || paused || document.hidden || tickRunning) return;
   if (renderer.busy) { scheduleFrame(16); return; }
   tickRunning = true;
   try {
@@ -155,8 +165,8 @@ async function tick(now) {
       Number(keys.has("KeyW") || keys.has("ArrowUp")) -
       Number(keys.has("KeyS") || keys.has("ArrowDown"));
     let s =
-      Number(keys.has("KeyD") || keys.has("ArrowRight")) -
-      Number(keys.has("KeyA") || keys.has("ArrowLeft"));
+      Number(keys.has("KeyD")) -
+      Number(keys.has("KeyA"));
     const norm = Math.hypot(f, s);
     // Wading drag caps locomotion below this height-field model's critical wave speed.
     const immersed=renderer.config.waterLevel>view.y-1.62+.04;
@@ -226,6 +236,7 @@ async function tick(now) {
   scheduleFrame(Math.max(0,1000/60-(performance.now()-now)));
 }
 async function applyLab(value,persist=true){
+  if (regionChanging) throw Error('A region is loading');
   const next=normalizeLab(value);
   if(JSON.stringify(next)!==JSON.stringify(labState)){
     if(labApplying)throw Error("A settings change is already in progress");
@@ -242,6 +253,46 @@ async function applyLab(value,persist=true){
   }
   labPanel?.sync();return persist?saveLab(localStorage,labState):true;
 }
+async function teleport(index) {
+  if (!Number.isInteger(index) || !bookmarks[index]) throw Error('Unknown location');
+  if (regionChanging || labApplying) throw Error('A region or settings change is in progress');
+  if (index === activeRegion) return;
+  const next = loadWindow(level, bookmarks[index].address);
+  const wasPaused = paused;
+  regionChanging = true;
+  setPaused(true);
+  const status = document.getElementById('audio-status');
+  status.textContent = `Loading ${bookmarks[index].name}...`;
+  try {
+    while (tickRunning || renderer.busy) await new Promise(r => setTimeout(r, 5));
+    await renderer.destroy();
+    // One resident window bounds GPU memory. Rebase the player to local metres.
+    renderer = await createRenderer(canvas, next);
+    await renderer.setLab(labState);
+    windowLevel = next;
+    activeRegion = index;
+    ROOM = renderer.bounds;
+    Object.assign(view, next.spawn);
+    observer = null;
+    elapsed = 0; targetSamples = 0; holdTime = false;
+    wakeTrail.reset(); frameMs = []; lastView = ''; lastCompleted = null;
+    renderer.resize(innerWidth, innerHeight, scale);
+    resizePending = false;
+    renderer.setBody(bodyEnabled ? view : null);
+    await renderer.render(view, 0, false, 1);
+    document.querySelector('.caption h1').textContent = bookmarks[index].name;
+    document.querySelector('.caption .index').textContent = `POOLROOMS / LOCATION ${index + 1} OF ${bookmarks.length}`;
+    document.querySelector('.coordinates').textContent = `DEPTH ${next.optics.waterLevel.toFixed(2)} M / OCCUPANCY 01`;
+    status.textContent = '';
+  } catch (error) {
+    status.textContent = `Location loading failed: ${error.message}. Reload to recover.`;
+    throw error;
+  } finally {
+    regionChanging = false;
+    if (renderer && activeRegion === index && !wasPaused) setPaused(false);
+    resetClock();
+  }
+}
 labPanel=createLabMenu({apply:applyLab,getState:()=>({...labState})});
 await applyLab(readLab(localStorage),false);
 scheduleFrame();
@@ -249,6 +300,11 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
   value: {
     snapshot: () => ({
       runId,
+      level: level.id,
+      region: activeRegion,
+      regionChanging,
+      address: { ...windowLevel.address },
+      worldView: worldPosition(windowLevel.address, view),
       paused,
       frameScheduled: frameTimer !== null,
       rendering: tickRunning || renderer.busy,
@@ -317,6 +373,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       return {png:capture?canvas.toDataURL():null,view:{...view},dynamics:renderer.dynamics};
     },
     setLab: (value)=>applyLab(value,false),
+    teleport,
     audit: (options) => renderer.audit(options),
   },
 });

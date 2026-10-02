@@ -4,10 +4,18 @@ import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {buildPoolroomsScene} from '../levels/poolrooms-scene.js';
 import {validateScene} from '../src/render/scene.js';
+import {createPoolroomsWorld,bookmarks} from '../levels/poolrooms-regions.js';
+import {canStand} from '../src/collision.js';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const level=JSON.parse(readFileSync(join(root,'levels/poolrooms.json')));
 assert.equal(level.id,'poolrooms-v1');
 const scene=validateScene(buildPoolroomsScene(level,level.optics));
+const world=createPoolroomsWorld(level,{});
+for(const bookmark of bookmarks){
+ const region=world.generate(bookmark.address),local=validateScene(region.scene(region.optics));
+ assert(canStand(region.spawn.x,region.spawn.z,local.bounds,local.solids),`${bookmark.name}: blocked spawn`);
+ assert(local.shapes.length<=80,`${bookmark.name}: resident shape budget exceeded`);
+}
 assert(level.spawn.x>scene.bounds.minX&&level.spawn.x<scene.bounds.maxX);
 assert(level.spawn.z>scene.bounds.minZ&&level.spawn.z<scene.bounds.maxZ);
 assert(level.spawn.y<scene.bounds.ceiling);

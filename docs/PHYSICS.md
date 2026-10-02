@@ -4,6 +4,21 @@ This document describes what the current renderer and water simulation compute, 
 
 All units are metres, seconds and radians.
 
+## Local geometry and receiver charts
+
+World locations are rendered in a resident local window (see `LEVELS.md`).
+Besides boxes and arch cutouts, new windows can use capped cylinders and an
+upper hemispherical cavity. Their intersections are analytic for camera,
+photon and visibility rays. `curved-shapes.js` specializes these paths only
+when required; the original window keeps its original shader source.
+Curved receiver charts use azimuth times radius and world height: both cylinder
+and sphere have area element `R d(phi) dy`, so each chart cell has equal physical
+area. Cylinder cap coverage excludes the surrounding square; dome planar
+coverage excludes the spherical void. Water depth uses circular column
+footprints. Circular deck edges still use stepped boxes. The hemisphere's
+longitude tile chart compresses courses toward the pole; it is an approximate
+tile layout rather than a construction-grade spherical tiling.
+
 ## Water
 
 The visible water surface is the linear sum of two independent solvers. Both are stateful: they integrate real elapsed time from a reset and are never seeked analytically to an arbitrary time.

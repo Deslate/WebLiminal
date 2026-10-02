@@ -30,6 +30,10 @@ export function validateScene(scene) {
     if (![0, 1, 2].every((k) => s.lo[k] < s.hi[k])) fail(`shape ${i} has lo >= hi`);
     if (!Number.isInteger(s.material) || s.material < 0 || RESERVED_MATERIALS.includes(s.material)) fail(`shape ${i} uses material ${s.material}`);
     if (s.kind === 1 && !(s.radius > 0 && 2 * s.radius < s.hi[0] - s.lo[0])) fail(`arch ${i} radius does not fit its box`);
+    if (![0, 1, 2, 3].includes(s.kind)) fail(`shape ${i} has unsupported kind`);
+    if (s.kind >= 2 && !(s.radius > 0 && 2 * s.radius <= Math.min(s.hi[0] - s.lo[0], s.hi[2] - s.lo[2]) + 1e-9)) fail(`curved shape ${i} radius does not fit`);
+    if (s.kind === 3 && !(s.lo[1] === s.spring && s.hi[1] >= s.spring + s.radius)) fail(`dome ${i} must contain its upper hemisphere`);
+    if (s.oculus !== undefined && !(s.kind === 3 && s.oculus >= 0 && s.oculus < s.radius)) fail(`shape ${i} has invalid oculus`);
     for (const key of ["density", "probeStride"]) if (s[key] && s[key].length !== FACES) fail(`shape ${i} ${key} needs ${FACES} entries`);
   });
   for (const b of solids) if (!(b.minX < b.maxX && b.minZ < b.maxZ)) fail("empty solid footprint");
@@ -49,7 +53,7 @@ export function packScene(scene, gridScale = 1) {
   shapes.forEach((s, i) => {
     f.set([...s.lo, 0, ...s.hi, 0], i * SHAPE_WORDS);
     u.set([s.material, s.kind, i * FACES, 0], i * SHAPE_WORDS + 8);
-    f.set([s.radius, s.spring, 0, 0], i * SHAPE_WORDS + 12);
+    f.set([s.radius, s.spring, s.oculus ?? 0, 0], i * SHAPE_WORDS + 12);
   });
   const a = scene.aperture;
   return {
