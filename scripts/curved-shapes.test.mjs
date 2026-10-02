@@ -22,6 +22,22 @@ test('cylinder cap coverage excludes its surrounding box corners', () => {
   for(let i=u[o];i<u[o]+u[o+1]*u[o+2];i++)area+=(result.cellSurfaces[i]>>>16)*.25*f[o+6];
   assert(Math.abs(area-Math.PI*4)<.08);
 });
+
+test('circular basin deck excludes its hole from planar receiver area', () => {
+  const s={lo:[-3,0,-3],hi:[3,.6,3],radius:2,spring:0,kind:4,material:0};
+  const result=buildLightAtlases([s]),u=new Uint32Array(result.surfaces),f=new Float32Array(result.surfaces);
+  const o=3*16;let area=0;
+  for(let i=u[o];i<u[o]+u[o+1]*u[o+2];i++)area+=(result.cellSurfaces[i]>>>16)*.25*f[o+6];
+  assert(Math.abs(area-(36-Math.PI*4))<.08);
+  const wall=6*16;assert.equal(u[wall+13],6);
+  assert(Math.abs(f[wall+6]*u[wall+1]*u[wall+2]-2*Math.PI*2*.6)<1e-5);
+});
+
+test('conductor tube has no diffuse receiving surface', () => {
+  const result=buildLightAtlases([{lo:[-.026,0,-.506],hi:[.026,1.706,.506],radius:.48,tubeRadius:.026,spring:1.2,kind:5,material:3}]);
+  assert([...result.cellSurfaces].every(v=>v>>>16===0));
+  assert([...result.probeSurfaces].every(v=>v>>>16===0));
+});
 test('dome oculus removes polar receiver area and adds its physical shaft wall', () => {
   const result=buildLightAtlases([{...primitive(3),oculus:.5}]);
   const f=new Float32Array(result.surfaces),u=new Uint32Array(result.surfaces);

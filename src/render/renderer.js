@@ -3,6 +3,7 @@ import {labShader} from "./lab-shaders.js";
 import { createWaveSimulation } from "./wave-simulation.js";
 import commonSource from "./common.wgsl?raw";
 import { curvedShader } from "./curved-shapes.js";
+import { conductorShader, conductorCommon } from "./conductor-shaders.js";
 import photons from "./photons.wgsl?raw";
 import sky from "./sky.wgsl?raw";
 import resolve from "./resolve.wgsl?raw";
@@ -39,7 +40,7 @@ export async function createRenderer(canvas, level) {
   // Water rectangle, aperture plane and floor receiver are fixed per level and
   // compiled into every shader; the aperture rectangle stays a uniform.
   const initialScene = level.scene(level.optics);
-  const common = curvedShader(commonSource, initialScene);
+  const common = conductorCommon(curvedShader(commonSource, initialScene), initialScene);
   const prelude = sceneShaderPrelude(initialScene);
   const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude });
   const { near: nearMaterial, photon: photonMaterial } = level.materials;
@@ -50,9 +51,9 @@ export async function createRenderer(canvas, level) {
   let lab={...LAB_DEFAULTS},pipelines;
   async function compileLab(){
   const shaderModules = [
-    module("photon transport", prelude + common + photonMaterial + photons),
+    module("photon transport", prelude + common + photonMaterial + conductorShader('photons', photons, initialScene)),
     module("world irradiance estimate", prelude + common + labShader("resolve",resolve,lab)),
-    module("camera transport", prelude + common + nearMaterial + labShader("camera",camera,lab)),
+    module("camera transport", prelude + common + nearMaterial + conductorShader('camera', labShader("camera",camera,lab), initialScene)),
     module("lens and film", present),
     module("area sky integral", prelude + common + labShader("sky",sky,lab)),
     module("current water flux", prelude + common + labShader("water",waterCaustics,lab)),

@@ -4,6 +4,17 @@ import { movePlayer, canStand } from "../src/collision.js";
 const bounds = { minX: -10, maxX: 10, minZ: -35, maxZ: 15 };
 const solids = [{ minX: -1, maxX: 1, minZ: -4, maxZ: -3 }];
 
+test('circular column collision is rotationally invariant at the player clearance', () => {
+  const column={kind:'circle',x:1,z:-2,radius:2};
+  for(let i=0;i<360;i++){
+    const a=i*Math.PI/180;
+    assert(canStand(1+2.241*Math.cos(a),-2+2.241*Math.sin(a),bounds,[column]));
+    assert(!canStand(1+2.239*Math.cos(a),-2+2.239*Math.sin(a),bounds,[column]));
+  }
+  const p={x:1,z:3};movePlayer(p,0,-20,bounds,[column]);
+  assert(p.z>=.24);assert(canStand(p.x,p.z,bounds,[column]));
+});
+
 test("large displacement cannot tunnel through a wall", () => {
   const p = { x: 0, z: 0 };
   movePlayer(p, 0, -40, bounds, solids);

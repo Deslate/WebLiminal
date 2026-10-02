@@ -79,6 +79,31 @@ eta_tt + omega^2 eta = omega^2 b
 - Secondary rough reflection and the terminal `photons * coat * .08` term are approximations used only where no traced continuation exists.
 - Output includes subtle, deterministic film grain.
 
+### Stainless steel and curved handrails
+
+`materials/stainless-steel.wgsl` is an achromatic conductor approximation:
+diffuse albedo is zero, normal-incidence reflectance is 0.568, and perceptual
+GGX roughness is 0.16 (alpha = roughness squared). The reflectance follows
+the conductor formula with eta = 2.5 and k = 3.3; these are representative
+parameters, not measured spectral data for a particular alloy. Reflection is
+not a dielectric coat over colored diffuse porcelain. Normals come from the
+round tube geometry, without tile/grout relief or glaze slope overlays.
+
+Conductor photons sample only specular transport, absorb the remaining energy
+and do not deposit a diffuse receiver flux on the rail. Primary camera rays use
+the existing traced GGX integral. Secondary metal hits add four deterministic
+GGX directions, including live-water Fresnel/refraction branches. A subsequent
+metal hit is terminal; this is finite quadrature and bounce truncation, not
+complete spectral transport. The old cached-irradiance reflection approximation
+is disabled for metal. Water reflections trace the actual round rail; there is
+no separate reflected object or painted highlight.
+
+The circular deck's inner cylinder has the physical chart area
+`2 * pi * radius * height`. Planar chart coverage excludes its disk; geometry,
+water masks and photon denominators agree on the basin boundary. New curved
+queries first reject rays outside the primitive bounding box. All extensions
+are optional: the original Poolrooms shared and material shader text is retained.
+
 ### The body
 
 The player body is visible to the camera, refraction and reflection, and blocks live water photons. It uses approximate shading and does not receive a full indirect-light solve.

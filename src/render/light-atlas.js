@@ -17,6 +17,7 @@ export function buildLightAtlases(shapes,gridScale=1){
    // For a sphere, dA = R d(phi) dy, including the shrinking polar rings.
    if(face===6)bounds=[0,s.lo[1],2*Math.PI*s.radius,s.kind===3?s.spring+Math.sqrt(s.radius*s.radius-(s.oculus??0)**2):s.hi[1]];
    if(s.kind===3&&face===7&&s.oculus>0){disabled=false;bounds=[0,s.spring+Math.sqrt(s.radius*s.radius-s.oculus*s.oculus),2*Math.PI*s.oculus,s.hi[1]];}
+   if(s.kind===5)disabled=true;
   }
   if(disabled)bounds=[0,0,.01,.01];
    const density=s.density?.[face]??DEFAULT_DENSITY,probeStride=s.probeStride?.[face]??DEFAULT_PROBE_STRIDE;
@@ -42,11 +43,12 @@ export function buildLightAtlases(shapes,gridScale=1){
    if(s.kind===2&&x*x+z*z>s.radius*s.radius)continue;
    if(s.kind===3&&x*x+y*y+z*z<s.radius*s.radius)continue;
    if(s.kind===3&&x*x+z*z<(s.oculus??0)**2)continue;
+   if(s.kind===4&&x*x+z*z<s.radius*s.radius)continue;
    return m.sid;}
   return null;
  };
  for(const g of groups){const [u0,v0,u1,v1]=g.bounds;g.width=u1-u0;g.height=v1-v0;g.density*=gridScale;g.nx=Math.max(2,Math.ceil(g.width*g.density));g.ny=Math.max(2,Math.ceil(g.height*g.density));g.offset=totalCells;g.probeOffset=probeCount;g.stride=Math.max(...g.members.map(m=>m.probeStride))*gridScale;totalCells+=g.nx*g.ny;probeCount+=Math.ceil(g.nx/g.stride)*Math.ceil(g.ny/g.stride);
-  for(const m of g.members){const o=m.sid*16;u32.set([g.offset,g.nx,g.ny,g.probeOffset],o);f32.set([g.width,g.height,g.width*g.height/(g.nx*g.ny),g.stride],o+4);f32.set(g.bounds,o+8);u32.set([g.sid,g.curved?(shapes[m.i].kind===3&&m.face===7?4:shapes[m.i].kind):0,g.members.length,0],o+12);}
+  for(const m of g.members){const o=m.sid*16;u32.set([g.offset,g.nx,g.ny,g.probeOffset],o);f32.set([g.width,g.height,g.width*g.height/(g.nx*g.ny),g.stride],o+4);f32.set(g.bounds,o+8);u32.set([g.sid,g.curved?(shapes[m.i].kind===3&&m.face===7?4:shapes[m.i].kind===4?6:shapes[m.i].kind):0,g.members.length,0],o+12);}
  }
  const cellSurfaces=new Uint32Array(totalCells),probeSurfaces=new Uint32Array(probeCount);
  for(const g of groups){const at=(x,y)=>[g.bounds[0]+x*g.width,g.bounds[1]+y*g.height];

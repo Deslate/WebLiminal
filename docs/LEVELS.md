@@ -63,15 +63,39 @@ for teleport, movement keys clear on transitions, and lab/editable controls own
 their input. Other controls retain their meaning.
 
 New regions use boxes, analytic arch cuts, capped cylinders and a hemispherical
-intrados. The circular deck outline uses twenty bands and remains a visible
-approximation. Cylinder collision uses conservative strips. Curved primitive
+intrados. The circular basin deck is one box with an exact cylindrical cutout;
+its receiving area excludes the hole. Columns use exact circular player
+footprints, expanded by player radius during collision checks. Curved primitive
 shader code is specialized only into windows that need it; original box/arch
 windows retain exactly the original shared WGSL. Cylinder and hemisphere light
 charts use arc length at the radius by height, giving equal physical cell areas
 (`dA = R d(phi) dy`). Planar coverage excludes the disk/sphere cutouts.
 The rotunda player stays on the front deck because vertical locomotion is not
 implemented. Its basin remains dynamically simulated. Material slot 3 supplies
-reflective metal on the handrails only in the new windows.
+stainless steel on continuous round handrails only in the new windows. Each
+rail has two vertical cylindrical legs joined by a half-torus bend. The straight
+legs intersect analytically; the bend uses bounded distance root finding with
+10 micrometre hit tolerance. Metal bypasses tile relief and glaze normal moments.
+Primary reflection retains the existing GGX quadrature; metal seen by a secondary
+ray has a four-direction GGX continuation. Both trace scene geometry and the
+live water surface; the terminal metal bounce is truncated.
+`conductorMaterials` lists the material ids using conductor transport, so a
+material number has no implicit metal meaning in other levels. `reflectionSamples`
+sets a window's ceramic quadrature budget: the rotunda uses 24 directions on
+glazed ceramic and 32 on rough surfaces, while metal retains 48. Water branches,
+pixel sampling and physical BRDF parameters are unchanged. This is a finite
+angular sampling tradeoff; the origin retains its historical 48/64 directions.
+
+The rotunda's water rectangle is 10 x 10 m, enclosing the complete 9.4 m basin;
+dry entrance/deck space is omitted from finite-depth updates. Simulation spacing
+remains 1/32 m. The original window retains its historical rectangle.
+Column Reservoir and Still Rotunda use 2.4 mm grout, reduced ceramic color
+variation and a wider ceramic GGX lobe. Their sun/sky radiance is calibrated
+separately through `illumination`; this changes transported light, not display
+masks or an ambient shading term. They still have just one rectangular sky
+aperture: the rotunda's five arcade openings are on a straight wall, not a
+complete radial arrangement of windows. Ring Passage still uses semicircular
+arch cuts, rather than complete circular tunnel sections.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
 cells/m on general new surfaces and 24/m on new pool floors. This bounds content
@@ -89,7 +113,7 @@ All lengths are metres, `y` up.
 {
   bounds:   { minX, maxX, minZ, maxZ, ceiling },     // walkable region
   shapes:   [{ lo, hi, material, kind, radius, spring, density?, probeStride? }],
-  solids:   [{ minX, maxX, minZ, maxZ }],            // player collision footprints
+  solids:   [{ minX, maxX, minZ, maxZ }],            // or {kind:'circle', x, z, radius}
   water:    { minX, maxX, minZ, maxZ, cell },        // one rectangular water body
   aperture: { minX, maxX, minZ, maxZ, y },           // sky opening in the plane y
   floor:    { shape, face },                         // primary caustic receiver
@@ -102,6 +126,12 @@ All lengths are metres, `y` up.
   footprint. `kind: 3` is a box with an upper hemisphere removed, centered at
   the x/z midpoint and `spring` in y; its lower y must equal `spring`.
   Curved kinds require `radius` to fit the x/z box; the dome must also fit in y.
+  `kind: 4` is a box minus a vertical cylinder, used for a circular pool deck.
+  `kind: 5` is a continuous round U-shaped tube in the y/z plane: `radius` is
+  its bend centerline radius, `spring` the tangent height and `tubeRadius` its
+  round cross-section radius. Its x/z center is the bounding-box midpoint.
+  The cylinder cutout uses inward face 6 and an equal-area cylindrical chart;
+  conductor tubes have zero diffuse receiver coverage.
   Cylinders use faces 2/3 for their caps and 6 for their exterior; domes use
   face 6 for the inner hemisphere. An optional `oculus` radius cuts a vertical
   opening at its crown; face 7 is the inward shaft wall. Polar area and the

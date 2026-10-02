@@ -23,7 +23,9 @@ try {
     document.body.classList.add('evidence');
     await __POOLROOMS_V1__.setLab({ resolution: .5 });
   });
-  for (let index = 1; index < 5; index++) {
+  const indices = process.env.REGION_INDICES ? process.env.REGION_INDICES.split(',').map(Number) : [1,2,3,4];
+  assert(indices.length && indices.every(i => Number.isInteger(i) && i >= 0 && i < 5), 'Invalid region indices');
+  for (const index of indices) {
     await page.keyboard.press(`Digit${index + 1}`);
     await page.waitForFunction(i => {
       const s = __POOLROOMS_V1__.snapshot(); return s.region === i && !s.regionChanging;
@@ -52,6 +54,7 @@ try {
   }
   // The same document cycles across both ends and returns to the original area.
   await page.evaluate(() => __POOLROOMS_V1__.pause());
+  await page.evaluate(() => __POOLROOMS_V1__.teleport(4));
   await page.keyboard.press('ArrowRight');
   await page.waitForFunction(() => __POOLROOMS_V1__.snapshot().region === 0 && !__POOLROOMS_V1__.snapshot().regionChanging, null, { timeout: 180000 });
   assert(await page.evaluate(() => __POOLROOMS_V1__.snapshot().paused), 'Teleport must preserve pause');

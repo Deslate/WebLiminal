@@ -8,6 +8,10 @@ export function canStand(x, z, bounds, solids, radius = PLAYER_RADIUS) {
   )
     return false;
   for (const b of solids) {
+    if (b.kind === 'circle') {
+      if ((x - b.x) ** 2 + (z - b.z) ** 2 < (b.radius + radius) ** 2) return false;
+      continue;
+    }
     const nearestX = Math.max(b.minX, Math.min(x, b.maxX));
     const nearestZ = Math.max(b.minZ, Math.min(z, b.maxZ));
     if ((x - nearestX) ** 2 + (z - nearestZ) ** 2 < radius ** 2) return false;

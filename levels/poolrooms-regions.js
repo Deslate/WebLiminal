@@ -26,17 +26,17 @@ export function createPoolroomsWorld(data, materials) {
     if (!recipe) throw Error(`Unloaded Poolrooms address: ${address.x},${address.z}`);
     const optics = { ...data.optics, apertureWidth: 4, apertureDepth: 4, exposure: 1.35 };
     const spawn = { x: 0, y: 1.62, z: 7, yaw: 0, pitch: -.12 };
-    if (recipe === 'columns') { spawn.x = -2; spawn.yaw = -.18; optics.waterLevel = .65; }
+    if (recipe === 'columns') { spawn.x = -2.4; spawn.yaw = -.32; spawn.pitch = -.04; optics.waterLevel = .58; optics.apertureWidth = 3.2; optics.apertureDepth = 5.6; optics.exposure = 1.15; optics.focalLength = 26; }
     if (recipe === 'rings') { optics.apertureWidth = 5; optics.apertureDepth = 9; }
-    if (recipe === 'rotunda') { spawn.z = -5.35; spawn.y = 2.24; spawn.yaw = Math.PI; spawn.pitch = -.12; optics.apertureWidth = 7; optics.apertureDepth = 9; optics.exposure = 2.5; optics.focalLength = 18; optics.waveAmplitude = .006; }
+    if (recipe === 'rotunda') { spawn.z = -8.2; spawn.y = 2.24; spawn.yaw = Math.PI; spawn.pitch = .02; optics.waterLevel = .55; optics.apertureWidth = 7.8; optics.apertureDepth = 9; optics.exposure = 2.3; optics.focalLength = 24; optics.waveAmplitude = .012; }
     if (recipe === 'threshold') { spawn.x = -1.2; optics.apertureWidth = 6; optics.apertureDepth = 6; }
-    return { spawn, optics, materials, scene: options => buildRegion(recipe, options) };
+    return { spawn, optics, materials: materials[recipe] ?? materials, scene: options => buildRegion(recipe, options) };
   } };
 }
 
 export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {}) {
   const shapes = [], solids = [];
-  const roof = kind === 'rotunda' ? 8.5 : 7.5;
+  const roof = kind === 'rotunda' ? 9.5 : kind === 'columns' ? 5.4 : 7.5;
   const bounds = { minX: -7, maxX: 7, minZ: -12, maxZ: 10, ceiling: roof };
   const add = (lo, hi, material = 0, arch = null, solid = false) => {
     shapes.push({ lo, hi, material, kind: arch ? 1 : 0, radius: arch?.radius ?? 0, spring: arch?.spring ?? 0,
@@ -49,8 +49,8 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   add([7, 0, -12], [7.3, roof + .3, 10]);
   add([-7, 0, -12.3], [7, roof + .3, -12]);
   add([-7, 0, 10], [7, roof + .3, 10.3]);
-  const az = kind === 'threshold' ? -4 : kind === 'rotunda' ? 3 : 1;
-  const ax = kind === 'rotunda' ? 0 : -2.5;
+  const az = kind === 'threshold' ? -4 : kind === 'rotunda' ? 5.25 : kind === 'columns' ? 2 : 1;
+  const ax = kind === 'rotunda' ? 0 : kind === 'columns' ? .2 : -2.5;
   const a = { minX: ax - apertureWidth / 2, maxX: ax + apertureWidth / 2,
     minZ: az - apertureDepth / 2, maxZ: az + apertureDepth / 2, y: roof + .3 };
   add([-7, roof, -12], [a.minX, roof + .3, 10], 1);
@@ -62,28 +62,25 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     solids.push({ minX: x - width / 2, maxX: x - radius, minZ: z, maxZ: z + .5 },
       { minX: x + radius, maxX: x + width / 2, minZ: z, maxZ: z + .5 });
   };
-  // Exact analytic columns; collision uses conservative narrow strips.
+  // The visible cylinder and player collision share the exact disk footprint.
   const column = (x, z, r) => {
-    add([x-r,0,z-r],[x+r,7.5,z+r]);
+    add([x-r,0,z-r],[x+r,roof,z+r]);
     Object.assign(shapes.at(-1), { kind: 2, radius: r });
-    for (let i = 0; i < 16; i++) {
-      const z0 = -r + 2 * r * i / 16, z1 = -r + 2 * r * (i + 1) / 16;
-      const near = z0 <= 0 && z1 >= 0 ? 0 : Math.min(Math.abs(z0), Math.abs(z1));
-      const w = Math.sqrt(r * r - near ** 2);
-      solids.push({ minX: x-w, maxX: x+w, minZ: z+z0, maxZ: z+z1 });
-    }
+    solids.push({ kind: 'circle', x, z, radius: r });
   };
   if (kind === 'columns') {
-    column(3.4, -.8, 2.2); column(-4.9, -6.8, 1.8);
-    arch(-9.8, 2.2, 2.2);
-    for (const z of [a.minZ + .8, a.minZ + 2.1]) add([a.minX, 7.35, z], [a.maxX, 7.8, z + .28], 1);
+    column(5.7, -.8, 3.2); column(-2.5, -6.8, 1.65);
+    column(9.5, 6.5, 4.5);
+    arch(-10.6, 2.2, 1.7, 14, 0, roof);
+    // Narrow structural slots project several hard-edged sun bands.
+    for (const z of [a.minZ + 1.35, a.minZ + 3.15]) add([a.minX, roof-.15, z], [a.maxX, roof+.3, z + .3], 1);
   } else if (kind === 'rings') {
     for (const z of [4, .5, -3, -6.5, -10]) arch(z, 2.9, .6);
     for (let i = 0; i < 3; i++) add([-6.8, 0, 4.7 + i * .45], [-3.3, .16 + i * .14, 7.7], 0, null, true);
   } else if (kind === 'rotunda') {
     // One analytic hemispherical intrados, with an equal-area light chart.
-    add([-7, 2.2, -6], [7, 8.5, 6]);
-    Object.assign(shapes.at(-1), { kind: 3, radius: 6, spring: 2.2, oculus: 1.5 });
+    add([-7, 3.2, -6], [7, 9.5, 6]);
+    Object.assign(shapes.at(-1), { kind: 3, radius: 6, spring: 3.2, oculus: 0 });
     for(let i=0;i<8;i++){
       const z0=-6+i*.15,z1=z0+.15;
       const radius=Math.sqrt(Math.max(0,36-z0*z0));
@@ -91,22 +88,20 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
         {minX:Math.max(radius,.01),maxX:7,minZ:z0,maxZ:z1});
     }
     // Daylight enters a shared lightwell behind the arcade.
-    for (const x of [-4.6, -2.3, 0, 2.3, 4.6]) arch(6.1, .84, 1.5, 2.3, x, 7.5);
+    for (const x of [-4.6, -2.3, 0, 2.3, 4.6]) arch(4.65, .86, 2.05, 2.3, x, 3.2);
     // Dry deck bounds a circular basin; its submerged floor stays a true receiver.
-    for (let i = 0; i < 20; i++) {
-      const z0 = -6 + i * .6, z1 = z0 + .6;
-      const r = Math.sqrt(Math.max(0, 4.7 ** 2 - ((z0 + z1) / 2) ** 2));
-      add([-7, 0, z0], [-Math.max(r, .01), .62, z1]);
-      add([Math.max(r, .01), 0, z0], [7, .62, z1]);
-    }
+    add([-7, 0, -6], [7, .62, 6]);
+    Object.assign(shapes.at(-1), { kind: 4, radius: 4.7 });
     // Walking stays on the front deck until vertical locomotion is supported.
     solids.push({ minX: -7, maxX: 7, minZ: -4.85, maxZ: 10 });
     add([-7, 0, 6], [7, .62, 10]);
     add([-7, 0, -12], [7, .62, -6]);
-    for (const x of [-.75, .75]) {
-      add([x - .035, .62, -5], [x + .035, 1.6, -4.93], 3, null, true);
-      add([x - .035, 1.53, -5], [x + .035, 1.6, -3.7], 3);
-      add([x - .035, 0, -3.77], [x + .035, 1.6, -3.7], 3, null, true);
+    arch(-6.7, 3.15, 1.6, 14, 0, roof);
+    for (const x of [-.65, .65]) {
+      const radius=.48, tubeRadius=.026, spring=1.18, z=-4.72;
+      add([x-tubeRadius, 0, z-radius-tubeRadius], [x+tubeRadius, spring+radius+tubeRadius, z+radius+tubeRadius], 3);
+      Object.assign(shapes.at(-1), { kind: 5, radius, tubeRadius, spring });
+      solids.push({ kind: 'circle', x, z: z-radius, radius: tubeRadius });
     }
   } else if (kind === 'threshold') {
     arch(2.2, 2.4, 2.2); arch(-2, 4.4, 1.8);
@@ -115,5 +110,12 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     add([2.5, 0, 4.3], [3.7, 3.8, 5.5], 0, null, true);
     add([-5.8, 0, -9], [-4.6, 7.5, -7.8], 0, null, true);
   } else throw Error('Unknown region recipe');
-  return { bounds, shapes, solids, water: { ...bounds, cell: 1 / 32 }, aperture: a, floor: { shape: 0, face: 3 } };
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 5 } : undefined;
+  // The complete 9.4 m basin fits inside this simulation rectangle. Do not
+  // spend finite-depth updates on the surrounding dry deck and entrance hall.
+  const waterBounds = kind === 'rotunda' ? {minX:-5,maxX:5,minZ:-5,maxZ:5} : bounds;
+  return { bounds, shapes, solids, illumination, conductorMaterials: kind === 'rotunda' ? [3] : undefined,
+    reflectionSamples: kind === 'rotunda' ? {glaze:24,rough:32} : undefined,
+    groutHalfWidth: ['columns','rotunda'].includes(kind) ? .0012 : undefined,
+    water: { ...waterBounds, cell: 1 / 32 }, aperture: a, floor: { shape: 0, face: 3 } };
 }
