@@ -73,7 +73,7 @@ shader code is specialized only into windows that need it; original box/arch
 windows retain exactly the original shared WGSL. Cylinder and hemisphere light
 charts use arc length at the radius by height, giving equal physical cell areas
 (`dA = R d(phi) dy`). Planar coverage excludes the disk/sphere cutouts.
-The rotunda player stays in the entrance opening and the dark well behind it
+The rotunda player stays in the ambulatory behind the entrance opening
 because vertical locomotion is not implemented. Its basin remains dynamically simulated. Material slot 3 supplies
 stainless steel on continuous round handrails only in the new windows. Each
 rail has two vertical cylindrical legs joined by a half-torus bend. The straight
@@ -90,7 +90,7 @@ glazed ceramic and 32 on rough surfaces; the threshold uses 8/16. Metal retains
 pixel sampling and physical BRDF parameters are unchanged. This is a finite
 angular sampling tradeoff; the origin retains its historical 48/64 directions.
 
-The rotunda's water rectangle is 7 x 7 m, enclosing the complete 6 m basin;
+The rotunda's water rectangle is 10.5 x 10.5 m, enclosing the complete 10 m basin;
 dry entrance/deck space is omitted from finite-depth updates. Simulation spacing
 remains 1/32 m. The original window retains its historical rectangle.
 Column Reservoir and Still Rotunda use 2.4 mm grout, reduced ceramic color
@@ -131,12 +131,15 @@ see it; ceiling reflections are not openings.
   segment from a side court through full-height openings in the right side
   wall, which the holes keep out of view; the window extends to z = -16 m to
   give the tunnel depth.
-- **Still Rotunda.** A 4.2 m radius drum, 1 m thick, is pierced by ten equal
-  round-headed radial openings at even intervals around its full
-  circumference. A hemispherical dome springs directly from the drum. The
-  viewer stands in the opening facing -z and looks across a circular basin
-  with a stainless U-tube ladder to the far and side openings, which lead to a
-  daylit well. The well behind the viewer is unlit.
+- **Still Rotunda.** One continuous tiled wall of revolution: a 6.1 m radius,
+  0.8 m thick drum rises without a ledge into a hemispherical dome. Ten equal,
+  low round-headed openings (2.3 m wide, 2.85 m high, piers about two thirds
+  of an opening) pierce its base at even intervals around the full
+  circumference. A concentric 1.3 m tiled ambulatory runs behind them, open to
+  daylight above, so each opening shows lit tile. The viewer stands in the
+  ambulatory 1.6 m behind the opening facing -z, framed by it, and looks across
+  a 10 m basin with a stainless U-tube ladder. Only this window is 17 m wide;
+  the others are 14 m.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
 cells/m on general new surfaces and 24/m on new pool floors. This bounds content

@@ -22,7 +22,7 @@ const authoredCells = new Map([
 const limits = {
   columns: { apertureWidth: [.5, 3.6], apertureDepth: [.5, 8.9] },
   rings: { apertureWidth: [.5, 2.05], apertureDepth: [.5, 13] },
-  rotunda: { apertureWidth: [.5, 13.8], apertureDepth: [.5, 11.9] },
+  rotunda: { apertureWidth: [.5, 16.8], apertureDepth: [.5, 13.1] },
   threshold: { apertureWidth: [.5, 8.9], apertureDepth: [.5, 17.1] },
 };
 
@@ -37,7 +37,7 @@ export function createPoolroomsWorld(data, materials) {
     const spawn = { x: 0, y: 1.62, z: 7, yaw: 0, pitch: -.12 };
     if (recipe === 'columns') { spawn.x = -1; spawn.z = 8.5; spawn.yaw = -.3; spawn.pitch = .02; optics.waterLevel = .58; optics.apertureWidth = 3.6; optics.apertureDepth = 8.9; optics.exposure = 1.15; optics.focalLength = 20; }
     if (recipe === 'rings') { spawn.x = 1.3; spawn.z = 5.8; spawn.yaw = .085; spawn.pitch = -.02; optics.apertureWidth = 2.05; optics.apertureDepth = 13; optics.focalLength = 12; }
-    if (recipe === 'rotunda') { spawn.z = -5.25; spawn.y = 2.24; spawn.yaw = Math.PI; spawn.pitch = .02; optics.waterLevel = .55; optics.apertureWidth = 13.8; optics.apertureDepth = 11.9; optics.exposure = 2.3; optics.focalLength = 12; optics.waveAmplitude = .012; }
+    if (recipe === 'rotunda') { spawn.z = -7.7; spawn.y = 2.24; spawn.yaw = Math.PI; spawn.pitch = -.1; optics.waterLevel = .55; optics.apertureWidth = 16.8; optics.apertureDepth = 13.1; optics.exposure = 2.3; optics.focalLength = 12; optics.waveAmplitude = .012; }
     if (recipe === 'threshold') { spawn.x = -1.8; spawn.z = 8.4; spawn.pitch = 0; optics.apertureWidth = 8.9; optics.apertureDepth = 17.1; optics.focalLength = 18; }
     return { spawn, optics, materials: materials[recipe] ?? materials, scene: options => buildRegion(recipe, options),
       ...(limits[recipe] ? {limits:limits[recipe]} : {}) };
@@ -46,28 +46,30 @@ export function createPoolroomsWorld(data, materials) {
 
 export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {}) {
   const shapes = [], solids = [];
-  const roof = kind === 'rotunda' ? 9.5 : kind === 'columns' ? 5.2 : kind === 'threshold' ? 6.2 : 4.4;
+  const roof = kind === 'rotunda' ? 10.8 : kind === 'columns' ? 5.2 : kind === 'threshold' ? 6.2 : 4.4;
   // The ring passage extends further so its terminal tunnel has depth.
   const minZ = kind === 'rings' ? -16 : -12;
-  const bounds = { minX: -7, maxX: 7, minZ, maxZ: 10, ceiling: roof };
+  // The rotunda needs a wider window for its drum and ambulatory.
+  const W = kind === 'rotunda' ? 8.5 : 7;
+  const bounds = { minX: -W, maxX: W, minZ, maxZ: 10, ceiling: roof };
   const add = (lo, hi, material = 0, arch = null, solid = false) => {
     shapes.push({ lo, hi, material, kind: arch ? 1 : 0, radius: arch?.radius ?? 0, spring: arch?.spring ?? 0,
       density: Array(9).fill(8), probeStride: Array(9).fill(4) });
     if (solid) solids.push({ minX: lo[0], maxX: hi[0], minZ: lo[2], maxZ: hi[2] });
   };
-  add([-7, -.3, minZ], [7, 0, 10], 2);
+  add([-W, -.3, minZ], [W, 0, 10], 2);
   shapes[0].density[3] = 24;
-  add([-7.3, 0, minZ], [-7, roof + .3, 10]);
-  add([7, 0, minZ], [7.3, roof + .3, 10]);
-  add([-7, 0, minZ - .3], [7, roof + .3, minZ]);
-  add([-7, 0, 10], [7, roof + .3, 10.3]);
-  const az = kind === 'threshold' ? -3.35 : kind === 'rotunda' ? 3.95 : kind === 'columns' ? 5.45 : -3.6;
+  add([-W - .3, 0, minZ], [-W, roof + .3, 10]);
+  add([W, 0, minZ], [W + .3, roof + .3, 10]);
+  add([-W, 0, minZ - .3], [W, roof + .3, minZ]);
+  add([-W, 0, 10], [W, roof + .3, 10.3]);
+  const az = kind === 'threshold' ? -3.35 : kind === 'rotunda' ? 3.35 : kind === 'columns' ? 5.45 : -3.6;
   const ax = kind === 'threshold' ? 2.4 : kind === 'rotunda' ? 0 : kind === 'columns' ? -4.3 : 5.925;
   const a = { minX: ax - apertureWidth / 2, maxX: ax + apertureWidth / 2,
     minZ: az - apertureDepth / 2, maxZ: az + apertureDepth / 2, y: roof + .3 };
   const roofMaterial=['threshold','columns','rings'].includes(kind) ? 0 : 1;
-  add([-7, roof, minZ], [a.minX, roof + .3, 10], roofMaterial);
-  add([a.maxX, roof, minZ], [7, roof + .3, 10], roofMaterial);
+  add([-W, roof, minZ], [a.minX, roof + .3, 10], roofMaterial);
+  add([a.maxX, roof, minZ], [W, roof + .3, 10], roofMaterial);
   add([a.minX, roof, minZ], [a.maxX, roof + .3, a.minZ], roofMaterial);
   add([a.minX, roof, a.maxZ], [a.maxX, roof + .3, 10], roofMaterial);
   const arch = (z, radius, spring, width = 14, x = 0, top = 7.5) => {
@@ -118,23 +120,28 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     for (const [lo, hi] of [[-10, -7.4], [-6.6, -4], [-3.2, -.6], [.2, 2.8]]) { add([4.6, 0, z0], [4.9, roof, lo], 0, null, true); z0 = hi; }
     add([4.6, 0, z0], [4.9, roof, 3], 0, null, true);
   } else if (kind === 'rotunda') {
-    // A domed round chamber. Ten equal round-headed openings pierce the drum
-    // at even intervals around its full circumference; the viewer stands in
-    // one of them, looking across the basin. Daylight fills the well outside
-    // the far and side openings.
-    const R = 4.2, wall = 1, deck = .62, top = deck + 3.3;
+    // A domed round chamber whose wall rises continuously into the dome.
+    // Ten equal, low round-headed openings pierce its base at even intervals
+    // around the full circumference; the viewer stands in one of them. Behind
+    // the openings a concentric tiled ambulatory, open to daylight above,
+    // closes each view with lit tile rather than open space.
+    // Scale follows the reference: equal openings 2.3 m wide and 2.85 m high,
+    // piers about two thirds of an opening, ten openings round the drum.
+    const R = 6.1, wall = .8, deck = .62, top = deck + 4, open = 1.15, outer = R + wall + 1.3;
     const curved = (lo, hi, extra) => { add(lo, hi); Object.assign(shapes.at(-1), extra); };
     curved([-R - wall, top, -R - wall], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 0 });
     // The drum sits slightly into the deck so the floor joint is closed.
     curved([-R - wall, deck - .05, -R - wall], [R + wall, top, R + wall],
-      { kind: 10, radius: R, outerRadius: R + wall, spring: deck + 1.9, openingRadius: .75, openings: 10 });
-    // Dry deck with an exact circular basin.
-    curved([-7, 0, -12], [7, deck, 10], { kind: 4, radius: 3, center: [0, 0] });
-    // Walking stays in the entrance opening and the dark well behind it.
-    solids.push({ minX: -7, maxX: 7, minZ: -4, maxZ: 10 },
-      { minX: -7, maxX: -.75, minZ: -R - wall, maxZ: -4 }, { minX: .75, maxX: 7, minZ: -R - wall, maxZ: -4 });
+      { kind: 10, radius: R, outerRadius: R + wall, spring: deck + 2.85 - open, openingRadius: open, openings: 10 });
+    // Outer ambulatory wall, concentric with the drum and as tall.
+    curved([-W, deck, -W], [W, top, W], { kind: 4, radius: outer });
+    // Dry deck ring with an exact circular basin.
+    curved([-W, 0, -12], [W, deck, 10], { kind: 4, radius: 5, center: [0, 0] });
+    // Walking stays in the ambulatory behind the entrance opening.
+    solids.push({ minX: -W, maxX: W, minZ: -R + .1, maxZ: 10 }, { minX: -W, maxX: W, minZ: -12, maxZ: -outer + .2 },
+      { minX: -W, maxX: -open, minZ: -outer, maxZ: -R }, { minX: open, maxX: W, minZ: -outer, maxZ: -R });
     for (const x of [-.6, .6]) {
-      const radius=.48, tubeRadius=.026, rail=1.18, z=-3.02;
+      const radius=.48, tubeRadius=.026, rail=1.18, z=-4.52;
       add([x-tubeRadius, 0, z-radius-tubeRadius], [x+tubeRadius, rail+radius+tubeRadius, z+radius+tubeRadius], 3);
       Object.assign(shapes.at(-1), { kind: 5, radius, tubeRadius, spring: rail });
     }
@@ -182,9 +189,9 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
   const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.791,.5,.353] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 5 } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[0,0,0],skyScale:4} : undefined;
-  // The complete 6 m basin fits inside this simulation rectangle. Do not
+  // The complete 10 m basin fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
-  const waterBounds = kind === 'rotunda' ? {minX:-3.5,maxX:3.5,minZ:-3.5,maxZ:3.5} : bounds;
+  const waterBounds = kind === 'rotunda' ? {minX:-5.25,maxX:5.25,minZ:-5.25,maxZ:5.25} : bounds;
   return { bounds, shapes, solids, illumination, conductorMaterials: ['rotunda','threshold'].includes(kind) ? [3] : undefined,
     reflectionSamples: kind === 'rotunda' ? {glaze:24,rough:32} : kind === 'threshold' ? {glaze:8,rough:16} : undefined,
     groutHalfWidth: ['columns','rotunda','threshold'].includes(kind) ? .0012 : undefined,
