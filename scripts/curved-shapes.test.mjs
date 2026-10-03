@@ -34,9 +34,15 @@ test('circular basin deck excludes its hole from planar receiver area', () => {
 });
 
 test('conductor tube has no diffuse receiving surface', () => {
-  const result=buildLightAtlases([{lo:[-.026,0,-.506],hi:[.026,1.706,.506],radius:.48,tubeRadius:.026,spring:1.2,kind:5,material:3}]);
-  assert([...result.cellSurfaces].every(v=>v>>>16===0));
-  assert([...result.probeSurfaces].every(v=>v>>>16===0));
+  for(const shape of [
+    {lo:[-.026,0,-.506],hi:[.026,1.706,.506],radius:.48,tubeRadius:.026,spring:1.2,kind:5,material:3},
+    {lo:[-.022,1,-3],hi:[.022,1.044,3],radius:.022,axis:2,spring:0,kind:6,material:3},
+    {lo:[-2.022,1,-2.022],hi:[2.022,1.044,2.022],radius:2,tubeRadius:.022,spring:0,kind:7,material:3},
+  ]) {
+    const result=buildLightAtlases([shape]);
+    assert([...result.cellSurfaces].every(v=>v>>>16===0));
+    assert([...result.probeSurfaces].every(v=>v>>>16===0));
+  }
 });
 test('dome oculus removes polar receiver area and adds its physical shaft wall', () => {
   const result=buildLightAtlases([{...primitive(3),oculus:.5}]);

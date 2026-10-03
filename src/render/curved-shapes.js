@@ -1,13 +1,20 @@
 // Optional primitive specialization. Box/arch-only windows retain their exact
 // historical shader text, including compiler arithmetic and sampling behavior.
 export function curvedShader(source, scene) {
-  if (!scene.shapes.some(s => s.kind >= 2)) return source;
   if (scene.groutHalfWidth !== undefined) source=source.replace('const GROUT_HALF_WIDTH:f32=.0028;', `const GROUT_HALF_WIDTH:f32=${scene.groutHalfWidth};`);
+  if (scene.tileSize !== undefined) {
+    const size=String(scene.tileSize);
+    const start=source.indexOf('fn archCourse('),end=source.indexOf('fn tileMode(');
+    source=source.slice(0,start)+source.slice(start,end).replaceAll('.25',size)+source.slice(end);
+    source=source.replace('var size=vec2f(.25);',`var size=vec2f(${size});`)
+      .replace('min(fract(uv/.25),1.-fract(uv/.25))*.25',`min(fract(uv/${size}),1.-fract(uv/${size}))*${size}`);
+  }
   if (scene.illumination) {
     source=source.replace('vec3f(19.8,18.4,15.5)*U.settings.z', `vec3f(${scene.illumination.sun.map(v=>Number.isInteger(v)?`${v}.`:v).join(',')})*U.settings.z`)
       .replace('pow(max(d.y,0.),.45))*.62', `pow(max(d.y,0.),.45))*${.62*scene.illumination.skyScale}`)
       .replace('vec3f(.68,.80,.97),vec3f(.31,.52,.88)', 'vec3f(.76,.78,.72),vec3f(.68,.70,.66)');
   }
+  if (!scene.shapes.some(s => s.kind >= 2)) return source;
   const replace = (a, b) => {
     if (!source.includes(a)) throw Error('Missing curved primitive shader hook');
     source = source.replace(a, b);
@@ -83,8 +90,65 @@ fn traceTube(ro:vec3f,rd:vec3f,maxT:f32,s:Shape)->CurveHit {
  return hit;
 }
 // Capped cylinder (2), or box with an upper hemisphere removed (3).
+// Horizontal rail cylinders intersect analytically, with exact circular caps.
+fn traceRail(ro:vec3f,rd:vec3f,maxT:f32,s:Shape)->CurveHit {
+ var hit=CurveHit(maxT,vec3f(0),0u);
+ let c=(s.lo.xyz+s.hi.xyz)*.5;let alongX=s.params.w<1.;
+ let offset=ro-c;let o=select(offset.xy,offset.zy,alongX);let d=select(rd.xy,rd.zy,alongX);
+ let a=dot(d,d);let b=dot(o,d);let r=s.params.x;let disc=b*b-a*(dot(o,o)-r*r);
+ let lo=select(s.lo.z,s.lo.x,alongX);let hi=select(s.hi.z,s.hi.x,alongX);
+ if(a>.000001&&disc>=0.){for(var k=0u;k<2u;k++){
+  let t=(-b+select(-sqrt(disc),sqrt(disc),k==1u))/a;let p=ro+rd*t;
+  let coordinate=select(p.z,p.x,alongX);
+  if(t>EPS&&t<hit.t&&coordinate>=lo&&coordinate<=hi){
+   let v=p-c;let n=select(vec3f(v.xy,0),vec3f(0,v.yz),alongX);hit=CurveHit(t,normalize(n),6u);
+  }
+ }}
+ let along=select(rd.z,rd.x,alongX);let origin=select(ro.z,ro.x,alongX);
+ if(abs(along)>.000001){for(var k=0u;k<2u;k++){
+  let t=(select(lo,hi,k==1u)-origin)/along;let v=o+d*t;
+  if(t>EPS&&t<hit.t&&dot(v,v)<=r*r){let sign=select(-1.,1.,k==1u);let n=select(vec3f(0,0,sign),vec3f(sign,0,0),alongX);hit=CurveHit(t,n,6u);}
+ }}
+ return hit;
+}
+// A horizontal circular centerline produces a smooth, continuous curved rail.
+// Bounded signed-distance stepping locates the actual tube, not its bounding box.
+fn traceRingRail(ro:vec3f,rd:vec3f,maxT:f32,s:Shape)->CurveHit {
+ let c=(s.lo.xyz+s.hi.xyz)*.5;
+ let inv=1./select(vec3f(.0000001),rd,abs(rd)>vec3f(.0000001));
+ let aa=(s.lo.xyz-ro)*inv;let bb=(s.hi.xyz-ro)*inv;let near=min(aa,bb);let far=max(aa,bb);
+ var t=max(EPS,max(max(near.x,near.y),near.z));var end=min(maxT,min(min(far.x,far.y),far.z));
+ // Restrict the query to the exact radial annulus before distance stepping.
+ // Most rays through the large bounding square never approach the thin tube.
+ let o=ro.xz-c.xz;let a=dot(rd.xz,rd.xz);let b=dot(o,rd.xz);
+ let outer=s.params.x+s.params.z+.00005;let inner=s.params.x-s.params.z-.00005;
+ var holeLo=INF;var holeHi=INF;
+ let convex=s.params.x>s.params.z+.0001&&rd.y*rd.y>(s.params.z+.0001)/max(.0001,s.params.x-s.params.z-.0001)*a;
+ if(a>.000001){
+  let disc=b*b-a*(dot(o,o)-outer*outer);if(disc<0.){return CurveHit(maxT,vec3f(0),0u);}
+  t=max(t,(-b-sqrt(disc))/a);end=min(end,(-b+sqrt(disc))/a);
+  let hole=b*b-a*(dot(o,o)-inner*inner);
+  if(hole>=0.){holeLo=(-b-sqrt(hole))/a;holeHi=(-b+sqrt(hole))/a;}
+ }else if(a==0.&&(length(o)<inner||length(o)>outer)){return CurveHit(maxT,vec3f(0),0u);}
+ for(var i=0u;i<96u;i++){
+  if(t>holeLo&&t<holeHi){t=holeHi;}
+  if(t>end){break;}
+  let p=ro+rd*t;let q=p-c;let rho=length(q.xz);let radial=normalize(select(vec2f(1,0),q.xz,rho>.000001));
+  let v=q-vec3f(radial.x*s.params.x,0,radial.y*s.params.x);let distance=length(v)-s.params.z;
+  if(abs(distance)<.00001){return CurveHit(t,normalize(v),6u);}
+  var advance=max(abs(distance),.000005);
+  // On a certified convex annulus segment, the squared-distance tangent
+  // underestimates the first root. Its Newton step cannot jump over that hit.
+  let derivative=2.*dot(v,rd);
+  if(convex&&rho>=inner&&distance>0.&&derivative<-.000001){advance=max(advance,-(dot(v,v)-s.params.z*s.params.z)/derivative);}
+  t+=advance;
+ }
+ return CurveHit(maxT,vec3f(0),0u);
+}
 fn traceCurved(ro:vec3f,rd:vec3f,maxT:f32,s:Shape)->CurveHit {
  if(s.info.y==5u){return traceTube(ro,rd,maxT,s);}
+ ${scene.shapes.some(s=>s.kind===6)?'if(s.info.y==6u){return traceRail(ro,rd,maxT,s);}':''}
+ ${scene.shapes.some(s=>s.kind===7)?'if(s.info.y==7u){return traceRingRail(ro,rd,maxT,s);}':''}
  var hit=CurveHit(maxT,vec3f(0),0u);
  let c=vec3f((s.lo.x+s.hi.x)*.5,s.params.y,(s.lo.z+s.hi.z)*.5);
  let r=s.params.x;let o=ro-c;

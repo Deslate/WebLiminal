@@ -22,6 +22,24 @@ test('scene validation rejects empty shapes and engine-reserved materials',()=>{
  for(const material of [9,10])assert.throws(()=>validateScene(minimal([box([0,-1,0],[4,0,4],{material})])),/material/);
  assert.throws(()=>validateScene({...minimal(),floor:{shape:3,face:3}}),/floor/);
 });
+
+test('wall rails require complete round bounds and conductor transport',()=>{
+ const rail=box([-.02,1,-2],[.02,1.04,2],{kind:6,material:3,radius:.02,axis:2});
+ const scene={...minimal([...minimal().shapes,rail]),conductorMaterials:[3]};
+ assert.doesNotThrow(()=>validateScene(scene));
+ const packed=new Float32Array(packScene(scene).geometryData);
+ assert.equal(packed[31],2);
+ assert.throws(()=>validateScene({...scene,conductorMaterials:[]}),/conductor/);
+ assert.throws(()=>validateScene({...scene,shapes:[scene.shapes[0],{...rail,axis:1}]}),/cylinder/);
+ const ring={...rail,kind:7,radius:2,tubeRadius:.02,lo:[-2.02,1,-2.02],hi:[2.02,1.04,2.02]};
+ assert.doesNotThrow(()=>validateScene({...scene,shapes:[scene.shapes[0],ring]}));
+ assert.throws(()=>validateScene({...scene,shapes:[scene.shapes[0],{...ring,hi:[2,1.04,2]}]}),/torus/);
+});
+
+test('physical tile spacing rejects degenerate modules',()=>{
+ for(const tileSize of [0,.01,NaN,Infinity,2]) assert.throws(()=>validateScene({...minimal(),tileSize}),/tile module/);
+ assert.doesNotThrow(()=>validateScene({...minimal(),tileSize:.18}));
+});
 test('per-face receiver density and probe stride come from shape data',()=>{
  const plain=packScene(minimal()),fine=packScene(minimal([box([0,-1,0],[4,0,4],{density:onTop(48),probeStride:onTop(8)})]));
  const top=g=>{const u=new Uint32Array(g.surfaces),f=new Float32Array(g.surfaces);return {nx:u[3*16+1],stride:f[3*16+7]};};

@@ -4,7 +4,7 @@ import near from "../materials/porcelain.wgsl?raw";
 import photon from "../materials/photon-porcelain.wgsl?raw";
 import steel from "../materials/stainless-steel.wgsl?raw";
 import { buildPoolroomsScene } from "./poolrooms-scene.js";
-import { createPoolroomsWorld } from "./poolrooms-regions.js";
+import { createPoolroomsWorld, thresholdTileSize } from "./poolrooms-regions.js";
 
 // Only the new windows use the metal slot; the original shaders stay identical.
 const metal = 'if(h.material==3u){return stainlessSteel(h);}';
@@ -27,6 +27,16 @@ const cleanPorcelain = source => source
 const refinedMaterials = {near:cleanPorcelain(regionMaterials.near),photon:cleanPorcelain(regionMaterials.photon)};
 regionMaterials.columns=refinedMaterials;
 regionMaterials.rotunda=refinedMaterials;
+const thresholdCeramic=source=>cleanPorcelain(source)
+  .replaceAll('.37,.55,.47','.16,.36,.24')
+  .replaceAll('.52,.65,.57','.26,.44,.31')
+  .replaceAll('.25+.04','.45+.04')
+  .replaceAll('.22+.06','.40+.06')
+  .replaceAll('mineral*.13-streak*.065-waterline*.20','mineral*.05-streak*.02-waterline*.12')
+  .replaceAll('chip*.35*detail','chip*.12*detail')
+  .replaceAll('scaleDeposit*.22','scaleDeposit*.08');
+regionMaterials.threshold={near:thresholdCeramic(regionMaterials.near),
+  photon:thresholdCeramic(regionMaterials.photon).replace('var size=vec2f(.25)',`var size=vec2f(${thresholdTileSize})`)};
 
 export default {
   ...data,

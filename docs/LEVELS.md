@@ -65,7 +65,9 @@ their input. Other controls retain their meaning.
 New regions use boxes, analytic arch cuts, capped cylinders and a hemispherical
 intrados. The circular basin deck is one box with an exact cylindrical cutout;
 its receiving area excludes the hole. Columns use exact circular player
-footprints, expanded by player radius during collision checks. Curved primitive
+footprints, expanded by player radius during collision checks. Threshold
+clearance includes its straight and curved wall rails, with a continuous walking
+path through the corridor. Curved primitive
 shader code is specialized only into windows that need it; original box/arch
 windows retain exactly the original shared WGSL. Cylinder and hemisphere light
 charts use arc length at the radius by height, giving equal physical cell areas
@@ -82,7 +84,8 @@ live water surface; the terminal metal bounce is truncated.
 `conductorMaterials` lists the material ids using conductor transport, so a
 material number has no implicit metal meaning in other levels. `reflectionSamples`
 sets a window's ceramic quadrature budget: the rotunda uses 24 directions on
-glazed ceramic and 32 on rough surfaces, while metal retains 48. Water branches,
+glazed ceramic and 32 on rough surfaces; the threshold uses 8/16. Metal retains
+48 in both windows. Water branches,
 pixel sampling and physical BRDF parameters are unchanged. This is a finite
 angular sampling tradeoff; the origin retains its historical 48/64 directions.
 
@@ -96,6 +99,24 @@ masks or an ambient shading term. They still have just one rectangular sky
 aperture: the rotunda's five arcade openings are on a straight wall, not a
 complete radial arrangement of windows. Ring Passage still uses semicircular
 arch cuts, rather than complete circular tunnel sections.
+
+Lightwell Threshold has a 3.65 m tiled passage ceiling, a continuous 4.8 m
+radius cylindrical wall, and a 5.4 m radius ceiling cutout around that wall.
+The gap admits sky light through the resident window's real roof aperture;
+the far room has an open section below the same aperture. Its default source
+is overcast sky without a direct sun component, transported through geometry.
+The upper roof is 4.15 m high, with a 5 x 19 m aperture spanning the far room
+and the curved rim. Only this location extends its aperture depth limit to 19 m.
+Exposure remains 1.35. Tiles use a 180 mm module and 2.4 mm grout on planar
+and curved faces, including the photon material's setting-out grid. Submerged
+ceramic uses darker green diffuse reflectance and matte glaze (perceptual
+roughness around 0.4–0.49, before footprint variance); water absorption and the actual
+wave solver are unchanged. The left wall has submerged rectangular openings. Round
+22 mm radius stainless rails follow the straight wall and the curved wall,
+with cylindrical attachment brackets. Curved rail intersection uses a complete
+horizontal torus; it is not a chain of box or line segments. These rails are
+above the water surface. Original and other regions retain their tile modules
+and source settings.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
 cells/m on general new surfaces and 24/m on new pool floors. This bounds content
@@ -130,6 +151,15 @@ All lengths are metres, `y` up.
   `kind: 5` is a continuous round U-shaped tube in the y/z plane: `radius` is
   its bend centerline radius, `spring` the tangent height and `tubeRadius` its
   round cross-section radius. Its x/z center is the bounding-box midpoint.
+  `kind: 6` is a capped straight rail cylinder with `axis: 0` (x) or `2` (z)
+  and `radius` for its circular cross section. `kind: 7` is a complete horizontal
+  torus centered at its box midpoint, with `radius` for the centerline and
+  `tubeRadius` for its cross section. Both require conductor transport and have
+  no diffuse receiver charts. Torus normals come from its closest centerline
+  point with the same 10 micrometre intersection tolerance as U-tube bends.
+  Queries first clip to conservative outer/inner radial bounds. Certified
+  convex annulus segments use a squared-distance Newton step that cannot
+  skip the first hit; other segments retain conservative distance stepping.
   The cylinder cutout uses inward face 6 and an equal-area cylindrical chart;
   conductor tubes have zero diffuse receiver coverage.
   Cylinders use faces 2/3 for their caps and 6 for their exterior; domes use

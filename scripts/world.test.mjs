@@ -28,6 +28,13 @@ test('original landmark retains exactly the old scene and GPU packing', () => {
   assert.deepEqual(scene, original);
   assert.deepEqual(packScene(scene).geometryData, packScene(original).geometryData);
 });
+
+test('flooded corridor is walkable without crossing its wall rails',()=>{
+  const w=loadWindow(level,{x:0,z:1}),scene=w.scene(w.optics);
+  for(let z=8;z>=-10;z-=.25)assert(canStand(-2.3,z,scene.bounds,scene.solids));
+  assert(!canStand(-2,4.5,scene.bounds,scene.solids),'Curved rail clearance');
+  assert(!canStand(-3.1,4.5,scene.bounds,scene.solids),'Straight rail clearance');
+});
 test('changing navigation order cannot relocate authored world content', () => {
   const address={x:1,z:0};
   const before=level.world.generate(address);

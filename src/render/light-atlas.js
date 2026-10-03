@@ -17,7 +17,7 @@ export function buildLightAtlases(shapes,gridScale=1){
    // For a sphere, dA = R d(phi) dy, including the shrinking polar rings.
    if(face===6)bounds=[0,s.lo[1],2*Math.PI*s.radius,s.kind===3?s.spring+Math.sqrt(s.radius*s.radius-(s.oculus??0)**2):s.hi[1]];
    if(s.kind===3&&face===7&&s.oculus>0){disabled=false;bounds=[0,s.spring+Math.sqrt(s.radius*s.radius-s.oculus*s.oculus),2*Math.PI*s.oculus,s.hi[1]];}
-   if(s.kind===5)disabled=true;
+   if(s.kind>=5)disabled=true;
   }
   if(disabled)bounds=[0,0,.01,.01];
    const density=s.density?.[face]??DEFAULT_DENSITY,probeStride=s.probeStride?.[face]??DEFAULT_PROBE_STRIDE;
