@@ -29,19 +29,26 @@ export function validateScene(scene) {
   if (scene.groutHalfWidth !== undefined && !(Number.isFinite(scene.groutHalfWidth)&&scene.groutHalfWidth>0&&scene.groutHalfWidth<.01)) fail('invalid grout width');
   if (scene.tileSize !== undefined && !(Number.isFinite(scene.tileSize)&&scene.tileSize>.04&&scene.tileSize<1)) fail('invalid tile module');
   if (scene.illumination && (!(Number.isFinite(scene.illumination.skyScale)&&scene.illumination.skyScale>0)||!Array.isArray(scene.illumination.sun)||scene.illumination.sun.length!==3||!scene.illumination.sun.every(v=>Number.isFinite(v)&&v>=0))) fail('invalid illumination');
+  if (scene.illumination?.sunDirection && !(Array.isArray(scene.illumination.sunDirection)&&scene.illumination.sunDirection.length===3&&scene.illumination.sunDirection.every(Number.isFinite)&&scene.illumination.sunDirection[1]>.05)) fail('invalid sun direction');
   if (!(bounds.minX < bounds.maxX && bounds.minZ < bounds.maxZ && bounds.ceiling > 0)) fail("empty bounds");
   if (!shapes.length) fail("no shapes");
   shapes.forEach((s, i) => {
     if (![0, 1, 2].every((k) => s.lo[k] < s.hi[k])) fail(`shape ${i} has lo >= hi`);
     if (!Number.isInteger(s.material) || s.material < 0 || RESERVED_MATERIALS.includes(s.material)) fail(`shape ${i} uses material ${s.material}`);
     if (s.kind === 1 && !(s.radius > 0 && 2 * s.radius < s.hi[0] - s.lo[0])) fail(`arch ${i} radius does not fit its box`);
-    if (![0, 1, 2, 3, 4, 5, 6, 7].includes(s.kind)) fail(`shape ${i} has unsupported kind`);
-    if (s.kind >= 2 && s.kind <= 4 && !(s.radius > 0 && 2 * s.radius <= Math.min(s.hi[0] - s.lo[0], s.hi[2] - s.lo[2]) + 1e-9)) fail(`curved shape ${i} radius does not fit`);
+    if (![0, 1, 2, 3, 4, 5, 6, 7, 8, 9].includes(s.kind)) fail(`shape ${i} has unsupported kind`);
+    // A bay lies wholly on one side of its drum centre in z, so its chart never wraps.
+    if (s.kind === 8 && !(s.radius >= 0 && s.spring >= s.lo[1] && s.spring + s.radius <= s.hi[1] && s.drumRadius > 0 && Array.isArray(s.center) && (s.lo[2] >= s.center[1] || s.hi[2] <= s.center[1]))) fail(`drum bay ${i} is invalid`);
+    if (s.kind === 9 && !(s.radius > 0 && s.outerRadius > s.radius && Number.isFinite(s.spring))) fail(`ring ${i} is invalid`);
+    if (s.center !== undefined && !([3, 4, 8].includes(s.kind) && Array.isArray(s.center) && s.center.length === 2 && s.center.every(Number.isFinite))) fail(`shape ${i} has an invalid centre`);
+    if (s.kind >= 2 && s.kind <= 4 && !s.center && !(s.radius > 0 && 2 * s.radius <= Math.min(s.hi[0] - s.lo[0], s.hi[2] - s.lo[2]) + 1e-9)) fail(`curved shape ${i} radius does not fit`);
+    if (s.center && s.kind !== 8 && !(s.radius > 0 && s.center[0] - s.radius >= s.lo[0] - 1e-9 && s.center[0] + s.radius <= s.hi[0] + 1e-9)) fail(`curved shape ${i} must contain its x extent`);
     if (s.kind === 5 && !(s.radius > 0 && s.tubeRadius > 0 && s.tubeRadius < s.radius && s.spring > s.lo[1])) fail(`tube ${i} has invalid sweep`);
     if (s.kind === 6 && !([0, 2].includes(s.axis) && s.radius > 0 && [0, 1, 2].filter(k=>k!==s.axis).every(k=>s.hi[k]-s.lo[k]>=2*s.radius-1e-9))) fail(`rail ${i} has invalid cylinder`);
     if (s.kind === 7 && !(s.radius > s.tubeRadius && s.tubeRadius > 0 && [0, 2].every(k=>s.hi[k]-s.lo[k]>=2*(s.radius+s.tubeRadius)-1e-9) && s.hi[1]-s.lo[1]>=2*s.tubeRadius-1e-9)) fail(`rail ${i} has invalid torus`);
-    if (s.kind >= 6 && !scene.conductorMaterials?.includes(s.material)) fail(`rail ${i} needs conductor transport`);
+    if ((s.kind === 6 || s.kind === 7) && !scene.conductorMaterials?.includes(s.material)) fail(`rail ${i} needs conductor transport`);
     if (s.kind === 3 && !(s.lo[1] === s.spring && s.hi[1] >= s.spring + s.radius)) fail(`dome ${i} must contain its upper hemisphere`);
+    if (s.kind === 3 && s.center && !(s.center[1] + s.radius <= s.hi[2] + 1e-9)) fail(`dome ${i} may only be clipped on its near side`);
     if (s.oculus !== undefined && !(s.kind === 3 && s.oculus >= 0 && s.oculus < s.radius)) fail(`shape ${i} has invalid oculus`);
     for (const key of ["density", "probeStride"]) if (s[key] && s[key].length !== FACES) fail(`shape ${i} ${key} needs ${FACES} entries`);
   });
@@ -64,9 +71,9 @@ export function packScene(scene, gridScale = 1) {
     f = new Float32Array(geometryData),
     u = new Uint32Array(geometryData);
   shapes.forEach((s, i) => {
-    f.set([...s.lo, 0, ...s.hi, 0], i * SHAPE_WORDS);
-    u.set([s.material, s.kind, i * FACES, 0], i * SHAPE_WORDS + 8);
-    f.set([s.radius, s.spring, s.oculus ?? s.tubeRadius ?? 0, s.axis ?? 0], i * SHAPE_WORDS + 12);
+    f.set([...s.lo, s.center?.[0] ?? 0, ...s.hi, s.center?.[1] ?? 0], i * SHAPE_WORDS);
+    u.set([s.material, s.kind, i * FACES, s.center ? 1 : 0], i * SHAPE_WORDS + 8);
+    f.set([s.radius, s.spring, s.oculus ?? s.tubeRadius ?? s.drumRadius ?? s.outerRadius ?? 0, s.axis ?? 0], i * SHAPE_WORDS + 12);
   });
   const a = scene.aperture;
   return {

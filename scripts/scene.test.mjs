@@ -47,3 +47,19 @@ test('per-face receiver density and probe stride come from shape data',()=>{
  assert.deepEqual(top(fine),{nx:192,stride:8});
  assert.equal(fine.floorSid,3);
 });
+
+test('explicit curved centres are packed and flagged; rings and bays validate',()=>{
+  const scene=minimal();
+  const dome={lo:[-7,3,-4],hi:[7,9,6],kind:3,material:0,radius:5,spring:3,oculus:0,center:[0,1]};
+  const packed=packScene({...scene,shapes:[...scene.shapes,dome]});
+  const f=new Float32Array(packed.geometryData),u=new Uint32Array(packed.geometryData),o=scene.shapes.length*16;
+  assert.deepEqual([f[o+3],f[o+7],u[o+11]],[0,1,1]);
+  assert.equal(u[11],0,'implicit centres keep the historical packing');
+  assert.throws(()=>validateScene({...scene,shapes:[...scene.shapes,{...dome,hi:[7,9,5]}]}),/near side/);
+  const ring={lo:[-3,0,0],hi:[3,4,.4],kind:9,material:0,radius:2,outerRadius:2.2,spring:1.4};
+  assert.doesNotThrow(()=>validateScene({...scene,shapes:[...scene.shapes,ring]}));
+  assert.throws(()=>validateScene({...scene,shapes:[...scene.shapes,{...ring,outerRadius:1}]}),/ring/);
+  const bay={lo:[-1,0,0],hi:[1,3,2],kind:8,material:0,radius:.5,spring:1,drumRadius:4,center:[0,1]};
+  assert.throws(()=>validateScene({...scene,shapes:[...scene.shapes,bay]}),/drum bay/);
+  assert.doesNotThrow(()=>validateScene({...scene,shapes:[...scene.shapes,{...bay,center:[0,0]}]}));
+});

@@ -34,8 +34,9 @@ Poolrooms has one registry entry and five navigation bookmarks. A bookmark is
 `{name, address: {x, z}}`, where the integer address selects a 64 m world cell.
 `level.world.generate(address)` resolves a local scene builder, spawn and optics.
 The authored origin uses the original scene and materials without changes.
-The four other authored cells contain a column reservoir, ring passage, vaulted
-rotunda and dark threshold. Unauthored addresses report an error; this is not
+The four other authored cells contain a column reservoir, ring passage, domed
+rotunda and flooded threshold, each laid out after one reference view (see
+below). Unauthored addresses report an error; this is not
 yet an endless generator. The bookmark list does not define the world's extent.
 
 `src/world.js` maps the resident window's local coordinates into world metres:
@@ -62,18 +63,18 @@ up/down retain movement, so left/right no longer strafe. Auto-repeat is ignored
 for teleport, movement keys clear on transitions, and lab/editable controls own
 their input. Other controls retain their meaning.
 
-New regions use boxes, analytic arch cuts, capped cylinders and a hemispherical
-intrados. The circular basin deck is one box with an exact cylindrical cutout;
-its receiving area excludes the hole. Columns use exact circular player
-footprints, expanded by player radius during collision checks. Threshold
-clearance includes its straight and curved wall rails, with a continuous walking
-path through the corridor. Curved primitive
+New regions use boxes, analytic arch cuts, capped cylinders, a hemispherical
+intrados, drum bays and full rings. The circular basin deck is one box with an
+exact cylindrical cutout; its receiving area excludes the hole. Columns use
+exact circular player footprints, expanded by player radius during collision
+checks. Threshold clearance includes its wall rails and posts, with a
+continuous walking path from the corridor into the far hall. Curved primitive
 shader code is specialized only into windows that need it; original box/arch
 windows retain exactly the original shared WGSL. Cylinder and hemisphere light
 charts use arc length at the radius by height, giving equal physical cell areas
 (`dA = R d(phi) dy`). Planar coverage excludes the disk/sphere cutouts.
-The rotunda player stays on the front deck because vertical locomotion is not
-implemented. Its basin remains dynamically simulated. Material slot 3 supplies
+The rotunda player stays in the entrance doorway and near deck because vertical
+locomotion is not implemented. Its basin remains dynamically simulated. Material slot 3 supplies
 stainless steel on continuous round handrails only in the new windows. Each
 rail has two vertical cylindrical legs joined by a half-torus bend. The straight
 legs intersect analytically; the bend uses bounded distance root finding with
@@ -89,34 +90,50 @@ glazed ceramic and 32 on rough surfaces; the threshold uses 8/16. Metal retains
 pixel sampling and physical BRDF parameters are unchanged. This is a finite
 angular sampling tradeoff; the origin retains its historical 48/64 directions.
 
-The rotunda's water rectangle is 10 x 10 m, enclosing the complete 9.4 m basin;
+The rotunda's water rectangle is 8 x 8 m, enclosing the complete 7.6 m basin;
 dry entrance/deck space is omitted from finite-depth updates. Simulation spacing
 remains 1/32 m. The original window retains its historical rectangle.
 Column Reservoir and Still Rotunda use 2.4 mm grout, reduced ceramic color
-variation and a wider ceramic GGX lobe. Their sun/sky radiance is calibrated
-separately through `illumination`; this changes transported light, not display
-masks or an ambient shading term. They still have just one rectangular sky
-aperture: the rotunda's five arcade openings are on a straight wall, not a
-complete radial arrangement of windows. Ring Passage still uses semicircular
-arch cuts, rather than complete circular tunnel sections.
+variation and a wider ceramic GGX lobe. Sun/sky radiance and, where set, the
+sun direction are calibrated per window through `illumination`; this changes
+transported light, not display masks or an ambient shading term. Each window
+still has exactly one rectangular sky aperture. A window may restrict the lab's
+aperture range with `limits`, so the opening cannot grow past the court or
+well it lights.
 
-Lightwell Threshold has a 3.65 m tiled passage ceiling, a continuous 4.8 m
-radius cylindrical wall, and a 5.4 m radius ceiling cutout around that wall.
-The gap admits sky light through the resident window's real roof aperture;
-the far room has an open section below the same aperture. Its default source
-is overcast sky without a direct sun component, transported through geometry.
-The upper roof is 4.15 m high, with a 5 x 19 m aperture spanning the far room
-and the curved rim. Only this location extends its aperture depth limit to 19 m.
-Exposure remains 1.35. Tiles use a 180 mm module and 2.4 mm grout on planar
-and curved faces, including the photon material's setting-out grid. Submerged
-ceramic uses darker green diffuse reflectance and matte glaze (perceptual
-roughness around 0.4–0.49, before footprint variance); water absorption and the actual
-wave solver are unchanged. The left wall has submerged rectangular openings. Round
-22 mm radius stainless rails follow the straight wall and the curved wall,
-with cylindrical attachment brackets. Curved rail intersection uses a complete
-horizontal torus; it is not a chain of box or line segments. These rails are
-above the water surface. Original and other regions retain their tile modules
-and source settings.
+The four layouts follow one reference view each; the spawn pose is that view.
+Every light source is an actual opening placed where the reference view cannot
+see it; ceiling reflections are not openings.
+
+- **Column Reservoir.** A closed, tiled 5.2 m hall around one 4 m radius convex
+  cylinder, a mid-distance column, a left wall bulge with a dark passage behind
+  it, and a slim near column. A low sun (30 degrees) enters a roofless court
+  behind the viewer and crosses the hall through five full-height slit windows,
+  striping the cylinder from the water upward. The court is shallow, so only
+  high rays clear its roof edge and the near water stays in shadow.
+- **Lightwell Threshold.** A 3.4 m corridor between a straight left wall and a
+  3.3 m radius convex cylinder, with a round column at its mouth. The cylinder
+  rises through a 4.5 m radius circular recess in the ceiling; overcast daylight
+  reaches it down the 1.2 m annular gap. The recess shaft is tall enough that
+  the sky is not visible from the corridor. Free-standing stainless rails stand
+  in the water on round posts; the left wall has a low dark opening at the
+  waterline. The corridor ends in a taller hall lit from its own roof, with a
+  square pillar, a short rail stub and a cross rail. Tiles use a 180 mm module
+  and 2.4 mm grout on planar and curved faces, including the photon material's
+  setting-out grid. Submerged ceramic uses darker green diffuse reflectance and
+  matte glaze (perceptual roughness around 0.4–0.49, before footprint variance).
+- **Ring Passage.** The viewer stands behind a wall with a 3 m radius round
+  portal, offset from the axis of four free-standing tiled rings (2.6–2.8 m
+  radius, 0.35 m deep) that cross a flooded hall and end at a dark round
+  tunnel. Steps descend into the water along the left wall. Daylight enters a
+  roof strip directly behind the portal wall, which hides it from the entrance;
+  the window extends to z = -16 m to give the tunnel depth.
+- **Still Rotunda.** The viewer stands in a 1.2 m thick entrance wall whose tall
+  round-headed doorway continues through the near side of a 5.2 m radius drum.
+  A hemispherical dome springs directly from the drum. Five round-headed
+  openings in the far half of the drum lead to a daylit well behind it. The
+  openings run parallel to the entrance axis rather than radially. A circular
+  basin with a stainless U-tube ladder sits in a dry deck.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
 cells/m on general new surfaces and 24/m on new pool floors. This bounds content
@@ -148,6 +165,17 @@ All lengths are metres, `y` up.
   the x/z midpoint and `spring` in y; its lower y must equal `spring`.
   Curved kinds require `radius` to fit the x/z box; the dome must also fit in y.
   `kind: 4` is a box minus a vertical cylinder, used for a circular pool deck.
+  Kinds 3 and 4 may give an explicit `center: [x, z]`; the box then clips the
+  curved surface (a dome only on its near side, toward -z).
+  `kind: 8` is a drum bay: the box outside a vertical drum of `drumRadius`
+  around `center: [x, z]`, minus a round-headed opening along z of `radius`
+  springing at `spring` (no opening when `radius` is 0). The bay lies wholly on
+  one side of the drum centre in z. Face 4 is the concave drum face; faces 6–8
+  are the opening's intrados and jambs, as for arches.
+  `kind: 9` is a full ring: the box inside the annulus `radius`–`outerRadius`
+  around an axis along z through the box's x centre at height `spring`. A large
+  `outerRadius` makes a wall with a round opening. Faces 6 and 7 are the inner
+  and outer cylinders; faces 4 and 5 are the annular ends.
   `kind: 5` is a continuous round U-shaped tube in the y/z plane: `radius` is
   its bend centerline radius, `spring` the tangent height and `tubeRadius` its
   round cross-section radius. Its x/z center is the bounding-box midpoint.

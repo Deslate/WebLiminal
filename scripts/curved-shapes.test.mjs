@@ -61,3 +61,42 @@ test('original windows keep byte-identical shared WGSL', () => {
   assert(curved.includes('traceCurved(ro,rd,bestT,s)'));
   assert(curved.includes('traceCurved(ro,rd,maxT,s)'));
 });
+
+test('full ring charts cover only the ring inside its clipping box', () => {
+  // Inner radius 2, outer 2.4, axis 1 m above the floor: the box clips the lower arc.
+  const s={lo:[-2.4,0,-.2],hi:[2.4,3.4,.2],radius:2,outerRadius:2.4,spring:1,kind:9,material:0};
+  const result=buildLightAtlases([s]),u=new Uint32Array(result.surfaces),f=new Float32Array(result.surfaces);
+  for(const [face,r,code] of [[6,2,9],[7,2.4,10]]){
+    const o=face*16;assert.equal(u[o+13],code);
+    let area=0;for(let i=u[o];i<u[o]+u[o+1]*u[o+2];i++)area+=(result.cellSurfaces[i]>>>16)*.25*f[o+6];
+    // Arc above y = 0: total angle minus the clipped arc below the floor.
+    const clipped=2*Math.acos(1/r),expected=(2*Math.PI-clipped)*r*.4;
+    assert(Math.abs(area-expected)/expected<.03,`face ${face}`);
+  }
+  const cap=5*16;let area=0;
+  for(let i=u[cap];i<u[cap]+u[cap+1]*u[cap+2];i++)area+=(result.cellSurfaces[i]>>>16)*.25*f[cap+6];
+  assert(area>0&&area<Math.PI*(2.4*2.4-4));
+  for(const face of [0,1,2,3])assert.equal(u[face*16+1]*u[face*16+2],4,'box sides do not receive');
+});
+
+test('drum bays receive on their curved face and opening, not inside the drum', () => {
+  const s={lo:[-1,0,0],hi:[1,3,7],radius:.5,spring:1.5,drumRadius:6,center:[0,0],kind:8,material:0};
+  const result=buildLightAtlases([s]),u=new Uint32Array(result.surfaces),f=new Float32Array(result.surfaces);
+  const drum=4*16;assert.equal(u[drum+13],8);
+  const [u0,,u1]=[f[drum+8],f[drum+9],f[drum+10]];
+  assert(u0>Math.PI*6&&u1<2*Math.PI*6,'drum chart is the sector inside the bay');
+  let area=0;for(let i=u[drum];i<u[drum]+u[drum+1]*u[drum+2];i++)area+=(result.cellSurfaces[i]>>>16)*.25*f[drum+6];
+  // Drum face: 2 * asin(1/6) * 6 wide, 3 m high, minus the round-headed opening.
+  const opening=1*1.5+Math.PI*.25/2,expected=2*Math.asin(1/6)*6*3-opening;
+  assert(Math.abs(area-expected)/expected<.05);
+  assert.equal(u[6*16+13],1,'opening uses the arch chart');
+  const plain=buildLightAtlases([{...s,radius:0,spring:0}]),pu=new Uint32Array(plain.surfaces);
+  for(const face of [6,7,8])assert.equal(pu[face*16+1]*pu[face*16+2],4,'no opening without a radius');
+});
+
+test('drum bay and ring intersection is specialised only when present', () => {
+  const common=readFileSync(new URL('../src/render/common.wgsl',import.meta.url),'utf8');
+  const box={lo:[0,0,0],hi:[1,1,1],kind:2,material:0,radius:.5,spring:0};
+  assert(!curvedShader(common,{shapes:[box]}).includes('return traceCut('));
+  assert(curvedShader(common,{shapes:[{...box,kind:9}]}).includes('return traceCut('));
+});

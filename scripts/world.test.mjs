@@ -17,7 +17,8 @@ test('landmarks share a level identity and deterministic spatial addresses', () 
     const world = worldPosition(w.address, w.spawn);
     assert.equal(world.x - w.spawn.x, b.address.x * 64);
     assert(scene.shapes.length <= 80, 'Resident window shape budget');
-    for (const apertureWidth of [.5, 7.8]) for (const apertureDepth of [.5, 9])
+    const range = w.limits ?? { apertureWidth: [.5, 7.8], apertureDepth: [.5, 9] };
+    for (const apertureWidth of range.apertureWidth) for (const apertureDepth of range.apertureDepth)
       validateScene(w.scene({ apertureWidth, apertureDepth }));
   }
   assert.throws(() => loadWindow(level, { x: 123, z: 456 }), /Unloaded/);
@@ -29,11 +30,12 @@ test('original landmark retains exactly the old scene and GPU packing', () => {
   assert.deepEqual(packScene(scene).geometryData, packScene(original).geometryData);
 });
 
-test('flooded corridor is walkable without crossing its wall rails',()=>{
+test('flooded corridor is walkable without crossing its rails',()=>{
   const w=loadWindow(level,{x:0,z:1}),scene=w.scene(w.optics);
-  for(let z=8;z>=-10;z-=.25)assert(canStand(-2.3,z,scene.bounds,scene.solids));
-  assert(!canStand(-2,4.5,scene.bounds,scene.solids),'Curved rail clearance');
-  assert(!canStand(-3.1,4.5,scene.bounds,scene.solids),'Straight rail clearance');
+  for(let z=8.4;z>=-8.5;z-=.25)assert(canStand(-1.8,z,scene.bounds,scene.solids),`corridor ${z}`);
+  assert(!canStand(-1.8,-9,scene.bounds,scene.solids),'Hall rail');
+  assert(!canStand(-3.4,0,scene.bounds,scene.solids),'Wall rail clearance');
+  assert(!canStand(1,1,scene.bounds,scene.solids),'Curved wall');
 });
 test('changing navigation order cannot relocate authored world content', () => {
   const address={x:1,z:0};

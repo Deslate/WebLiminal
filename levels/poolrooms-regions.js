@@ -18,6 +18,14 @@ const authoredCells = new Map([
   ['-1,0', 'rotunda'], ['0,1', 'threshold'],
 ]);
 
+// Apertures sit over courts and lightwells; they may not grow past them.
+const limits = {
+  columns: { apertureWidth: [.5, 3.6], apertureDepth: [.5, 8.9] },
+  rings: { apertureWidth: [.5, 8.8], apertureDepth: [.5, 1.05] },
+  rotunda: { apertureWidth: [.5, 13.8], apertureDepth: [.5, 3.6] },
+  threshold: { apertureWidth: [.5, 8.9], apertureDepth: [.5, 17.1] },
+};
+
 export function createPoolroomsWorld(data, materials) {
   return { bookmarks, generate(address) {
     if (!Number.isSafeInteger(address.x) || !Number.isSafeInteger(address.z)) throw Error('Invalid world address');
@@ -27,38 +35,40 @@ export function createPoolroomsWorld(data, materials) {
     if (!recipe) throw Error(`Unloaded Poolrooms address: ${address.x},${address.z}`);
     const optics = { ...data.optics, apertureWidth: 4, apertureDepth: 4, exposure: 1.35 };
     const spawn = { x: 0, y: 1.62, z: 7, yaw: 0, pitch: -.12 };
-    if (recipe === 'columns') { spawn.x = -2.4; spawn.yaw = -.32; spawn.pitch = -.04; optics.waterLevel = .58; optics.apertureWidth = 3.2; optics.apertureDepth = 5.6; optics.exposure = 1.15; optics.focalLength = 26; }
-    if (recipe === 'rings') { optics.apertureWidth = 5; optics.apertureDepth = 9; }
-    if (recipe === 'rotunda') { spawn.z = -8.2; spawn.y = 2.24; spawn.yaw = Math.PI; spawn.pitch = .02; optics.waterLevel = .55; optics.apertureWidth = 7.8; optics.apertureDepth = 9; optics.exposure = 2.3; optics.focalLength = 24; optics.waveAmplitude = .012; }
-    if (recipe === 'threshold') { spawn.x = -2.3; spawn.z = 8; spawn.pitch = -.06; optics.apertureWidth = 5; optics.apertureDepth = 19; }
+    if (recipe === 'columns') { spawn.x = -1; spawn.z = 8.5; spawn.yaw = -.3; spawn.pitch = .02; optics.waterLevel = .58; optics.apertureWidth = 3.6; optics.apertureDepth = 8.9; optics.exposure = 1.15; optics.focalLength = 20; }
+    if (recipe === 'rings') { spawn.x = -.6; spawn.z = 7.6; spawn.yaw = .085; spawn.pitch = -.02; optics.apertureWidth = 8.8; optics.apertureDepth = 1.05; optics.focalLength = 14; }
+    if (recipe === 'rotunda') { spawn.z = -6.2; spawn.y = 2.24; spawn.yaw = Math.PI; spawn.pitch = .02; optics.waterLevel = .55; optics.apertureWidth = 13.8; optics.apertureDepth = 3.6; optics.exposure = 2.3; optics.focalLength = 11; optics.waveAmplitude = .012; }
+    if (recipe === 'threshold') { spawn.x = -1.8; spawn.z = 8.4; spawn.pitch = 0; optics.apertureWidth = 8.9; optics.apertureDepth = 17.1; optics.focalLength = 18; }
     return { spawn, optics, materials: materials[recipe] ?? materials, scene: options => buildRegion(recipe, options),
-      ...(recipe === 'threshold' ? {limits:{apertureWidth:[.5,7.8],apertureDepth:[.5,19]}} : {}) };
+      ...(limits[recipe] ? {limits:limits[recipe]} : {}) };
   } };
 }
 
 export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {}) {
   const shapes = [], solids = [];
-  const roof = kind === 'rotunda' ? 9.5 : kind === 'columns' ? 5.4 : kind === 'threshold' ? 4.15 : 7.5;
-  const bounds = { minX: -7, maxX: 7, minZ: -12, maxZ: 10, ceiling: roof };
+  const roof = kind === 'rotunda' ? 9.5 : kind === 'columns' ? 5.2 : kind === 'threshold' ? 6.2 : 5.4;
+  // The ring passage extends further so its terminal tunnel has depth.
+  const minZ = kind === 'rings' ? -16 : -12;
+  const bounds = { minX: -7, maxX: 7, minZ, maxZ: 10, ceiling: roof };
   const add = (lo, hi, material = 0, arch = null, solid = false) => {
     shapes.push({ lo, hi, material, kind: arch ? 1 : 0, radius: arch?.radius ?? 0, spring: arch?.spring ?? 0,
       density: Array(9).fill(8), probeStride: Array(9).fill(4) });
     if (solid) solids.push({ minX: lo[0], maxX: hi[0], minZ: lo[2], maxZ: hi[2] });
   };
-  add([-7, -.3, -12], [7, 0, 10], 2);
+  add([-7, -.3, minZ], [7, 0, 10], 2);
   shapes[0].density[3] = 24;
-  add([-7.3, 0, -12], [-7, roof + .3, 10]);
-  add([7, 0, -12], [7.3, roof + .3, 10]);
-  add([-7, 0, -12.3], [7, roof + .3, -12]);
+  add([-7.3, 0, minZ], [-7, roof + .3, 10]);
+  add([7, 0, minZ], [7.3, roof + .3, 10]);
+  add([-7, 0, minZ - .3], [7, roof + .3, minZ]);
   add([-7, 0, 10], [7, roof + .3, 10.3]);
-  const az = kind === 'threshold' ? -1.5 : kind === 'rotunda' ? 5.25 : kind === 'columns' ? 2 : 1;
-  const ax = kind === 'rotunda' ? 0 : kind === 'columns' ? .2 : -2.5;
+  const az = kind === 'threshold' ? -3.35 : kind === 'rotunda' ? 8.1 : kind === 'columns' ? 5.45 : 3.425;
+  const ax = kind === 'threshold' ? 2.4 : kind === 'rotunda' ? 0 : kind === 'columns' ? -4.3 : -.2;
   const a = { minX: ax - apertureWidth / 2, maxX: ax + apertureWidth / 2,
     minZ: az - apertureDepth / 2, maxZ: az + apertureDepth / 2, y: roof + .3 };
-  const roofMaterial=kind === 'threshold' ? 0 : 1;
-  add([-7, roof, -12], [a.minX, roof + .3, 10], roofMaterial);
-  add([a.maxX, roof, -12], [7, roof + .3, 10], roofMaterial);
-  add([a.minX, roof, -12], [a.maxX, roof + .3, a.minZ], roofMaterial);
+  const roofMaterial=['threshold','columns','rings'].includes(kind) ? 0 : 1;
+  add([-7, roof, minZ], [a.minX, roof + .3, 10], roofMaterial);
+  add([a.maxX, roof, minZ], [7, roof + .3, 10], roofMaterial);
+  add([a.minX, roof, minZ], [a.maxX, roof + .3, a.minZ], roofMaterial);
   add([a.minX, roof, a.maxZ], [a.maxX, roof + .3, 10], roofMaterial);
   const arch = (z, radius, spring, width = 14, x = 0, top = 7.5) => {
     add([x - width / 2, 0, z], [x + width / 2, top, z + .5], 0, { radius, spring });
@@ -72,79 +82,122 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     solids.push({ kind: 'circle', x, z, radius: r });
   };
   if (kind === 'columns') {
-    column(5.7, -.8, 3.2); column(-2.5, -6.8, 1.65);
-    column(9.5, 6.5, 4.5);
-    arch(-10.6, 2.2, 1.7, 14, 0, roof);
-    // Narrow structural slots project several hard-edged sun bands.
-    for (const z of [a.minZ + 1.35, a.minZ + 3.15]) add([a.minX, roof-.15, z], [a.maxX, roof+.3, z + .3], 1);
+    // A closed tiled hall around one large convex cylinder. Low sun enters a
+    // roofless light court and crosses the hall through tall slit windows
+    // behind the viewer, striping the cylinder. The hall ceiling is solid.
+    column(5, .5, 4);
+    column(1.9, -3.1, 1.2);
+    column(-3, -6, 2.5);
+    column(1.4, 5.9, .28);
+    // Full-height slit windows between the hall and the court.
+    let z0 = 1;
+    for (const z of [1.9, 3.5, 5.1, 6.7, 8.3]) { add([-2.5, 0, z0], [-2.2, roof, z]); z0 = z + 1; }
+    add([-2.5, 0, z0], [-2.2, roof, 10]);
+    solids.push({ minX: -2.5, maxX: -2.2, minZ: 1, maxZ: 10 });
+    // The court is shallow, so only high rays clear its roof edge.
+    add([-7, 0, .7], [-2.2, roof, 1], 0, null, true);
+    add([-6.4, 0, 1], [-6.1, roof, 10], 0, null, true);
   } else if (kind === 'rings') {
-    for (const z of [4, .5, -3, -6.5, -10]) arch(z, 2.9, .6);
-    for (let i = 0; i < 3; i++) add([-6.8, 0, 4.7 + i * .45], [-3.3, .16 + i * .14, 7.7], 0, null, true);
-  } else if (kind === 'rotunda') {
-    // One analytic hemispherical intrados, with an equal-area light chart.
-    add([-7, 3.2, -6], [7, 9.5, 6]);
-    Object.assign(shapes.at(-1), { kind: 3, radius: 6, spring: 3.2, oculus: 0 });
-    for(let i=0;i<8;i++){
-      const z0=-6+i*.15,z1=z0+.15;
-      const radius=Math.sqrt(Math.max(0,36-z0*z0));
-      solids.push({minX:-7,maxX:-Math.max(radius,.01),minZ:z0,maxZ:z1},
-        {minX:Math.max(radius,.01),maxX:7,minZ:z0,maxZ:z1});
+    // Seen through a large round portal: a flooded hall crossed by
+    // free-standing circular rings that end in a dark round tunnel. Daylight
+    // enters through a roof strip directly behind the portal wall, which the
+    // wall hides from the entrance.
+    const axisY = 1.35, ring = (lo, hi, radius, outerRadius) => {
+      add(lo, hi); Object.assign(shapes.at(-1), { kind: 9, radius, outerRadius, spring: axisY });
+    };
+    // The portal sits left of the ring axis, as in the reference view.
+    const portalX = -1.6, gap = Math.sqrt(3 * 3 - axisY * axisY);
+    ring([portalX - 5.8, 0, 4], [portalX + 5.8, roof, 4.5], 3, 20);
+    solids.push({ minX: -7, maxX: portalX - gap, minZ: 4, maxZ: 4.5 }, { minX: portalX + gap, maxX: 7, minZ: 4, maxZ: 4.5 });
+    for (const z of [.4, -2.8, -6, -9.2]) {
+      ring([-2.8, 0, z], [2.8, axisY + 2.8, z + .35], 2.6, 2.8);
+      for (const side of [-1, 1]) solids.push({ minX: side < 0 ? -2.46 : 2.21, maxX: side < 0 ? -2.21 : 2.46, minZ: z, maxZ: z + .35 });
     }
-    // Daylight enters a shared lightwell behind the arcade.
-    for (const x of [-4.6, -2.3, 0, 2.3, 4.6]) arch(4.65, .86, 2.05, 2.3, x, 3.2);
-    // Dry deck bounds a circular basin; its submerged floor stays a true receiver.
-    add([-7, 0, -6], [7, .62, 6]);
-    Object.assign(shapes.at(-1), { kind: 4, radius: 4.7 });
-    // Walking stays on the front deck until vertical locomotion is supported.
-    solids.push({ minX: -7, maxX: 7, minZ: -4.85, maxZ: 10 });
-    add([-7, 0, 6], [7, .62, 10]);
-    add([-7, 0, -12], [7, .62, -6]);
-    arch(-6.7, 3.15, 1.6, 14, 0, roof);
-    for (const x of [-.65, .65]) {
-      const radius=.48, tubeRadius=.026, spring=1.18, z=-4.72;
-      add([x-tubeRadius, 0, z-radius-tubeRadius], [x+tubeRadius, spring+radius+tubeRadius, z+radius+tubeRadius], 3);
-      Object.assign(shapes.at(-1), { kind: 5, radius, tubeRadius, spring });
-      solids.push({ kind: 'circle', x, z: z-radius, radius: tubeRadius });
+    ring([-7, 0, -13], [7, roof, -12.6], 2.2, 20);
+    ring([-7, 0, minZ], [7, roof, -13], 2.2, 20);
+    solids.push({ minX: -7, maxX: 7, minZ, maxZ: -12.6 });
+    // The hall is narrower than the window; steps descend into the water
+    // along its left wall.
+    add([-7, 0, minZ], [-4.6, roof, 4], 0, null, true);
+    for (let i = 0; i < 3; i++) add([-4.6, 0, .9], [-3.2, .62 + i * .2, 2.7 - i * .45], 0, null, true);
+    add([4.2, 0, minZ], [7, roof, 4.5], 0, null, true);
+  } else if (kind === 'rotunda') {
+    // A circular drum and hemispherical dome seen through a thick entrance
+    // wall. Five round-headed openings in the drum lead to a daylit well
+    // behind it; the dome springs directly above them. A circular basin
+    // with a stainless ladder sits in the centre of a dry deck.
+    const cz = .5, R = 5.2, spring = 3.8, deck = .62, back = 6.2;
+    const curved = (lo, hi, extra) => { add(lo, hi); Object.assign(shapes.at(-1), extra); };
+    curved([-7, spring, -4.7], [7, roof, cz + R + .3], { kind: 3, radius: R, spring, oculus: 0, center: [0, cz] });
+    // Thick entrance wall with a tall round-headed doorway; the same opening
+    // continues through the near side of the drum.
+    const door = { radius: 1.15, spring: spring - 1.15 };
+    add([-7, 0, -5.9], [7, roof, -4.7], 0, door);
+    solids.push({ minX: -7, maxX: -door.radius, minZ: -5.9, maxZ: -4.7 }, { minX: door.radius, maxX: 7, minZ: -5.9, maxZ: -4.7 });
+    // Drum: plain near pieces, then five bays with openings along the far half.
+    const bay = (x0, x1, z0, z1, radius, archSpring = deck + 1.9) => curved([x0, deck, z0], [x1, spring, z1],
+      { kind: 8, radius, spring: archSpring, drumRadius: R, center: [0, cz] });
+    bay(-7, 7, -4.7, cz, door.radius, door.spring);
+    const edges = [-5.4, -3.15, -1.05, 1.05, 3.15, 5.4];
+    for (let i = 0; i < 5; i++) bay(edges[i], edges[i + 1], cz, back, .6);
+    add([-7, deck, cz], [-5.4, spring, back]); add([5.4, deck, cz], [7, spring, back]);
+    // Dry deck with an exact circular basin, and the daylit well floor.
+    curved([-7, 0, -12], [7, deck, back], { kind: 4, radius: 3.8, center: [0, cz] });
+    add([-7, 0, back], [7, deck, 10]);
+    // Walking stays in the entrance and on the near deck.
+    solids.push({ minX: -7, maxX: 7, minZ: -3.4, maxZ: 10 });
+    for (const x of [-.6, .6]) {
+      const radius=.48, tubeRadius=.026, rail=1.18, z=cz-3.8-.02;
+      add([x-tubeRadius, 0, z-radius-tubeRadius], [x+tubeRadius, rail+radius+tubeRadius, z+radius+tubeRadius], 3);
+      Object.assign(shapes.at(-1), { kind: 5, radius, tubeRadius, spring: rail });
     }
   } else if (kind === 'threshold') {
-    // A narrow, flooded passage opens around one continuous curved wall.
-    // The slightly larger roof cutout leaves a real daylight slot at its rim.
-    const cx=3.2, cz=4.5, radius=4.8, roofRadius=5.4, lowRoof=3.65;
-    add([cx-radius,0,cz-radius],[cx+radius,lowRoof,cz+radius]);
+    // A narrow flooded corridor between a straight railed wall and one large
+    // convex cylinder. The cylinder rises through a wider circular ceiling
+    // recess; daylight reaches it down that annular gap. The corridor ends in
+    // a taller hall lit from its own roof; the sky itself is never in view.
+    const cx=2.4, cz=1, radius=3.3, recess=4.5, lowRoof=3.4, hallZ=-5;
+    add([cx-radius,0,cz-radius],[cx+radius,roof,cz+radius]);
     Object.assign(shapes.at(-1),{kind:2,radius});
-    const curvedFootprint={kind:'circle',x:cx,z:cz,radius};solids.push(curvedFootprint);
-    add([cx-roofRadius,lowRoof,cz-roofRadius],[cx+roofRadius,lowRoof+.25,cz+roofRadius],0);
-    Object.assign(shapes.at(-1),{kind:4,radius:roofRadius});
-    // Complete the ceiling without a seam or a painted light band.
-    add([-7,lowRoof,-12],[cx-roofRadius,lowRoof+.25,10],0);
-    add([cx-roofRadius,lowRoof,cz+roofRadius],[7,lowRoof+.25,10],0);
-    // The left wall has actual submerged openings beneath its tile courses.
-    add([-3.8,.58,-12],[-3.5,lowRoof,10],0);
-    for(const [lo,hi] of [[-12,-.5],[.8,3.2],[4.5,10]]) add([-3.8,0,lo],[-3.5,.58,hi],0);
-    const leftFootprint={minX:-3.8,maxX:-3.5,minZ:-12,maxZ:10};solids.push(leftFootprint);
-    // Round stainless wall rails, offset from tile faces with round brackets.
-    const tube=.022, height=1.08;
+    solids.push({kind:'circle',x:cx,z:cz,radius});
+    add([cx-recess,lowRoof,cz-recess],[cx+recess,roof,cz+recess]);
+    Object.assign(shapes.at(-1),{kind:4,radius:recess});
+    // Corridor ceiling around the recess; it stops at the hall threshold.
+    add([-7,lowRoof,hallZ],[cx-recess,lowRoof+.25,10]);
+    add([cx-recess,lowRoof,cz+recess],[7,lowRoof+.25,10]);
+    add([cx-recess,lowRoof,hallZ],[7,lowRoof+.25,cz-recess]);
+    add([cx+recess,lowRoof,cz-recess],[7,lowRoof+.25,cz+recess]);
+    // Straight left wall with a low dark opening at the waterline.
+    add([-3.9,.62,hallZ],[-3.6,lowRoof,10]);
+    add([-3.9,0,hallZ],[-3.6,.62,1]);add([-3.9,0,2.8],[-3.6,.62,10]);
+    solids.push({minX:-3.9,maxX:-3.6,minZ:hallZ,maxZ:10});
+    // Near round column at the corridor mouth.
+    add([-4.15,0,5.8],[-2.55,lowRoof,7.4]);
+    Object.assign(shapes.at(-1),{kind:2,radius:.8});
+    solids.push({kind:'circle',x:-3.35,z:6.6,radius:.8});
+    // Square pillar and return wall closing the right side at the hall.
+    add([-.7,0,-5.6],[0,lowRoof+.25,-4.9]);
+    add([0,0,-5.6],[7,lowRoof+.25,-1.4]);
+    solids.push({minX:-.7,maxX:7,minZ:-5.6,maxZ:-1.4});
+    // Free-standing stainless rails: horizontal tubes on vertical posts that
+    // stand in the water, not brackets on the tiles.
+    const tube=.024, height=1.02;
     const rail=(axis,lo,hi)=>{add(lo,hi,3);Object.assign(shapes.at(-1),{kind:6,axis,radius:tube});};
-    rail(2,[-3.3-tube,height-tube,-11.8],[-3.3+tube,height+tube,9.5]);
-    rail(0,[-3.3,height-tube,-11.8-tube],[.7,height+tube,-11.8+tube]);
-    solids.push({minX:-3.3,maxX:.7,minZ:-11.8-tube,maxZ:-11.8+tube});
-    const railRadius=radius+.2;
-    add([cx-railRadius-tube,height-tube,cz-railRadius-tube],[cx+railRadius+tube,height+tube,cz+railRadius+tube],3);
-    Object.assign(shapes.at(-1),{kind:7,radius:railRadius,tubeRadius:tube});
-    // The wall/rail gap is narrower than the player: their expanded footprints
-    // form one solid clearance envelope, while water remains free below rails.
-    curvedFootprint.radius=railRadius+tube;leftFootprint.maxX=-3.3+tube;
-    for(const z of [-9,-6,-3,0,3,6,9]) rail(0,[-3.5,height-tube,z-tube],[-3.28,height+tube,z+tube]);
-    // Radial wall offsets meet the continuous ring at the same z coordinate.
-    for(const z of [1.5,4.5,7.5]) {
-      const dz=z-cz, wallX=cx-Math.sqrt(radius*radius-dz*dz), railX=cx-Math.sqrt(railRadius*railRadius-dz*dz);
-      rail(0,[railX,height-tube,z-tube],[wallX+.01,height+tube,z+tube]);
-    }
+    const post=(x,z)=>{add([x-tube,0,z-tube],[x+tube,height,z+tube],3);Object.assign(shapes.at(-1),{kind:2,radius:tube});};
+    rail(2,[-3.25-tube,height-tube,-4.6],[-3.25+tube,height+tube,5.4]);
+    for(const z of [4.6,2.2,-.2,-2.6]) post(-3.25,z);
+    solids.push({minX:-3.6,maxX:-3.25+tube,minZ:-4.6,maxZ:5.4});
+    rail(0,[-1.2,height-tube,-5.25-tube],[-.7,height+tube,-5.25+tube]);
+    post(-1.2,-5.25);
+    solids.push({minX:-1.2,maxX:-.7,minZ:-5.25-tube,maxZ:-5.25+tube});
+    rail(0,[-6.6,height-tube,-9-tube],[1.4,height+tube,-9+tube]);
+    for(const x of [-5.4,-3.2,-1,1.2]) post(x,-9);
+    solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
-  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 5 } : kind === 'threshold' ? {sun:[0,0,0],skyScale:4} : undefined;
-  // The complete 9.4 m basin fits inside this simulation rectangle. Do not
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.791,.5,.353] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 5 } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [.25,.85,.47] } : kind === 'threshold' ? {sun:[0,0,0],skyScale:4} : undefined;
+  // The complete 7.6 m basin fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
-  const waterBounds = kind === 'rotunda' ? {minX:-5,maxX:5,minZ:-5,maxZ:5} : bounds;
+  const waterBounds = kind === 'rotunda' ? {minX:-4,maxX:4,minZ:-3.5,maxZ:4.5} : bounds;
   return { bounds, shapes, solids, illumination, conductorMaterials: ['rotunda','threshold'].includes(kind) ? [3] : undefined,
     reflectionSamples: kind === 'rotunda' ? {glaze:24,rough:32} : kind === 'threshold' ? {glaze:8,rough:16} : undefined,
     groutHalfWidth: ['columns','rotunda','threshold'].includes(kind) ? .0012 : undefined,
