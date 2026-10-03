@@ -41,7 +41,9 @@ export function buildLightAtlases(shapes,gridScale=1){
   let bounds=face<6?[...uvAxes.map(k=>s.lo[k]),...uvAxes.map(k=>s.hi[k])]:[-s.spring,s.lo[2],Math.PI*s.radius+s.spring,s.hi[2]];
   const curved=face>=6;
   let disabled=face>=6&&s.kind!==1;
-  if(s.kind===10){disabled=![2,3,6,8].includes(face);const rise=s.spring-s.lo[1];
+  if(s.kind===10){const c=centerOf(s),k=face<2?0:2,plane=face<6&&face!==2&&face!==3?(face%2?s.hi:s.lo)[k]:0;
+   const cuts=[0,1,4,5].includes(face)&&Math.abs(plane-(k?c[1]:c[0]))<s.outerRadius-1e-6;
+   disabled=!([2,3,6,8].includes(face)||cuts);const rise=s.spring-s.lo[1];
    if(face===6)bounds=[0,s.lo[1],2*Math.PI*s.radius,s.hi[1]];
    if(face===8)bounds=[-rise,0,Math.PI*s.openingRadius+rise,s.openings*(s.outerRadius-arcadeStart(s))];}
   if(s.kind===9){disabled=![4,5,6,7].includes(face);if(face===6||face===7)bounds=[0,s.lo[2],2*Math.PI*(face===6?s.radius:s.outerRadius),s.hi[2]];}
@@ -71,8 +73,8 @@ export function buildLightAtlases(shapes,gridScale=1){
  const point=(g,u,v)=>{const f=g.members[0],s=shapes[f.i];if(g.curved){const a=Math.max(0,Math.min(Math.PI,u/s.radius));return [(s.lo[0]+s.hi[0])/2+Math.cos(a)*s.radius,s.spring+(u<0?u:u>Math.PI*s.radius?Math.PI*s.radius-u:Math.sin(a)*s.radius),v];}const p=[0,0,0];p[f.axis]=f.plane;p[f.uvAxes[0]]=u;p[f.uvAxes[1]]=v;return p;};
  const owner=(g,u,v)=>{
   if(g.curved){const m=g.members[0],s=shapes[m.i];
-   if(s.kind===10&&m.face===6){const p=curvedPoint(s,6,u,v);return inOpening(s,p)?null:m.sid;}
-   if(s.kind===10){const p=revealPoint(s,u,v);return inAnnulus(s,p)&&p[1]<=s.hi[1]?m.sid:null;}
+   if(s.kind===10&&m.face===6){const p=curvedPoint(s,6,u,v);return inOpening(s,p)||!inBox(s,p)?null:m.sid;}
+   if(s.kind===10){const p=revealPoint(s,u,v);return inAnnulus(s,p)&&inBox(s,p)?m.sid:null;}
    if(s.center&&(s.kind===3||s.kind===4)&&!inBox(s,curvedPoint(s,m.face,u,v)))return null;
    if(s.kind===9){const p=ringPoint(s,m.face===6?s.radius:s.outerRadius,u,v);return inBox(s,p)?m.sid:null;}
    return m.i*9+(s.kind>=2?m.face:u<0?8:u>Math.PI*s.radius?7:6);}

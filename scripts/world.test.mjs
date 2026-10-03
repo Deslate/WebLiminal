@@ -32,7 +32,10 @@ test('original landmark retains exactly the old scene and GPU packing', () => {
 
 test('flooded corridor is walkable without crossing its rails',()=>{
   const w=loadWindow(level,{x:0,z:1}),scene=w.scene(w.optics);
-  for(let z=8.4;z>=-8.5;z-=.25)assert(canStand(-1.8,z,scene.bounds,scene.solids),`corridor ${z}`);
+  // Enter past the near column, then follow the corridor through the doorway.
+  for(let z=8.4;z>=4;z-=.25)assert(canStand(-1.8,z,scene.bounds,scene.solids),`mouth ${z}`);
+  for(let x=-1.8;x>=-2.4;x-=.1)assert(canStand(x,4,scene.bounds,scene.solids),`step ${x}`);
+  for(let z=4;z>=-8.5;z-=.25)assert(canStand(-2.4,z,scene.bounds,scene.solids),`corridor ${z}`);
   assert(!canStand(-1.8,-9,scene.bounds,scene.solids),'Hall rail');
   assert(!canStand(-3.4,0,scene.bounds,scene.solids),'Wall rail clearance');
   assert(!canStand(1,1,scene.bounds,scene.solids),'Curved wall');

@@ -197,15 +197,20 @@ fn traceArcade(ro:vec3f,rd:vec3f,maxT:f32,s:Shape)->CurveHit {
  var hit=CurveHit(maxT,vec3f(0),0u);
  let c=shapeCenter(s);let o=ro.xz-c;
  if(abs(rd.y)>.000001){for(var k=0u;k<2u;k++){
-  let y=select(s.lo.y,s.hi.y,k==1u);let t=(y-ro.y)/rd.y;let d=ro.xz+rd.xz*t-c;
-  if(t>EPS&&t<hit.t&&inAnnulus(d,s)&&!arcadeOpening(d,y,s)){hit=CurveHit(t,vec3f(0,select(-1.,1.,k==1u),0),2u+k);}
+  let y=select(s.lo.y,s.hi.y,k==1u);let t=(y-ro.y)/rd.y;let p=ro+rd*t;let d=p.xz-c;
+  if(t>EPS&&t<hit.t&&all(p.xz>=s.lo.xz)&&all(p.xz<=s.hi.xz)&&inAnnulus(d,s)&&!arcadeOpening(d,y,s)){hit=CurveHit(t,vec3f(0,select(-1.,1.,k==1u),0),2u+k);}
  }}
+ // Vertical box planes that cut through the wall are solid faces.
+ for(var axis=0u;axis<3u;axis+=2u){if(abs(rd[axis])>.000001){for(var k=0u;k<2u;k++){
+  let plane=select(s.lo[axis],s.hi[axis],k==1u);let t=(plane-ro[axis])/rd[axis];let p=ro+rd*t;let d=p.xz-c;
+  if(t>EPS&&t<hit.t&&inBox(p,s)&&inAnnulus(d,s)&&!arcadeOpening(d,p.y,s)){var n=vec3f(0);n[axis]=select(-1.,1.,k==1u);hit=CurveHit(t,n,axis*2u+k);}
+ }}}
  let a=dot(rd.xz,rd.xz);let b=dot(o,rd.xz);
  for(var side=0u;side<2u;side++){
   let R=select(s.params.x,s.params.z,side==1u);let disc=b*b-a*(dot(o,o)-R*R);
   if(a>.000001&&disc>=0.){for(var k=0u;k<2u;k++){
    let t=(-b+select(-sqrt(disc),sqrt(disc),k==1u))/a;let p=ro+rd*t;let d=p.xz-c;
-   if(t>EPS&&t<hit.t&&p.y>=s.lo.y&&p.y<=s.hi.y&&!arcadeOpening(d,p.y,s)){let radial=normalize(vec3f(d.x,0,d.y));hit=CurveHit(t,select(-radial,radial,side==1u),6u+side);}
+   if(t>EPS&&t<hit.t&&inBox(p,s)&&!arcadeOpening(d,p.y,s)){let radial=normalize(vec3f(d.x,0,d.y));hit=CurveHit(t,select(-radial,radial,side==1u),6u+side);}
   }}
  }
  let n=s.info.w>>8u;let step=2.*PI/f32(n);let r=s.params.w;
@@ -214,12 +219,12 @@ fn traceArcade(ro:vec3f,rd:vec3f,maxT:f32,s:Shape)->CurveHit {
   let ol=dot(o,px);let dl=dot(rd.xz,px);
   if(abs(dl)>.000001){for(var side=0u;side<2u;side++){
    let lat=select(-r,r,side==1u);let t=(lat-ol)/dl;let p=ro+rd*t;let d=p.xz-c;
-   if(t>EPS&&t<hit.t&&p.y>=s.lo.y&&p.y<s.params.y&&dot(d,ax)>0.&&inAnnulus(d,s)){hit=CurveHit(t,-sign(lat)*vec3f(px.x,0,px.y),8u);}
+   if(t>EPS&&t<hit.t&&inBox(p,s)&&p.y<s.params.y&&dot(d,ax)>0.&&inAnnulus(d,s)){hit=CurveHit(t,-sign(lat)*vec3f(px.x,0,px.y),8u);}
   }}
   let hy=ro.y-s.params.y;let A=dl*dl+rd.y*rd.y;let B=ol*dl+hy*rd.y;let C=ol*ol+hy*hy-r*r;let D=B*B-A*C;
   if(A>.000001&&D>=0.){for(var k=0u;k<2u;k++){
    let t=(-B+select(-sqrt(D),sqrt(D),k==1u))/A;let p=ro+rd*t;let d=p.xz-c;
-   if(t>EPS&&t<hit.t&&p.y>=s.params.y&&p.y<=s.hi.y&&dot(d,ax)>0.&&inAnnulus(d,s)){
+   if(t>EPS&&t<hit.t&&p.y>=s.params.y&&inBox(p,s)&&dot(d,ax)>0.&&inAnnulus(d,s)){
     hit=CurveHit(t,-normalize(dot(d,px)*vec3f(px.x,0,px.y)+vec3f(0,p.y-s.params.y,0)),8u);}
   }}
  }
@@ -286,7 +291,7 @@ fn traceCurved(ro:vec3f,rd:vec3f,maxT:f32,s:Shape)->CurveHit {
    let a=dot(rd.xz,rd.xz);let b=dot(o.xz,rd.xz);let disc=b*b-a*(dot(o.xz,o.xz)-r*r);
    if(a>.000001&&disc>=0.){for(var k=0u;k<2u;k++){
     let t=(-b+select(-sqrt(disc),sqrt(disc),k==1u))/a;let p=ro+rd*t;
-    if(t>EPS&&t<hit.t&&p.y>=s.lo.y&&p.y<=s.hi.y){hit=CurveHit(t,normalize(vec3f(c.x-p.x,0,c.z-p.z)),6u);}
+    if(t>EPS&&t<hit.t&&inBox(p,s)){hit=CurveHit(t,normalize(vec3f(c.x-p.x,0,c.z-p.z)),6u);}
    }}
    return hit;
   }

@@ -73,7 +73,7 @@ shader code is specialized only into windows that need it; original box/arch
 windows retain exactly the original shared WGSL. Cylinder and hemisphere light
 charts use arc length at the radius by height, giving equal physical cell areas
 (`dA = R d(phi) dy`). Planar coverage excludes the disk/sphere cutouts.
-The rotunda player stays in the ambulatory behind the entrance opening
+The rotunda player stays in the antechamber behind the front wall
 because vertical locomotion is not implemented. Its basin remains dynamically simulated. Material slot 3 supplies
 stainless steel on continuous round handrails only in the new windows. Each
 rail has two vertical cylindrical legs joined by a half-torus bend. The straight
@@ -90,7 +90,7 @@ glazed ceramic and 32 on rough surfaces; the threshold uses 8/16. Metal retains
 pixel sampling and physical BRDF parameters are unchanged. This is a finite
 angular sampling tradeoff; the origin retains its historical 48/64 directions.
 
-The rotunda's water rectangle is 10.5 x 10.5 m, enclosing the complete 10 m basin;
+The rotunda's water rectangle is 21 x 21 m, enclosing the complete flooded hall;
 dry entrance/deck space is omitted from finite-depth updates. Simulation spacing
 remains 1/32 m. The original window retains its historical rectangle.
 Column Reservoir and Still Rotunda use 2.4 mm grout, reduced ceramic color
@@ -111,14 +111,16 @@ see it; ceiling reflections are not openings.
   behind the viewer and crosses the hall through five full-height slit windows,
   striping the cylinder from the water upward. The court is shallow, so only
   high rays clear its roof edge and the near water stays in shadow.
-- **Lightwell Threshold.** A 3.4 m corridor between a straight left wall and a
-  3.3 m radius convex cylinder, with a round column at its mouth. The cylinder
-  rises through a 4.5 m radius circular recess in the ceiling; overcast daylight
-  reaches it down the 1.2 m annular gap. The recess shaft is tall enough that
-  the sky is not visible from the corridor. Free-standing stainless rails stand
-  in the water on round posts; the left wall has a low dark opening at the
-  waterline. The corridor ends in a taller hall lit from its own roof, with a
-  square pillar, a short rail stub and a cross rail. Tiles use a 180 mm module
+- **Lightwell Threshold.** A corridor with a 4.2 m ceiling between a straight
+  left wall and a 3.3 m radius convex cylinder, 2.3 m apart at their closest,
+  with a slim round column at its mouth. The cylinder rises through a 3.9 m
+  radius circular recess in the ceiling; overcast daylight reaches it down the
+  0.6 m annular gap, whose edge lands above the far doorway's pillar. The
+  recess shaft is tall enough that the sky is not visible from the corridor.
+  Free-standing stainless rails stand in the water on round posts; the left
+  wall has a low dark opening at the waterline. The corridor ends at a narrow
+  1.8 m doorway under a lintel, opening into a taller hall lit from its own
+  roof, with a square pillar, a short rail stub and a cross rail. Tiles use a 180 mm module
   and 2.4 mm grout on planar and curved faces, including the photon material's
   setting-out grid. Submerged ceramic uses darker green diffuse reflectance and
   matte glaze (perceptual roughness around 0.4–0.49, before footprint variance).
@@ -126,20 +128,25 @@ see it; ceiling reflections are not openings.
   by one 2.6 m radius round hole on a common axis; the last wall opens into a
   dark round tunnel. The viewer stands in front of the first wall, right of the
   axis, so the holes stack into a chain of rings. Each flooded segment between
-  walls has a flat tiled ceiling. Steps lean against the second wall left of
-  its hole and descend to the right into the water. Daylight reaches every
+  walls has a flat tiled ceiling. Steps, seen through the second hole, lean
+  against the third wall left of its hole and descend to the right into the
+  water. Daylight reaches every
   segment from a side court through full-height openings in the right side
   wall, which the holes keep out of view; the window extends to z = -16 m to
   give the tunnel depth.
-- **Still Rotunda.** One continuous tiled wall of revolution: a 6.1 m radius,
-  0.8 m thick drum rises without a ledge into a hemispherical dome. Ten equal,
-  low round-headed openings (2.3 m wide, 2.85 m high, piers about two thirds
-  of an opening) pierce its base at even intervals around the full
-  circumference. A concentric 1.3 m tiled ambulatory runs behind them, open to
-  daylight above, so each opening shows lit tile. The viewer stands in the
-  ambulatory 1.6 m behind the opening facing -z, framed by it, and looks across
-  a 10 m basin with a stainless U-tube ladder. Only this window is 17 m wide;
-  the others are 14 m.
+- **Still Rotunda.** One continuous tiled wall of revolution: a 9.5 m radius,
+  0.8 m thick drum rises without a ledge into a hemispherical dome with a 3 m
+  oculus at its crown, which admits a high sun and the sky. Twelve equal, low
+  round-headed openings (3 m wide, 3.6 m above the water, piers about two
+  thirds of an opening) pierce its base at even intervals around the full
+  circumference. A thin, flat plaster front wall cuts the circle as a chord;
+  the viewer stands in a dark antechamber 1.4 m behind its narrow doorway,
+  which frames the hall. Shallow water (0.25 m) covers the whole hall floor and
+  runs under the openings; a 2.55 m deep pit, 7.85 m in radius, fills the
+  centre. The stainless U-tube ladder stands on the shallow floor at the pit's
+  near rim and reaches down to the pit floor. Behind the openings a dry 1.3 m
+  tiled ambulatory is open to daylight above. Only this window is 24 m wide and
+  28 m deep, with its floor slab 2 m lower; the others are 14 m wide.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
 cells/m on general new surfaces and 24/m on new pool floors. This bounds content
@@ -179,7 +186,9 @@ All lengths are metres, `y` up.
   spring at `spring`. Opening 0 faces -z; the rest follow at equal angles, and
   they may not overlap at the inner face. Face 6 is the inner wall, faces 2/3
   the annular ends, and face 8 one chart holding every opening's jambs and head,
-  unfolded across the opening and stacked by depth.
+  unfolded across the opening and stacked by depth. A box side that cuts
+  through the wall is a solid planar face (0/1/4/5); every curved surface and
+  cylinder cutout is clipped to its box.
   `kind: 9` is a full ring: the box inside the annulus `radius`–`outerRadius`
   around an axis along z through the box's x centre at height `spring`. A large
   `outerRadius` makes a wall with a round opening. Faces 6 and 7 are the inner
