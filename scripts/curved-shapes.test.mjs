@@ -79,24 +79,24 @@ test('full ring charts cover only the ring inside its clipping box', () => {
   for(const face of [0,1,2,3])assert.equal(u[face*16+1]*u[face*16+2],4,'box sides do not receive');
 });
 
-test('drum bays receive on their curved face and opening, not inside the drum', () => {
-  const s={lo:[-1,0,0],hi:[1,3,7],radius:.5,spring:1.5,drumRadius:6,center:[0,0],kind:8,material:0};
+test('arcade drum charts the wall and its equal radial openings without overlap', () => {
+  const s={lo:[-5,0,-5],hi:[5,3,5],kind:10,material:0,radius:4,outerRadius:5,spring:1.5,openingRadius:.6,openings:8};
   const result=buildLightAtlases([s]),u=new Uint32Array(result.surfaces),f=new Float32Array(result.surfaces);
-  const drum=4*16;assert.equal(u[drum+13],8);
-  const [u0,,u1]=[f[drum+8],f[drum+9],f[drum+10]];
-  assert(u0>Math.PI*6&&u1<2*Math.PI*6,'drum chart is the sector inside the bay');
-  let area=0;for(let i=u[drum];i<u[drum]+u[drum+1]*u[drum+2];i++)area+=(result.cellSurfaces[i]>>>16)*.25*f[drum+6];
-  // Drum face: 2 * asin(1/6) * 6 wide, 3 m high, minus the round-headed opening.
-  const opening=1*1.5+Math.PI*.25/2,expected=2*Math.asin(1/6)*6*3-opening;
-  assert(Math.abs(area-expected)/expected<.05);
-  assert.equal(u[6*16+13],1,'opening uses the arch chart');
-  const plain=buildLightAtlases([{...s,radius:0,spring:0}]),pu=new Uint32Array(plain.surfaces);
-  for(const face of [6,7,8])assert.equal(pu[face*16+1]*pu[face*16+2],4,'no opening without a radius');
+  const covered=face=>{const o=face*16;let a=0;for(let i=u[o];i<u[o]+u[o+1]*u[o+2];i++)a+=(result.cellSurfaces[i]>>>16)*.25*f[o+6];return a;};
+  assert.equal(u[6*16+13],6);assert.equal(u[8*16+13],11);
+  const opening=2*.6*1.5+Math.PI*.36/2;
+  assert(Math.abs(covered(6)-(2*Math.PI*4*3-8*opening))/(2*Math.PI*4*3)<.02,'inner wall minus openings');
+  assert(Math.abs(covered(3)-Math.PI*9)/(Math.PI*9)<.03,'top annulus');
+  // Each reveal: two jambs and a round head, about one wall thickness deep.
+  const reveal=8*(2*1.5+Math.PI*.6)*1;
+  assert(Math.abs(covered(8)-reveal)/reveal<.05,'opening reveals');
+  for(const face of [0,1,4,5,7])assert.equal(u[face*16+1]*u[face*16+2],4);
 });
-
-test('drum bay and ring intersection is specialised only when present', () => {
+test('ring and arcade intersection is specialised only when present', () => {
   const common=readFileSync(new URL('../src/render/common.wgsl',import.meta.url),'utf8');
   const box={lo:[0,0,0],hi:[1,1,1],kind:2,material:0,radius:.5,spring:0};
-  assert(!curvedShader(common,{shapes:[box]}).includes('return traceCut('));
-  assert(curvedShader(common,{shapes:[{...box,kind:9}]}).includes('return traceCut('));
+  for(const [kind,call] of [[9,'return traceRing('],[10,'return traceArcade(']]){
+    assert(!curvedShader(common,{shapes:[box]}).includes(call));
+    assert(curvedShader(common,{shapes:[{...box,kind}]}).includes(call));
+  }
 });

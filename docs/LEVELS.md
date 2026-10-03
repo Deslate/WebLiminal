@@ -64,7 +64,7 @@ for teleport, movement keys clear on transitions, and lab/editable controls own
 their input. Other controls retain their meaning.
 
 New regions use boxes, analytic arch cuts, capped cylinders, a hemispherical
-intrados, drum bays and full rings. The circular basin deck is one box with an
+intrados, arcade drums and full rings. The circular basin deck is one box with an
 exact cylindrical cutout; its receiving area excludes the hole. Columns use
 exact circular player footprints, expanded by player radius during collision
 checks. Threshold clearance includes its wall rails and posts, with a
@@ -73,8 +73,8 @@ shader code is specialized only into windows that need it; original box/arch
 windows retain exactly the original shared WGSL. Cylinder and hemisphere light
 charts use arc length at the radius by height, giving equal physical cell areas
 (`dA = R d(phi) dy`). Planar coverage excludes the disk/sphere cutouts.
-The rotunda player stays in the entrance doorway and near deck because vertical
-locomotion is not implemented. Its basin remains dynamically simulated. Material slot 3 supplies
+The rotunda player stays in the entrance opening and the dark well behind it
+because vertical locomotion is not implemented. Its basin remains dynamically simulated. Material slot 3 supplies
 stainless steel on continuous round handrails only in the new windows. Each
 rail has two vertical cylindrical legs joined by a half-torus bend. The straight
 legs intersect analytically; the bend uses bounded distance root finding with
@@ -90,7 +90,7 @@ glazed ceramic and 32 on rough surfaces; the threshold uses 8/16. Metal retains
 pixel sampling and physical BRDF parameters are unchanged. This is a finite
 angular sampling tradeoff; the origin retains its historical 48/64 directions.
 
-The rotunda's water rectangle is 8 x 8 m, enclosing the complete 7.6 m basin;
+The rotunda's water rectangle is 7 x 7 m, enclosing the complete 6 m basin;
 dry entrance/deck space is omitted from finite-depth updates. Simulation spacing
 remains 1/32 m. The original window retains its historical rectangle.
 Column Reservoir and Still Rotunda use 2.4 mm grout, reduced ceramic color
@@ -122,18 +122,21 @@ see it; ceiling reflections are not openings.
   and 2.4 mm grout on planar and curved faces, including the photon material's
   setting-out grid. Submerged ceramic uses darker green diffuse reflectance and
   matte glaze (perceptual roughness around 0.4–0.49, before footprint variance).
-- **Ring Passage.** The viewer stands behind a wall with a 3 m radius round
-  portal, offset from the axis of four free-standing tiled rings (2.6–2.8 m
-  radius, 0.35 m deep) that cross a flooded hall and end at a dark round
-  tunnel. Steps descend into the water along the left wall. Daylight enters a
-  roof strip directly behind the portal wall, which hides it from the entrance;
-  the window extends to z = -16 m to give the tunnel depth.
-- **Still Rotunda.** The viewer stands in a 1.2 m thick entrance wall whose tall
-  round-headed doorway continues through the near side of a 5.2 m radius drum.
-  A hemispherical dome springs directly from the drum. Five round-headed
-  openings in the far half of the drum lead to a daylit well behind it. The
-  openings run parallel to the entrance axis rather than radially. A circular
-  basin with a stainless U-tube ladder sits in a dry deck.
+- **Ring Passage.** Four thick transverse walls, 3.4 m apart, are each pierced
+  by one 2.6 m radius round hole on a common axis; the last wall opens into a
+  dark round tunnel. The viewer stands in front of the first wall, right of the
+  axis, so the holes stack into a chain of rings. Each flooded segment between
+  walls has a flat tiled ceiling. Steps lean against the second wall left of
+  its hole and descend to the right into the water. Daylight reaches every
+  segment from a side court through full-height openings in the right side
+  wall, which the holes keep out of view; the window extends to z = -16 m to
+  give the tunnel depth.
+- **Still Rotunda.** A 4.2 m radius drum, 1 m thick, is pierced by ten equal
+  round-headed radial openings at even intervals around its full
+  circumference. A hemispherical dome springs directly from the drum. The
+  viewer stands in the opening facing -z and looks across a circular basin
+  with a stainless U-tube ladder to the far and side openings, which lead to a
+  daylit well. The well behind the viewer is unlit.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
 cells/m on general new surfaces and 24/m on new pool floors. This bounds content
@@ -165,13 +168,15 @@ All lengths are metres, `y` up.
   the x/z midpoint and `spring` in y; its lower y must equal `spring`.
   Curved kinds require `radius` to fit the x/z box; the dome must also fit in y.
   `kind: 4` is a box minus a vertical cylinder, used for a circular pool deck.
-  Kinds 3 and 4 may give an explicit `center: [x, z]`; the box then clips the
+  Kinds 3, 4 and 10 may give an explicit `center: [x, z]`; the box then clips the
   curved surface (a dome only on its near side, toward -z).
-  `kind: 8` is a drum bay: the box outside a vertical drum of `drumRadius`
-  around `center: [x, z]`, minus a round-headed opening along z of `radius`
-  springing at `spring` (no opening when `radius` is 0). The bay lies wholly on
-  one side of the drum centre in z. Face 4 is the concave drum face; faces 6–8
-  are the opening's intrados and jambs, as for arches.
+  `kind: 10` is an arcade drum: a vertical annular wall from `radius` to
+  `outerRadius` around the box centre (or `center`), pierced by `openings`
+  equal radial round-headed openings of half-width `openingRadius` whose heads
+  spring at `spring`. Opening 0 faces -z; the rest follow at equal angles, and
+  they may not overlap at the inner face. Face 6 is the inner wall, faces 2/3
+  the annular ends, and face 8 one chart holding every opening's jambs and head,
+  unfolded across the opening and stacked by depth.
   `kind: 9` is a full ring: the box inside the annulus `radius`–`outerRadius`
   around an axis along z through the box's x centre at height `spring`. A large
   `outerRadius` makes a wall with a round opening. Faces 6 and 7 are the inner

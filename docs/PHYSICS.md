@@ -15,8 +15,9 @@ Curved receiver charts use azimuth times radius and world height: both cylinder
 and sphere have area element `R d(phi) dy`, so each chart cell has equal physical
 area. Cylinder cap coverage excludes the surrounding square; dome planar
 coverage excludes the spherical void. Water depth uses circular column
-footprints. Circular deck edges use a cylindrical cutout in one slab. Drum bays
-chart only the drum sector inside their box; ring charts run around the ring's
+footprints. Circular deck edges use a cylindrical cutout in one slab. Arcade
+opening reveals share one chart, unfolded across each opening and stacked by
+depth so no two openings share a cell; ring charts run around the ring's
 horizontal axis. Chart cells outside the clipping box are not receivers. The hemisphere's
 longitude tile chart compresses courses toward the pole; it is an approximate
 tile layout rather than a construction-grade spherical tiling.

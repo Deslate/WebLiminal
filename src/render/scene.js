@@ -36,13 +36,14 @@ export function validateScene(scene) {
     if (![0, 1, 2].every((k) => s.lo[k] < s.hi[k])) fail(`shape ${i} has lo >= hi`);
     if (!Number.isInteger(s.material) || s.material < 0 || RESERVED_MATERIALS.includes(s.material)) fail(`shape ${i} uses material ${s.material}`);
     if (s.kind === 1 && !(s.radius > 0 && 2 * s.radius < s.hi[0] - s.lo[0])) fail(`arch ${i} radius does not fit its box`);
-    if (![0, 1, 2, 3, 4, 5, 6, 7, 8, 9].includes(s.kind)) fail(`shape ${i} has unsupported kind`);
-    // A bay lies wholly on one side of its drum centre in z, so its chart never wraps.
-    if (s.kind === 8 && !(s.radius >= 0 && s.spring >= s.lo[1] && s.spring + s.radius <= s.hi[1] && s.drumRadius > 0 && Array.isArray(s.center) && (s.lo[2] >= s.center[1] || s.hi[2] <= s.center[1]))) fail(`drum bay ${i} is invalid`);
+    if (![0, 1, 2, 3, 4, 5, 6, 7, 9, 10].includes(s.kind)) fail(`shape ${i} has unsupported kind`);
+    // Arcade openings are equal, evenly spaced and may not overlap at the inner face.
+    if (s.kind === 10 && !(Number.isInteger(s.openings) && s.openings >= 3 && s.openings <= 32 && s.radius > 0 && s.outerRadius > s.radius
+      && s.openingRadius > 0 && s.openingRadius < s.radius * Math.sin(Math.PI / s.openings) && s.spring >= s.lo[1] && s.spring + s.openingRadius <= s.hi[1])) fail(`arcade ${i} is invalid`);
     if (s.kind === 9 && !(s.radius > 0 && s.outerRadius > s.radius && Number.isFinite(s.spring))) fail(`ring ${i} is invalid`);
-    if (s.center !== undefined && !([3, 4, 8].includes(s.kind) && Array.isArray(s.center) && s.center.length === 2 && s.center.every(Number.isFinite))) fail(`shape ${i} has an invalid centre`);
+    if (s.center !== undefined && !([3, 4, 10].includes(s.kind) && Array.isArray(s.center) && s.center.length === 2 && s.center.every(Number.isFinite))) fail(`shape ${i} has an invalid centre`);
     if (s.kind >= 2 && s.kind <= 4 && !s.center && !(s.radius > 0 && 2 * s.radius <= Math.min(s.hi[0] - s.lo[0], s.hi[2] - s.lo[2]) + 1e-9)) fail(`curved shape ${i} radius does not fit`);
-    if (s.center && s.kind !== 8 && !(s.radius > 0 && s.center[0] - s.radius >= s.lo[0] - 1e-9 && s.center[0] + s.radius <= s.hi[0] + 1e-9)) fail(`curved shape ${i} must contain its x extent`);
+    if (s.center && !(s.radius > 0 && s.center[0] - s.radius >= s.lo[0] - 1e-9 && s.center[0] + s.radius <= s.hi[0] + 1e-9)) fail(`curved shape ${i} must contain its x extent`);
     if (s.kind === 5 && !(s.radius > 0 && s.tubeRadius > 0 && s.tubeRadius < s.radius && s.spring > s.lo[1])) fail(`tube ${i} has invalid sweep`);
     if (s.kind === 6 && !([0, 2].includes(s.axis) && s.radius > 0 && [0, 1, 2].filter(k=>k!==s.axis).every(k=>s.hi[k]-s.lo[k]>=2*s.radius-1e-9))) fail(`rail ${i} has invalid cylinder`);
     if (s.kind === 7 && !(s.radius > s.tubeRadius && s.tubeRadius > 0 && [0, 2].every(k=>s.hi[k]-s.lo[k]>=2*(s.radius+s.tubeRadius)-1e-9) && s.hi[1]-s.lo[1]>=2*s.tubeRadius-1e-9)) fail(`rail ${i} has invalid torus`);
@@ -72,8 +73,8 @@ export function packScene(scene, gridScale = 1) {
     u = new Uint32Array(geometryData);
   shapes.forEach((s, i) => {
     f.set([...s.lo, s.center?.[0] ?? 0, ...s.hi, s.center?.[1] ?? 0], i * SHAPE_WORDS);
-    u.set([s.material, s.kind, i * FACES, s.center ? 1 : 0], i * SHAPE_WORDS + 8);
-    f.set([s.radius, s.spring, s.oculus ?? s.tubeRadius ?? s.drumRadius ?? s.outerRadius ?? 0, s.axis ?? 0], i * SHAPE_WORDS + 12);
+    u.set([s.material, s.kind, i * FACES, (s.center ? 1 : 0) | (s.openings ?? 0) << 8], i * SHAPE_WORDS + 8);
+    f.set([s.radius, s.spring, s.oculus ?? s.tubeRadius ?? s.outerRadius ?? 0, s.axis ?? s.openingRadius ?? 0], i * SHAPE_WORDS + 12);
   });
   const a = scene.aperture;
   return {

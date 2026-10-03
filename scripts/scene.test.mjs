@@ -48,7 +48,7 @@ test('per-face receiver density and probe stride come from shape data',()=>{
  assert.equal(fine.floorSid,3);
 });
 
-test('explicit curved centres are packed and flagged; rings and bays validate',()=>{
+test('explicit curved centres are packed and flagged; rings and arcades validate',()=>{
   const scene=minimal();
   const dome={lo:[-7,3,-4],hi:[7,9,6],kind:3,material:0,radius:5,spring:3,oculus:0,center:[0,1]};
   const packed=packScene({...scene,shapes:[...scene.shapes,dome]});
@@ -59,7 +59,9 @@ test('explicit curved centres are packed and flagged; rings and bays validate',(
   const ring={lo:[-3,0,0],hi:[3,4,.4],kind:9,material:0,radius:2,outerRadius:2.2,spring:1.4};
   assert.doesNotThrow(()=>validateScene({...scene,shapes:[...scene.shapes,ring]}));
   assert.throws(()=>validateScene({...scene,shapes:[...scene.shapes,{...ring,outerRadius:1}]}),/ring/);
-  const bay={lo:[-1,0,0],hi:[1,3,2],kind:8,material:0,radius:.5,spring:1,drumRadius:4,center:[0,1]};
-  assert.throws(()=>validateScene({...scene,shapes:[...scene.shapes,bay]}),/drum bay/);
-  assert.doesNotThrow(()=>validateScene({...scene,shapes:[...scene.shapes,{...bay,center:[0,0]}]}));
+  const arcade={lo:[-5,0,-5],hi:[5,3,5],kind:10,material:0,radius:4,outerRadius:5,spring:1.5,openingRadius:.6,openings:8};
+  assert.doesNotThrow(()=>validateScene({...scene,shapes:[...scene.shapes,arcade]}));
+  const packedArcade=new Uint32Array(packScene({...scene,shapes:[...scene.shapes,arcade]}).geometryData);
+  assert.equal(packedArcade[scene.shapes.length*16+11],8<<8);
+  assert.throws(()=>validateScene({...scene,shapes:[...scene.shapes,{...arcade,openings:24}]}),/arcade/,'openings would overlap');
 });
