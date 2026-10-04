@@ -100,7 +100,13 @@ transported light, not display masks or an ambient shading term. Sky strength
 (`skyScale`, multiplying the historical sky radiance) is set per window so the
 indirect light in shaded areas matches each reference view; sun strength and
 exposure are unchanged. Column Reservoir uses 4, Ring Passage 36, Still
-Rotunda 16 and Lightwell Threshold 32 (no direct sun). Each window
+Rotunda 16 and Lightwell Threshold 32. The threshold's sky aperture covers the
+lightwell and only a short strip of the far hall, so the hall no longer floods
+the doorway; a steep (78 degree) sun of strength 9 comes down the lightwell gap
+and lights the upper cylinder face, as in the reference. The white glaze hue
+is matched per window with luminance-preserving tints of its albedo endpoints
+(Column Reservoir R x1.19 B x0.80, Ring Passage R x1.09 B x1.05, Lightwell
+Threshold R x1.06 B x1.13; the rotunda is unchanged). Each window
 still has exactly one rectangular sky aperture. A window may restrict the lab's
 aperture range with `limits`, so the opening cannot grow past the court or
 well it lights.
@@ -188,7 +194,8 @@ All lengths are metres, `y` up.
   `kind: 4` is a box minus a vertical cylinder, used for a circular pool deck.
   Kinds 3, 4 and 10 may give an explicit `center: [x, z]`; the box then clips the
   curved surface (a dome only on its near side, toward -z; a cutout or drum on
-  any side).
+  any side). Kinds 2 and 4 may give `tilePhase`, an arc-length offset of their
+  tile layout, so tangent curved surfaces share grout joints at the seam.
   `kind: 10` is an arcade drum: a vertical annular wall from `radius` to
   `outerRadius` around the box centre (or `center`), pierced by `openings`
   equal radial round-headed openings of half-width `openingRadius` whose heads

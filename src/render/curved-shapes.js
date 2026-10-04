@@ -66,7 +66,7 @@ export function curvedShader(source, scene) {
   replace('if(shape.info.y!=1u){return 0u;}', 'if(shape.info.y==10u){return select(select(0u,3u,face==6u),4u,face==8u);}\n if(shape.info.y>=2u&&face>=6u){return 3u;}\n if(shape.info.y!=1u){return 0u;}');
   replace('let q=h.p.xy-vec2f', `if(mode==4u){let d=h.p.xz-shapeCenter(shape);let ax=arcadeAxis(d,shape);return vec2f(archAlong(vec2f(dot(d,vec2f(-ax.y,ax.x)),h.p.y-shape.params.y),shape.params.w),dot(d,ax.xy));}
  if(mode==3u&&shape.info.y==9u){let v=h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);let r=select(shape.params.x,shape.params.z,h.sid%9u==7u);return vec2f(atan2(v.y,v.x)*r,h.p.z);}
- if(mode==3u){let v=h.p.xz-shapeCenter(shape);let r=select(shape.params.x,shape.params.z,h.sid%9u==7u);return vec2f(atan2(v.y,v.x)*r,h.p.y);}
+ if(mode==3u){let v=h.p.xz-shapeCenter(shape);let r=select(shape.params.x,shape.params.z,h.sid%9u==7u);return vec2f(atan2(v.y,v.x)*r+select(0.,shape.params.w,shape.info.y==2u||shape.info.y==4u),h.p.y);}
  let q=h.p.xy-vec2f`);
   replace('return mat3x3f(t,b,h.n);', `if(mode==4u){let ax=arcadeAxis(h.p.xz-shapeCenter(shape),shape);b=vec3f(ax.x,0,ax.y);t=normalize(cross(b,h.n));}
  else if(mode==3u&&shape.info.y==9u){let v=normalize(h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y));t=vec3f(-v.y,v.x,0);b=vec3f(0,0,1);}

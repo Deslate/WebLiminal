@@ -49,6 +49,7 @@ export function validateScene(scene) {
     if (s.kind === 6 && !([0, 2].includes(s.axis) && s.radius > 0 && [0, 1, 2].filter(k=>k!==s.axis).every(k=>s.hi[k]-s.lo[k]>=2*s.radius-1e-9))) fail(`rail ${i} has invalid cylinder`);
     if (s.kind === 7 && !(s.radius > s.tubeRadius && s.tubeRadius > 0 && [0, 2].every(k=>s.hi[k]-s.lo[k]>=2*(s.radius+s.tubeRadius)-1e-9) && s.hi[1]-s.lo[1]>=2*s.tubeRadius-1e-9)) fail(`rail ${i} has invalid torus`);
     if ((s.kind === 6 || s.kind === 7) && !scene.conductorMaterials?.includes(s.material)) fail(`rail ${i} needs conductor transport`);
+    if (s.tilePhase !== undefined && !([2, 4].includes(s.kind) && Number.isFinite(s.tilePhase))) fail(`shape ${i} has an invalid tile phase`);
     if (s.kind === 3 && !(s.lo[1] === s.spring && s.hi[1] >= s.spring + s.radius)) fail(`dome ${i} must contain its upper hemisphere`);
     if (s.kind === 3 && s.center && !(s.center[1] + s.radius <= s.hi[2] + 1e-9)) fail(`dome ${i} may only be clipped on its near side`);
     if (s.oculus !== undefined && !(s.kind === 3 && s.oculus >= 0 && s.oculus < s.radius)) fail(`shape ${i} has invalid oculus`);
@@ -75,7 +76,7 @@ export function packScene(scene, gridScale = 1) {
   shapes.forEach((s, i) => {
     f.set([...s.lo, s.center?.[0] ?? 0, ...s.hi, s.center?.[1] ?? 0], i * SHAPE_WORDS);
     u.set([s.material, s.kind, i * FACES, (s.center ? 1 : 0) | (s.openings ?? 0) << 8], i * SHAPE_WORDS + 8);
-    f.set([s.radius, s.spring, s.oculus ?? s.tubeRadius ?? s.outerRadius ?? 0, s.axis ?? s.openingRadius ?? 0], i * SHAPE_WORDS + 12);
+    f.set([s.radius, s.spring, s.oculus ?? s.tubeRadius ?? s.outerRadius ?? 0, s.axis ?? s.openingRadius ?? s.tilePhase ?? 0], i * SHAPE_WORDS + 12);
   });
   const a = scene.aperture;
   return {
