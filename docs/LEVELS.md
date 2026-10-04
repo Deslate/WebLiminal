@@ -105,12 +105,16 @@ The four layouts follow one reference view each; the spawn pose is that view.
 Every light source is an actual opening placed where the reference view cannot
 see it; ceiling reflections are not openings.
 
-- **Column Reservoir.** A closed, tiled 5.2 m hall around one 4 m radius convex
-  cylinder, a mid-distance column, a left wall bulge with a dark passage behind
-  it, and a slim near column. A low sun (30 degrees) enters a roofless court
-  behind the viewer and crosses the hall through five full-height slit windows,
-  striping the cylinder from the water upward. The court is shallow, so only
-  high rays clear its roof edge and the near water stays in shadow.
+- **Column Reservoir.** A closed, tiled hall with a 4.4 m ceiling. Its right
+  side is one serpentine vertical wall: a convex 0.7 m nose turning away into
+  the far passage, a long concave bay of 3.83 m radius, and a convex 0.6 m lobe
+  near the viewer, each tangent to the next. The bay is a box minus a cylinder
+  whose box edges pass through both inflection points; the nose and lobe are
+  capped cylinders. Beyond the nose stand a mid-distance column and a left wall
+  bulge with a dark passage between them. A low sun (15 degrees) enters a 9.5 m
+  wide roofless court behind the viewer and crosses the hall through five
+  full-height slit windows, striping the bay from the water to about 3.3 m.
+  This window is 24 m wide; its water simulation covers only the hall.
 - **Lightwell Threshold.** A corridor with a 4.2 m ceiling between a straight
   left wall and a 3.3 m radius convex cylinder, 2.3 m apart at their closest,
   with a slim round column at its mouth. The cylinder rises through a 3.9 m
@@ -179,7 +183,8 @@ All lengths are metres, `y` up.
   Curved kinds require `radius` to fit the x/z box; the dome must also fit in y.
   `kind: 4` is a box minus a vertical cylinder, used for a circular pool deck.
   Kinds 3, 4 and 10 may give an explicit `center: [x, z]`; the box then clips the
-  curved surface (a dome only on its near side, toward -z).
+  curved surface (a dome only on its near side, toward -z; a cutout or drum on
+  any side).
   `kind: 10` is an arcade drum: a vertical annular wall from `radius` to
   `outerRadius` around the box centre (or `center`), pierced by `openings`
   equal radial round-headed openings of half-width `openingRadius` whose heads

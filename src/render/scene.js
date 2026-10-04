@@ -43,7 +43,8 @@ export function validateScene(scene) {
     if (s.kind === 9 && !(s.radius > 0 && s.outerRadius > s.radius && Number.isFinite(s.spring))) fail(`ring ${i} is invalid`);
     if (s.center !== undefined && !([3, 4, 10].includes(s.kind) && Array.isArray(s.center) && s.center.length === 2 && s.center.every(Number.isFinite))) fail(`shape ${i} has an invalid centre`);
     if (s.kind >= 2 && s.kind <= 4 && !s.center && !(s.radius > 0 && 2 * s.radius <= Math.min(s.hi[0] - s.lo[0], s.hi[2] - s.lo[2]) + 1e-9)) fail(`curved shape ${i} radius does not fit`);
-    if (s.center && !(s.radius > 0 && s.center[0] - s.radius >= s.lo[0] - 1e-9 && s.center[0] + s.radius <= s.hi[0] + 1e-9)) fail(`curved shape ${i} must contain its x extent`);
+    // A clipped dome keeps its full x extent; cutouts and drums may be clipped on any side.
+    if (s.center && s.kind === 3 && !(s.radius > 0 && s.center[0] - s.radius >= s.lo[0] - 1e-9 && s.center[0] + s.radius <= s.hi[0] + 1e-9)) fail(`curved shape ${i} must contain its x extent`);
     if (s.kind === 5 && !(s.radius > 0 && s.tubeRadius > 0 && s.tubeRadius < s.radius && s.spring > s.lo[1])) fail(`tube ${i} has invalid sweep`);
     if (s.kind === 6 && !([0, 2].includes(s.axis) && s.radius > 0 && [0, 1, 2].filter(k=>k!==s.axis).every(k=>s.hi[k]-s.lo[k]>=2*s.radius-1e-9))) fail(`rail ${i} has invalid cylinder`);
     if (s.kind === 7 && !(s.radius > s.tubeRadius && s.tubeRadius > 0 && [0, 2].every(k=>s.hi[k]-s.lo[k]>=2*(s.radius+s.tubeRadius)-1e-9) && s.hi[1]-s.lo[1]>=2*s.tubeRadius-1e-9)) fail(`rail ${i} has invalid torus`);
