@@ -40,7 +40,10 @@ below). Unauthored addresses report an error; this is not
 yet an endless generator. The bookmark list does not define the world's extent.
 
 `src/world.js` maps the resident window's local coordinates into world metres:
-`world = address * 64 + local`. Renderer, collision and water operate in local
+`world = address * 64 + R(orientation) * local`, where a location may be turned
+about the vertical axis in the world (its camera turns with it). The level
+gives a turned location the world sun in its own frame, so orientation, not a
+per-location sun, decides where light falls. Renderer, collision and water operate in local
 metres. `snapshot().worldView` exposes the world pose, while `view` remains local
 for existing diagnostics. The level identity is preserved through teleportation.
 
@@ -99,7 +102,7 @@ sun direction are calibrated per window through `illumination`; this changes
 transported light, not display masks or an ambient shading term. Sky strength
 (`skyScale`, multiplying the historical sky radiance) is set per window so the
 indirect light in shaded areas matches each reference view; sun strength and
-exposure are unchanged. Column Reservoir uses 4, Ring Passage 36, Still
+exposure are unchanged. Column Reservoir uses 4, Ring Passage 14, Still
 Rotunda 16 and Lightwell Threshold 32. The threshold's sky aperture covers the
 lightwell and the void above the corridor ceiling towards the viewer, not the
 far hall, so the hall no longer floods the doorway. Light from that void
@@ -147,11 +150,14 @@ see it; ceiling reflections are not openings.
   axis, so the holes stack into a chain of rings. Each flooded segment between
   walls has a flat tiled ceiling. Steps, seen through the second hole, lean
   against the third wall left of its hole and descend to the right into the
-  water. Daylight reaches every
-  segment except the last from a side court through full-height openings in
-  the right side wall, which the holes keep out of view, so the terminal tunnel
-  stays dark; the window extends to z = -16 m to
-  give the tunnel depth.
+  water. The location is turned 149.5 degrees in the world, so the world sun
+  stands ahead and to the right at 14 degrees. It crosses a 15 m wide roofless
+  court and enters every segment except the last through full-height openings
+  in the right side wall, which the holes keep out of view, falling towards the
+  viewer: the floor beyond the portal is sunlit up to the curved shadow of the
+  hole, and the terminal tunnel stays dark. Explicit walls keep the passage
+  14 m wide; the window is 40 m wide for the court, extends to z = -16 m to
+  give the tunnel depth, and simulates water only in the passage.
 - **Still Rotunda.** One continuous tiled wall of revolution: a 9.5 m radius,
   0.8 m thick drum rises without a ledge into a hemispherical dome with a 3 m
   oculus at its crown, which admits a high sun and the sky. Twelve equal, low

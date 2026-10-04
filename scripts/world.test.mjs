@@ -54,3 +54,26 @@ test('location keys wrap and never consume movement or lab keys', () => {
   for (const key of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'KeyG'])
     assert.equal(regionIndex(key, 0, 5), null);
 });
+test('a rotated location carries the world sun into its own frame', async () => {
+  const { worldSun, rotateY } = await import('../levels/poolrooms-regions.js');
+  let rotated = 0;
+  for (const b of bookmarks) {
+    const w = loadWindow(level, b.address), sun = w.scene(w.optics).illumination?.sunDirection;
+    if (!w.orientation) continue;
+    rotated++;
+    // Turning the local sun by the location's orientation gives back the world sun.
+    rotateY(sun, w.orientation).forEach((v, k) => assert(Math.abs(v - worldSun[k]) < 1e-9, b.name));
+    // The camera turns with the location: a local step stays a world step of the same length.
+    const p = worldPosition(w.address, w.spawn, w.orientation), q = worldPosition(w.address, { ...w.spawn, z: w.spawn.z - 1 }, w.orientation);
+    assert(Math.abs(Math.hypot(q.x - p.x, q.z - p.z) - 1) < 1e-9);
+    assert(Math.abs(p.yaw - (w.spawn.yaw + w.orientation)) < 1e-12);
+  }
+  assert(rotated > 0);
+  assert.deepEqual(worldPosition({ x: 1, z: 0 }, { x: 2, y: 1, z: 3 }), { x: 66, y: 1, z: 3 });
+});
+test('the level and the renderer share one world sun', async () => {
+  const { worldSun } = await import('../levels/poolrooms-regions.js');
+  const shader = readFileSync(new URL('../src/render/common.wgsl', import.meta.url), 'utf8');
+  const m = /fn sunDirection\(\)->vec3f\{return normalize\(vec3f\(([^)]*)\)\);\}/.exec(shader);
+  assert.deepEqual(m[1].split(',').map(Number), worldSun);
+});

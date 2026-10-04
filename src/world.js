@@ -1,8 +1,12 @@
 // World addresses are independent of the finite set of navigation bookmarks.
 // Geometry and simulations use window-local metres to preserve GPU precision.
 export const CHUNK_SIZE = 64;
-export function worldPosition(address, local) {
-  return { ...local, x: address.x * CHUNK_SIZE + local.x, z: address.z * CHUNK_SIZE + local.z };
+// A window may be rotated about the vertical axis in the world; local poses
+// rotate with it (x' = c x + s z, z' = -s x + c z, yaw' = yaw + orientation).
+export function worldPosition(address, local, orientation = 0) {
+  const c = Math.cos(orientation), s = Math.sin(orientation);
+  return { ...local, x: address.x * CHUNK_SIZE + c * local.x + s * local.z, z: address.z * CHUNK_SIZE - s * local.x + c * local.z,
+    ...(local.yaw === undefined ? {} : { yaw: local.yaw + orientation }) };
 }
 export function regionIndex(code, current, count) {
   if (code === 'ArrowLeft') return (current + count - 1) % count;
