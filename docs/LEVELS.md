@@ -96,7 +96,11 @@ remains 1/32 m. The original window retains its historical rectangle.
 Column Reservoir and Still Rotunda use 2.4 mm grout, reduced ceramic color
 variation and a wider ceramic GGX lobe. Sun/sky radiance and, where set, the
 sun direction are calibrated per window through `illumination`; this changes
-transported light, not display masks or an ambient shading term. Each window
+transported light, not display masks or an ambient shading term. Sky strength
+(`skyScale`, multiplying the historical sky radiance) is set per window so the
+indirect light in shaded areas matches each reference view; sun strength and
+exposure are unchanged. Column Reservoir uses 4, Ring Passage 36, Still
+Rotunda 16 and Lightwell Threshold 32 (no direct sun). Each window
 still has exactly one rectangular sky aperture. A window may restrict the lab's
 aperture range with `limits`, so the opening cannot grow past the court or
 well it lights.
