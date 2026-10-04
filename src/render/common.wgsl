@@ -196,7 +196,9 @@ fn traceDynamicSolidAny(ro:vec3f,rd:vec3f,maxT:f32)->bool {return traceSolidAny(
 fn trace(ro:vec3f,rd:vec3f,maxT:f32)->Hit {var h=traceDynamicSolid(ro,rd,maxT);let w=traceWater(ro,rd,h.t);if(w.t<h.t){h=w;}return h;}
 fn waterTransmittance(distance:f32)->vec3f{return exp(-vec3f(.34,.075,.037)*distance);}
 fn skyRadiance(d:vec3f)->vec3f {return mix(vec3f(.68,.80,.97),vec3f(.31,.52,.88),pow(max(d.y,0.),.45))*.62;}
-fn sunDirection()->vec3f{return normalize(vec3f(-.66,.69,.295));}
+// One world sun, 14 degrees above the horizon; its azimuth is the original
+// location's. Locations rotated in the world see it in their own frame.
+fn sunDirection()->vec3f{return normalize(vec3f(-.8858,.2419,.3959));}
 fn sampleSun(seed:ptr<function,u32>)->vec3f {let r=.00465*sqrt(rnd(seed));let a=2.*PI*rnd(seed);return normalize(sunDirection()+basis(sunDirection())*vec3f(r*cos(a),r*sin(a),0));}
 fn sunIrradiance()->vec3f{return vec3f(19.8,18.4,15.5)*U.settings.z;}
 fn schlick(c:f32,f0:f32)->f32{return f0+(1.-f0)*pow(1.-clamp(c,0.,1.),5.);}

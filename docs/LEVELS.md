@@ -123,10 +123,11 @@ see it; ceiling reflections are not openings.
   near the viewer, each tangent to the next. The bay is a box minus a cylinder
   whose box edges pass through both inflection points; the nose and lobe are
   capped cylinders. Beyond the nose stand a mid-distance column and a left wall
-  bulge with a dark passage between them. A low sun (15 degrees) enters a 9.5 m
-  wide roofless court behind the viewer and crosses the hall through five
-  full-height slit windows, striping the bay from the water to about 3.3 m.
-  This window is 24 m wide; its water simulation covers only the hall.
+  bulge with a dark passage between them. The world sun (14 degrees) enters a
+  12.5 m wide roofless court behind the viewer, clears its outer wall at
+  x = -15 and crosses the hall through five full-height slit windows, striping
+  the bay from the water to about 3.3 m. This window is 30 m wide; its water
+  simulation covers only the hall.
 - **Lightwell Threshold.** A corridor with a 4.2 m ceiling between a straight
   left wall and a 3.3 m radius convex cylinder, 2.3 m apart at their closest,
   with a slim round column at its mouth. The cylinder rises through a 3.9 m

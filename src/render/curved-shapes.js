@@ -14,7 +14,7 @@ export function curvedShader(source, scene) {
       .replace('pow(max(d.y,0.),.45))*.62', `pow(max(d.y,0.),.45))*${.62*scene.illumination.skyScale}`)
       .replace('vec3f(.68,.80,.97),vec3f(.31,.52,.88)', 'vec3f(.76,.78,.72),vec3f(.68,.70,.66)');
     // One sun position per resident window; every pass shares sunDirection().
-    if (scene.illumination.sunDirection) source=source.replace('normalize(vec3f(-.66,.69,.295))',
+    if (scene.illumination.sunDirection) source=source.replace('normalize(vec3f(-.8858,.2419,.3959))',
       `normalize(vec3f(${scene.illumination.sunDirection.map(v=>Number.isInteger(v)?`${v}.`:v).join(',')}))`);
   }
   if (!scene.shapes.some(s => s.kind >= 2)) return source;

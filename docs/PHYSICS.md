@@ -59,7 +59,9 @@ eta_tt + omega^2 eta = omega^2 b
 
 ### Sources
 
-- Sun: a finite disc (angular radius 0.00465 rad), sampled symmetrically.
+- Sun: a finite disc (angular radius 0.00465 rad), sampled symmetrically. There is one
+  world sun, 14 degrees above the horizon, toward (-0.886, 0.242, 0.396). A location
+  rotated in the world sees it in its own frame; its strength is set per location.
 - Sky: an area light through the ceiling aperture, integrated with 16 x 16 samples (lab-configurable).
 
 ### Photons and caustics (`photons.wgsl`, `water-caustics.wgsl`, `resolve.wgsl`)

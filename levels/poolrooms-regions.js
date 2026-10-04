@@ -20,7 +20,7 @@ const authoredCells = new Map([
 
 // Apertures sit over courts and lightwells; they may not grow past them.
 const limits = {
-  columns: { apertureWidth: [.5, 9.5], apertureDepth: [.5, 8.9] },
+  columns: { apertureWidth: [.5, 12.45], apertureDepth: [.5, 8.9] },
   rings: { apertureWidth: [.5, 2.05], apertureDepth: [.5, 13] },
   rotunda: { apertureWidth: [.5, 23.8], apertureDepth: [.5, 21] },
   threshold: { apertureWidth: [.5, 8.9], apertureDepth: [.5, 11.7] },
@@ -35,7 +35,7 @@ export function createPoolroomsWorld(data, materials) {
     if (!recipe) throw Error(`Unloaded Poolrooms address: ${address.x},${address.z}`);
     const optics = { ...data.optics, apertureWidth: 4, apertureDepth: 4, exposure: 1.35 };
     const spawn = { x: 0, y: 1.62, z: 7, yaw: 0, pitch: -.12 };
-    if (recipe === 'columns') { spawn.x = -1; spawn.z = 8.5; spawn.yaw = -.3; spawn.pitch = .02; optics.waterLevel = .58; optics.apertureWidth = 9.5; optics.apertureDepth = 8.9; optics.exposure = 1.15; optics.focalLength = 20; }
+    if (recipe === 'columns') { spawn.x = -1; spawn.z = 8.5; spawn.yaw = -.3; spawn.pitch = .02; optics.waterLevel = .58; optics.apertureWidth = 12.45; optics.apertureDepth = 8.9; optics.exposure = 1.15; optics.focalLength = 20; }
     if (recipe === 'rings') { spawn.x = 1.3; spawn.z = 5.8; spawn.yaw = .17; spawn.pitch = -.02; optics.apertureWidth = 2.05; optics.apertureDepth = 13; optics.focalLength = 12; }
     if (recipe === 'rotunda') { spawn.z = -10.85; spawn.y = 2.22; spawn.yaw = Math.PI; spawn.pitch = -.14; optics.waterLevel = .55; optics.apertureWidth = 23.8; optics.apertureDepth = 21; optics.exposure = 2.3; optics.focalLength = 14; optics.waveAmplitude = .012; }
     if (recipe === 'threshold') { spawn.x = -1.8; spawn.z = 8.4; spawn.pitch = 0; optics.apertureWidth = 8.9; optics.apertureDepth = 11.7; optics.focalLength = 18; }
@@ -52,7 +52,9 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   // The rotunda's pool floor lies below the shared slab level.
   const base = kind === 'rotunda' ? -1.2 : 0;
   // The rotunda needs a wider window for its drum and ambulatory.
-  const W = kind === 'rotunda' || kind === 'columns' ? 12 : 7, maxZ = kind === 'rotunda' ? 12 : 10;
+  // The column court reaches x = -15 so the 14 degree sun clears its outer
+  // wall and reaches the curved wall down to the water through the slits.
+  const W = kind === 'columns' ? 15 : kind === 'rotunda' ? 12 : 7, maxZ = kind === 'rotunda' ? 12 : 10;
   const bounds = { minX: -W, maxX: W, minZ, maxZ, ceiling: roof };
   const add = (lo, hi, material = 0, arch = null, solid = false) => {
     shapes.push({ lo, hi, material, kind: arch ? 1 : 0, radius: arch?.radius ?? 0, spring: arch?.spring ?? 0,
@@ -66,7 +68,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   add([-W, base, minZ - .3], [W, roof + .3, minZ]);
   add([-W, base, maxZ], [W, roof + .3, maxZ + .3]);
   const az = kind === 'threshold' ? 1.7 : kind === 'rotunda' ? 1.4 : kind === 'columns' ? 5.45 : -3.6;
-  const ax = kind === 'threshold' ? 2.4 : kind === 'rotunda' ? 0 : kind === 'columns' ? -7.24 : 5.925;
+  const ax = kind === 'threshold' ? 2.4 : kind === 'rotunda' ? 0 : kind === 'columns' ? -8.725 : 5.925;
   const a = { minX: ax - apertureWidth / 2, maxX: ax + apertureWidth / 2,
     minZ: az - apertureDepth / 2, maxZ: az + apertureDepth / 2, y: roof + .3 };
   const roofMaterial=['threshold','columns','rings'].includes(kind) ? 0 : 1;
@@ -225,7 +227,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     for(const x of [-5.4,-3.2,-1,1.2]) post(x,-9);
     solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
-  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.882,.259,.394] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [-.17,.95,.18] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 36, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [-.17,.95,.18] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 36, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
   // The complete flooded hall fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
   const waterBounds = kind === 'rotunda' ? {minX:-10.5,maxX:10.5,minZ:-10.5,maxZ:10.5}
