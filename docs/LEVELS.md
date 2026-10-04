@@ -103,7 +103,7 @@ transported light, not display masks or an ambient shading term. Sky strength
 (`skyScale`, multiplying the historical sky radiance) is set per window so the
 indirect light in shaded areas matches each reference view. The four new
 locations share one sun strength (6, 5.58, 4.69); exposure is unchanged. Column Reservoir uses 4, Ring Passage 14, Still
-Rotunda 7 and Lightwell Threshold 32. The threshold's sky aperture covers the
+Rotunda 5 and Lightwell Threshold 32. The threshold's sky aperture covers the
 lightwell and the void above the corridor ceiling towards the viewer, not the
 far hall, so the hall no longer floods the doorway. Light from that void
 reaches the corridor through a 0.8 m slot behind the viewer and lights the near
@@ -163,8 +163,8 @@ see it; ceiling reflections are not openings.
   14 m wide; the window is 40 m wide for the court, extends to z = -16 m to
   give the tunnel depth, and simulates water only in the passage.
 - **Still Rotunda.** One continuous tiled wall of revolution: a 9.5 m radius,
-  0.8 m thick drum rises without a ledge into a hemispherical dome with a 3 m
-  oculus at its crown, which admits a high sun and the sky. Twelve equal, low
+  0.8 m thick drum rises without a ledge into a hemispherical dome with a 5 m
+  oculus at its crown, which admits the sky that lights the dome. Twelve equal, low
   round-headed openings (3 m wide, 3.6 m above the water, piers about two
   thirds of an opening) pierce its base at even intervals around the full
   circumference. A thin, flat plaster front wall cuts the circle as a chord;

@@ -177,7 +177,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   } else if (kind === 'rotunda') {
     // Seen from a dark antechamber through a narrow doorway in a thin, flat
     // front wall that cuts the round hall as a chord. The hall's tiled wall
-    // rises without a ledge into a dome with a 3 m oculus at its crown.
+    // rises without a ledge into a dome with a 5 m oculus at its crown.
     // Twelve equal round-headed openings pierce the base of the wall around
     // its full circumference. Shallow water covers the hall floor and runs
     // under the openings; a deep pit fills its centre, and the ladder stands
@@ -185,7 +185,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // tiled ambulatory is open to daylight above.
     const R = 9.5, wall = .8, water = .55, shallow = .3, top = 5.35, open = 1.5, front = -9.2, outer = R + wall + 2.5, pit = 7.85;
     const curved = (lo, hi, extra) => { add(lo, hi); Object.assign(shapes.at(-1), extra); };
-    curved([-R - wall, top, front], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 1.5, center: [0, 0] });
+    curved([-R - wall, top, front], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 2.5, center: [0, 0] });
     curved([-R - wall, shallow, front], [R + wall, top, R + wall],
       { kind: 10, radius: R, outerRadius: R + wall, spring: water + 3.6 - open, openingRadius: open, openings: 12, center: [0, 0] });
     // Thin plaster front wall; the viewer stands 1.4 m behind its doorway.
@@ -263,7 +263,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     for(const x of [-5.4,-3.2,-1,1.2]) post(x,-9);
     solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
-  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [6,5.58,4.69], skyScale: 7, sunDirection: localSun('rotunda') } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 14, sunDirection: localSun('rings') } : kind === 'threshold' ? {sun:[6,5.58,4.69],skyScale:32} : undefined;
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [6,5.58,4.69], skyScale: 5, sunDirection: localSun('rotunda') } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 14, sunDirection: localSun('rings') } : kind === 'threshold' ? {sun:[6,5.58,4.69],skyScale:32} : undefined;
   // The complete flooded hall fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
   const waterBounds = kind === 'rotunda' ? {minX:-10.5,maxX:10.5,minZ:-10.5,maxZ:10.5}
