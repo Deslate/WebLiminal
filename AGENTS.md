@@ -106,6 +106,40 @@ npm run benchmark    # visual benchmark: 76 s scripted walk, controls, analysis,
 
 Run the benchmark after changes that can affect rendered light, materials, camera, water motion or interaction. For performance, measure GPU-completed frames at a fixed internal resolution with no other GPU load, and report resolution, p95 and minimum one-second fps.
 
+## Iteration workflow
+
+Measured on the round that lowered the world sun (158 min wall clock): 91 min
+waiting on full benchmark runs (6 runs of 18-21 min, one voided after 1.3 min
+because a file was written under the repository mid-run), 31 min rendering
+(38 location captures, about a fifth of them of unchanged scenes, Rotunda and
+Threshold spending 50-70 s each on shader compilation), and 34 min of
+writing and analysis. Unit tests and validation take 3 s. A single-case gate
+(`CASES=current SKIP_PERFORMANCE=1`) takes 2 min and makes the same exact
+comparison as the full run. Work in this order:
+
+1. **Tier 0, every edit (seconds).** `npm test` and `npm run validate`. The
+   original location's scene and GPU packing are already covered by tests, so
+   a change confined to a new location's recipe needs no benchmark.
+2. **Tier 1, each candidate (one capture).** Capture only the locations the
+   change touches, once per candidate, and judge it with the measurement
+   tables. Do not recapture unchanged locations to prove they are unchanged.
+   Batch parameter sweeps into one run.
+3. **Tier 2, before a commit that touches shared code (2 min).** If
+   `src/render/`, `materials/`, `levels/poolrooms.js` or
+   `levels/poolrooms-scene.js` changed, run
+   `CASES=current SKIP_PERFORMANCE=1 npm run benchmark` and compare the
+   `current` luma exactly with the recorded baseline.
+4. **Tier 3, once at the end of a round (about 19 min).** The full benchmark,
+   only if rendered light, materials, camera or water code changed in the
+   round, or to record a new baseline. Produce the before/after and
+   reference comparison images in the same closing step, not per iteration.
+
+Rules: write every repository file before starting any benchmark, and keep
+experiments outside the repository; the benchmark aborts if the source hash
+changes mid-run. Never wait by sleeping in a polling loop: run the 2 min gate
+in the foreground, and for a long run do work outside the repository and wait
+on its completion once.
+
 ## Repository rules
 
 - **English only.** Code, comments, docs, script output and commit messages.
