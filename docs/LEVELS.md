@@ -145,8 +145,9 @@ see it; ceiling reflections are not openings.
   walls has a flat tiled ceiling. Steps, seen through the second hole, lean
   against the third wall left of its hole and descend to the right into the
   water. Daylight reaches every
-  segment from a side court through full-height openings in the right side
-  wall, which the holes keep out of view; the window extends to z = -16 m to
+  segment except the last from a side court through full-height openings in
+  the right side wall, which the holes keep out of view, so the terminal tunnel
+  stays dark; the window extends to z = -16 m to
   give the tunnel depth.
 - **Still Rotunda.** One continuous tiled wall of revolution: a 9.5 m radius,
   0.8 m thick drum rises without a ledge into a hemispherical dome with a 3 m

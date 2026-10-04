@@ -138,9 +138,10 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // Steps against the third wall, seen through the second hole: left of
     // the third hole, parallel to the wall, descending to the right.
     for (const [x, y] of [[-3.2, 1.02], [-2.9, .82], [-2.6, .62]]) add([-7, 0, -3.4], [x, y, -2.5], 0, null, true);
-    // Right side wall with one full-height opening into the court per segment.
+    // Right side wall with one full-height opening into the court per segment,
+    // except the last, so the terminal tunnel stays dark.
     let z0 = -10.2;
-    for (const [lo, hi] of [[-10, -7.4], [-6.6, -4], [-3.2, -.6], [.2, 2.8]]) { add([4.6, 0, z0], [4.9, roof, lo], 0, null, true); z0 = hi; }
+    for (const [lo, hi] of [[-6.6, -4], [-3.2, -.6], [.2, 2.8]]) { add([4.6, 0, z0], [4.9, roof, lo], 0, null, true); z0 = hi; }
     add([4.6, 0, z0], [4.9, roof, 3], 0, null, true);
   } else if (kind === 'rotunda') {
     // Seen from a dark antechamber through a narrow doorway in a thin, flat
