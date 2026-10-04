@@ -31,7 +31,7 @@ const limits = {
 // local sun is the world sun in the location's own frame, so the rotation
 // decides where light falls without moving the sun.
 export const worldSun = [-.8858, .2419, .3959];
-const orientations = { rings: 149.5 * Math.PI / 180 };
+const orientations = { rings: 149.5 * Math.PI / 180, rotunda: -96 * Math.PI / 180 };
 export function rotateY([x, y, z], angle) {
   const c = Math.cos(angle), s = Math.sin(angle);
   return [c * x + s * z, y, -s * x + c * z];
@@ -75,10 +75,20 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   };
   add([-W, base - .3, minZ], [W, base, maxZ], 2);
   shapes[0].density[3] = 24;
-  add([-W - .3, base, minZ], [-W, roof + .3, maxZ]);
-  add([W, base, minZ], [W + .3, roof + .3, maxZ]);
-  add([-W, base, minZ - .3], [W, roof + .3, minZ]);
-  add([-W, base, maxZ], [W, roof + .3, maxZ + .3]);
+  // Shell walls; a location may cut daylight openings into them, which the
+  // renderer then treats as wall apertures for sky, photons and water light.
+  const wallOpenings = kind === 'rotunda' ? [{ axis: 2, at: maxZ, from: [5, .6], to: [9, 6.5], outward: 1 }] : [];
+  const shellWall = (lo, hi, axis, at) => {
+    const o = wallOpenings.find(w => w.axis === axis && w.at === at);
+    if (!o) { add(lo, hi); return; }
+    const u = axis === 0 ? 2 : 0, cut = (k, a, b, y0, y1) => { const l = [...lo], h = [...hi]; l[k] = a; h[k] = b; l[1] = y0; h[1] = y1; add(l, h); };
+    cut(u, lo[u], o.from[0], lo[1], hi[1]); cut(u, o.to[0], hi[u], lo[1], hi[1]);
+    cut(u, o.from[0], o.to[0], lo[1], o.from[1]); cut(u, o.from[0], o.to[0], o.to[1], hi[1]);
+  };
+  shellWall([-W - .3, base, minZ], [-W, roof + .3, maxZ], 0, -W);
+  shellWall([W, base, minZ], [W + .3, roof + .3, maxZ], 0, W);
+  shellWall([-W, base, minZ - .3], [W, roof + .3, minZ], 2, minZ);
+  shellWall([-W, base, maxZ], [W, roof + .3, maxZ + .3], 2, maxZ);
   const az = kind === 'threshold' ? 1.7 : kind === 'rotunda' ? 1.4 : kind === 'columns' ? 5.45 : -3.6;
   const ax = kind === 'threshold' ? 2.4 : kind === 'rotunda' ? 0 : kind === 'columns' ? -8.725 : 12.45;
   const a = { minX: ax - apertureWidth / 2, maxX: ax + apertureWidth / 2,
@@ -181,8 +191,9 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     const arch = { radius: .85, spring: 2.22 };
     add([-W, base, front - .25], [W, roof, front], 1, arch);
     solids.push({ minX: -W, maxX: -arch.radius, minZ: front - .25, maxZ: front }, { minX: arch.radius, maxX: W, minZ: front - .25, maxZ: front });
-    // Outer ambulatory wall, concentric with the drum.
-    curved([-W, shallow, front], [W, top, maxZ], { kind: 4, radius: outer, center: [0, 0] });
+    // The ambulatory reaches the shell walls; the far wall has a daylight
+    // opening through which the turned location's low sun reaches a far
+    // drum opening and falls across the pool towards the viewer.
     // Shallow floor everywhere except the deep central pit; a dry deck outside
     // the drum's outer face, including the antechamber.
     curved([-W, base, minZ], [W, shallow, maxZ], { kind: 4, radius: pit, center: [0, 0] });
@@ -245,7 +256,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     for(const x of [-5.4,-3.2,-1,1.2]) post(x,-9);
     solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
-  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [-.17,.95,.18] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 14, sunDirection: localSun('rings') } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 7, sunDirection: localSun('rotunda') } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 14, sunDirection: localSun('rings') } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
   // The complete flooded hall fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
   const waterBounds = kind === 'rotunda' ? {minX:-10.5,maxX:10.5,minZ:-10.5,maxZ:10.5}
@@ -254,5 +265,6 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     reflectionSamples: kind === 'rotunda' ? {glaze:24,rough:32} : kind === 'threshold' ? {glaze:8,rough:16} : undefined,
     groutHalfWidth: ['columns','rotunda','threshold'].includes(kind) ? .0012 : undefined,
     tileSize: kind === 'threshold' ? thresholdTileSize : undefined,
-    water: { ...waterBounds, cell: 1 / 32 }, aperture: a, floor: { shape: 0, face: 3 } };
+    water: { ...waterBounds, cell: 1 / 32 }, aperture: a, floor: { shape: 0, face: 3 },
+    ...(wallOpenings.length ? { wallApertures: wallOpenings } : {}) };
 }

@@ -103,7 +103,7 @@ transported light, not display masks or an ambient shading term. Sky strength
 (`skyScale`, multiplying the historical sky radiance) is set per window so the
 indirect light in shaded areas matches each reference view; sun strength and
 exposure are unchanged. Column Reservoir uses 4, Ring Passage 14, Still
-Rotunda 16 and Lightwell Threshold 32. The threshold's sky aperture covers the
+Rotunda 7 and Lightwell Threshold 32. The threshold's sky aperture covers the
 lightwell and the void above the corridor ceiling towards the viewer, not the
 far hall, so the hall no longer floods the doorway. Light from that void
 reaches the corridor through a 0.8 m slot behind the viewer and lights the near
@@ -112,7 +112,7 @@ strength 1.5 comes down the lightwell gap onto the upper cylinder face. The whit
 is matched per window with luminance-preserving tints of its albedo endpoints
 (Column Reservoir R x1.19 B x0.80, Ring Passage R x1.09 B x1.05, Lightwell
 Threshold R x1.06 B x1.13; the rotunda is unchanged). Each window
-still has exactly one rectangular sky aperture. A window may restrict the lab's
+has one rectangular roof aperture and may add vertical wall apertures. A window may restrict the lab's
 aperture range with `limits`, so the opening cannot grow past the court or
 well it lights.
 
@@ -168,8 +168,12 @@ see it; ceiling reflections are not openings.
   which frames the hall. Shallow water (0.25 m) covers the whole hall floor and
   runs under the openings; a 1.75 m deep pit, 7.85 m in radius, fills the
   centre. The stainless U-tube ladder stands on the shallow floor at the pit's
-  near rim and reaches down to the pit floor. Behind the openings a dry 2.5 m
-  tiled ambulatory is open to daylight above. Only this window is 24 m wide and
+  near rim and reaches down to the pit floor. Behind the openings a dry
+  ambulatory reaches the shell walls and is open to daylight above. The
+  location is turned -96 degrees in the world, so the 14 degree world sun
+  stands ahead and to the left; it enters through a 4 x 5.9 m opening in the
+  far shell wall, passes one far drum opening and falls across the pool
+  towards the viewer's right. Only this window is 24 m wide and
   28 m deep, with its floor slab 1.2 m lower; the others are 14 m wide.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
@@ -248,8 +252,13 @@ All lengths are metres, `y` up.
 - **Water.** `cell` must tile the rectangle exactly; the background solver runs
   on that grid. The water height is `optics.waterLevel`; depth comes from the
   shapes below it.
-- **Aperture.** The only light source today: sun and sky enter through this
-  rectangle. Its size may change at runtime (the renderer rebuilds geometry and
+- **Aperture.** Sun and sky enter through this horizontal roof rectangle.
+  Optional `wallApertures` add vertical daylight openings in the walls:
+  `{ axis: 0 | 2, at, from: [u, y], to: [u, y], outward: 1 | -1 }`, a rectangle
+  in the plane x = at (u along z) or z = at (u along x), with the outward
+  normal's sign. The geometry must actually be open there. The sky integral,
+  photon emission and live water sources then include every aperture; the
+  camera's direct sun already tests visibility to infinity. Its size may change at runtime (the renderer rebuilds geometry and
   light caches); its plane `y` may not.
 
 `src/render/scene.js` validates the description, packs shapes for the GPU,
@@ -262,7 +271,8 @@ rebuild changes them.
 ## Current limits
 
 - One water body per resident window, and water is required.
-- One rectangular sky aperture is the only light source.
+- One rectangular roof aperture plus optional vertical wall apertures are the
+  only light sources; there are no artificial lights.
 - The spectral body-wake window is a fixed 32 x 64 m domain centred on the
   local window origin; the window's water rectangle must lie well inside it.
 - Shapes are a flat list tested one by one in every ray; there is no

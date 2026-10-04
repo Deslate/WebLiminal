@@ -4,6 +4,7 @@ import { createWaveSimulation } from "./wave-simulation.js";
 import commonSource from "./common.wgsl?raw";
 import { curvedShader } from "./curved-shapes.js";
 import { conductorShader, conductorCommon } from "./conductor-shaders.js";
+import { apertureCommon, apertureShader } from "./apertures.js";
 import photons from "./photons.wgsl?raw";
 import sky from "./sky.wgsl?raw";
 import resolve from "./resolve.wgsl?raw";
@@ -40,7 +41,7 @@ export async function createRenderer(canvas, level) {
   // Water rectangle, aperture plane and floor receiver are fixed per level and
   // compiled into every shader; the aperture rectangle stays a uniform.
   const initialScene = level.scene(level.optics);
-  const common = conductorCommon(curvedShader(commonSource, initialScene), initialScene);
+  const common = apertureCommon(conductorCommon(curvedShader(commonSource, initialScene), initialScene), initialScene);
   const prelude = sceneShaderPrelude(initialScene);
   const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude });
   const { near: nearMaterial, photon: photonMaterial } = level.materials;
@@ -51,12 +52,12 @@ export async function createRenderer(canvas, level) {
   let lab={...LAB_DEFAULTS},pipelines;
   async function compileLab(){
   const shaderModules = [
-    module("photon transport", prelude + common + photonMaterial + conductorShader('photons', photons, initialScene)),
+    module("photon transport", prelude + common + photonMaterial + apertureShader('photons', conductorShader('photons', photons, initialScene), initialScene)),
     module("world irradiance estimate", prelude + common + labShader("resolve",resolve,lab)),
     module("camera transport", prelude + common + nearMaterial + conductorShader('camera', labShader("camera",camera,lab), initialScene)),
     module("lens and film", present),
-    module("area sky integral", prelude + common + labShader("sky",sky,lab)),
-    module("current water flux", prelude + common + labShader("water",waterCaustics,lab)),
+    module("area sky integral", prelude + common + apertureShader('sky', labShader("sky",sky,lab), initialScene)),
+    module("current water flux", prelude + common + apertureShader('water', labShader("water",waterCaustics,lab), initialScene)),
     module("instant diffuse transfer", prelude + common + photonMaterial + labShader("diffuse",diffuseTransfer,lab)),
     module("assemble current lighting",prelude+common+composeLight),
     module("continuous reflection footprint",prelude+common+reflectionFilter),

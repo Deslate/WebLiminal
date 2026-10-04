@@ -49,7 +49,7 @@ docs/                       physical model, level format and lab reference
 
 Per frame: advance water to real elapsed time, emit live photons through the current surface, resolve irradiance, propagate diffuse transfer, compose light, trace the camera, filter reflections, present.
 
-Coupling still to remove before large or streamed worlds: shaders test one static shape list with no acceleration structure; water rectangle, aperture plane and floor receiver are compile-time constants for a loaded level; the body-wake FFT window is fixed around the world origin; a level has exactly one water body and one sky aperture.
+Coupling still to remove before large or streamed worlds: shaders test one static shape list with no acceleration structure; water rectangle, aperture plane and floor receiver are compile-time constants for a loaded level; the body-wake FFT window is fixed around the world origin; a level has exactly one water body and one roof aperture (wall apertures are specialised per window, and the live water caustics use them only through their projected footprint).
 
 ### Target (proposed, not implemented)
 
