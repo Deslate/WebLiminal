@@ -32,6 +32,8 @@ export function validateScene(scene) {
   if (scene.wallApertures !== undefined && !(Array.isArray(scene.wallApertures) && scene.wallApertures.length <= 8 && scene.wallApertures.every(a =>
     [0, 2].includes(a.axis) && Number.isFinite(a.at) && [1, -1].includes(a.outward) && a.from?.length === 2 && a.to?.length === 2
     && [...a.from, ...a.to].every(Number.isFinite) && a.from[0] < a.to[0] && a.from[1] < a.to[1]))) fail('invalid wall aperture');
+  if (scene.air !== undefined && !(Number.isFinite(scene.air.scattering) && scene.air.scattering >= 0 && scene.air.scattering < 1
+    && Number.isFinite(scene.air.anisotropy) && Math.abs(scene.air.anisotropy) < 1 && (scene.air.cell === undefined || scene.air.cell >= .1))) fail('invalid air scattering');
   if (scene.illumination?.sunDirection && !(Array.isArray(scene.illumination.sunDirection)&&scene.illumination.sunDirection.length===3&&scene.illumination.sunDirection.every(Number.isFinite)&&scene.illumination.sunDirection[1]>.05)) fail('invalid sun direction');
   if (!(bounds.minX < bounds.maxX && bounds.minZ < bounds.maxZ && bounds.ceiling > 0)) fail("empty bounds");
   if (!shapes.length) fail("no shapes");

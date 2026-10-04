@@ -64,6 +64,20 @@ eta_tt + omega^2 eta = omega^2 b
   rotated in the world sees it in its own frame; its strength is set per location.
 - Sky: an area light through the ceiling aperture, integrated with 16 x 16 samples (lab-configurable).
 
+### Air scattering (`atmosphere.js`, new locations only)
+
+- A window may declare `air: { scattering, anisotropy }`. A fixed world grid (0.33 m
+  voxels over the window) stores the sun's visibility (four sub-voxel points) and
+  the sky radiance arriving through the roof and wall apertures, baked with the
+  light caches.
+- Each primary camera ray marches 24 fixed midpoint steps to its first surface or
+  the water and adds single scattering: Henyey-Greenstein phase for the sun,
+  isotropic for the sky, attenuated by the existing 0.004/m extinction. The new
+  locations use scattering 0.004/m (all of the extinction) and anisotropy 0.6.
+- The former light-independent haze term is removed where air is declared.
+  Not modelled: multiple scattering, scattering of bounced light, underwater
+  scattering, and beam edges finer than a voxel.
+
 ### Photons and caustics (`photons.wgsl`, `water-caustics.wgsl`, `resolve.wgsl`)
 
 - Caustics come only from photon transport through the live water surface: Fresnel split, Snell refraction, absorption, and receiver-area normalisation. No painted or animated caustic textures exist.

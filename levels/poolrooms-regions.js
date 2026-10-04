@@ -273,5 +273,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     groutHalfWidth: ['columns','rotunda','threshold'].includes(kind) ? .0012 : undefined,
     tileSize: kind === 'threshold' ? thresholdTileSize : undefined,
     water: { ...waterBounds, cell: 1 / 32 }, aperture: a, floor: { shape: 0, face: 3 },
-    ...(wallOpenings.length ? { wallApertures: wallOpenings } : {}) };
+    ...(wallOpenings.length ? { wallApertures: wallOpenings } : {}),
+    // Humid hall air: all of the existing 0.004/m extinction is scattering.
+    air: { scattering: .004, anisotropy: .6 } };
 }
