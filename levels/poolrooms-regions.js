@@ -274,6 +274,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     tileSize: kind === 'threshold' ? thresholdTileSize : undefined,
     water: { ...waterBounds, cell: 1 / 32 }, aperture: a, floor: { shape: 0, face: 3 },
     ...(wallOpenings.length ? { wallApertures: wallOpenings } : {}),
-    // Humid hall air: all of the existing 0.004/m extinction is scattering.
-    air: { scattering: .004, anisotropy: .6 } };
+    // Deliberate visual choice: 0.02/m is five times the 0.004/m extinction the
+    // renderer attenuates with, fitted to the reference haze (docs/PHYSICS.md).
+    air: { scattering: .02, anisotropy: .6 } };
 }

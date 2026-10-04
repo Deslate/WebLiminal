@@ -73,7 +73,12 @@ eta_tt + omega^2 eta = omega^2 b
 - Each primary camera ray marches 24 fixed midpoint steps to its first surface or
   the water and adds single scattering: Henyey-Greenstein phase for the sun,
   isotropic for the sky, attenuated by the existing 0.004/m extinction. The new
-  locations use scattering 0.004/m (all of the extinction) and anisotropy 0.6.
+  locations use anisotropy 0.6 and scattering 0.02/m. **This is a deliberate,
+  non-physical visual choice:** it is five times the 0.004/m extinction used
+  for attenuation, so the air adds scattered light without removing the same
+  energy from beams and surfaces. It was fitted to the reference haze by one
+  measure (tile contrast beside the Lightwell Threshold's far doorway relative
+  to the near wall: reference 1.33, 1x 2.66, 5x 1.36, 10x 0.81).
 - The former light-independent haze term is removed where air is declared.
   Not modelled: multiple scattering, scattering of bounced light, underwater
   scattering, and beam edges finer than a voxel.
