@@ -101,14 +101,18 @@ variation and a wider ceramic GGX lobe. Sun/sky radiance and, where set, the
 sun direction are calibrated per window through `illumination`; this changes
 transported light, not display masks or an ambient shading term. Sky strength
 (`skyScale`, multiplying the historical sky radiance) is set per window so the
-indirect light in shaded areas matches each reference view; sun strength and
-exposure are unchanged. Column Reservoir uses 4, Ring Passage 14, Still
+indirect light in shaded areas matches each reference view. The four new
+locations share one sun strength (6, 5.58, 4.69); exposure is unchanged. Column Reservoir uses 4, Ring Passage 14, Still
 Rotunda 7 and Lightwell Threshold 32. The threshold's sky aperture covers the
 lightwell and the void above the corridor ceiling towards the viewer, not the
 far hall, so the hall no longer floods the doorway. Light from that void
 reaches the corridor through a 0.8 m slot behind the viewer and lights the near
-column and the cylinder's camera-facing side; a soft steep (78 degree) sun of
-strength 1.5 comes down the lightwell gap onto the upper cylinder face. The white glaze hue
+column and the cylinder's camera-facing side. The world sun (14 degrees,
+behind-left of the viewer) enters the void above the corridor ceiling through a
+wall aperture high in the left shell wall; the shaft wall around the recess is
+an arcade drum whose openings on that side let it into the lightwell. Its
+direct light stays above the corridor ceiling; the corridor receives it only as
+bounced light. The white glaze hue
 is matched per window with luminance-preserving tints of its albedo endpoints
 (Column Reservoir R x1.19 B x0.80, Ring Passage R x1.09 B x1.05, Lightwell
 Threshold R x1.06 B x1.13; the rotunda is unchanged). Each window

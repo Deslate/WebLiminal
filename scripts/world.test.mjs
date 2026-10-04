@@ -77,3 +77,14 @@ test('the level and the renderer share one world sun', async () => {
   const m = /fn sunDirection\(\)->vec3f\{return normalize\(vec3f\(([^)]*)\)\);\}/.exec(shader);
   assert.deepEqual(m[1].split(',').map(Number), worldSun);
 });
+test('every authored location shares one sun strength and the world sun direction', async () => {
+  const { worldSun, rotateY } = await import('../levels/poolrooms-regions.js');
+  const strengths = new Set();
+  for (const b of bookmarks.slice(1)) {
+    const w = loadWindow(level, b.address), ill = w.scene(w.optics).illumination;
+    strengths.add(ill.sun.join(','));
+    const local = ill.sunDirection ?? worldSun;
+    rotateY(local, w.orientation ?? 0).forEach((v, k) => assert(Math.abs(v - worldSun[k]) < 1e-9, b.name));
+  }
+  assert.equal(strengths.size, 1);
+});

@@ -77,7 +77,8 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   shapes[0].density[3] = 24;
   // Shell walls; a location may cut daylight openings into them, which the
   // renderer then treats as wall apertures for sky, photons and water light.
-  const wallOpenings = kind === 'rotunda' ? [{ axis: 2, at: maxZ, from: [5, .6], to: [9, 6.5], outward: 1 }] : [];
+  const wallOpenings = kind === 'rotunda' ? [{ axis: 2, at: maxZ, from: [5, .6], to: [9, 6.5], outward: 1 }]
+    : kind === 'threshold' ? [{ axis: 0, at: -W, from: [-1, 4.5], to: [9.5, 6.2], outward: -1 }] : [];
   const shellWall = (lo, hi, axis, at) => {
     const o = wallOpenings.find(w => w.axis === axis && w.at === at);
     if (!o) { add(lo, hi); return; }
@@ -217,8 +218,14 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     add([cx-radius,0,cz-radius],[cx+radius,roof,cz+radius]);
     Object.assign(shapes.at(-1),{kind:2,radius});
     solids.push({kind:'circle',x:cx,z:cz,radius});
-    add([cx-recess,lowRoof,cz-recess],[cx+recess,roof,cz+recess]);
+    // A thin ceiling ring around the recess, and above it the shaft wall as an
+    // arcade drum: its openings on the sun side admit the low sun from the
+    // void above the corridor ceiling, which grazes round the annular gap and
+    // lights the cylinder just under the rim.
+    add([cx-recess,lowRoof,cz-recess],[cx+recess,lowRoof+.25,cz+recess]);
     Object.assign(shapes.at(-1),{kind:4,radius:recess});
+    add([cx-recess-.3,lowRoof+.25,cz-recess-.3],[cx+recess+.3,roof,cz+recess+.3]);
+    Object.assign(shapes.at(-1),{kind:10,radius:recess,outerRadius:recess+.3,spring:lowRoof+.6,openingRadius:.7,openings:8});
     // Corridor ceiling around the recess; it stops at the hall threshold.
     // Daylight also falls into the void above the corridor ceiling; its
     // bounced light reaches the corridor through a slot behind the viewer,
@@ -256,7 +263,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     for(const x of [-5.4,-3.2,-1,1.2]) post(x,-9);
     solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
-  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 7, sunDirection: localSun('rotunda') } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 14, sunDirection: localSun('rings') } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [6,5.58,4.69], skyScale: 7, sunDirection: localSun('rotunda') } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 14, sunDirection: localSun('rings') } : kind === 'threshold' ? {sun:[6,5.58,4.69],skyScale:32} : undefined;
   // The complete flooded hall fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
   const waterBounds = kind === 'rotunda' ? {minX:-10.5,maxX:10.5,minZ:-10.5,maxZ:10.5}
