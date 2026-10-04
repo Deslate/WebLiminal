@@ -159,11 +159,11 @@ see it; ceiling reflections are not openings.
   circumference. A thin, flat plaster front wall cuts the circle as a chord;
   the viewer stands in a dark antechamber 1.4 m behind its narrow doorway,
   which frames the hall. Shallow water (0.25 m) covers the whole hall floor and
-  runs under the openings; a 2.55 m deep pit, 7.85 m in radius, fills the
+  runs under the openings; a 1.75 m deep pit, 7.85 m in radius, fills the
   centre. The stainless U-tube ladder stands on the shallow floor at the pit's
-  near rim and reaches down to the pit floor. Behind the openings a dry 1.3 m
+  near rim and reaches down to the pit floor. Behind the openings a dry 2.5 m
   tiled ambulatory is open to daylight above. Only this window is 24 m wide and
-  28 m deep, with its floor slab 2 m lower; the others are 14 m wide.
+  28 m deep, with its floor slab 1.2 m lower; the others are 14 m wide.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
 cells/m on general new surfaces and 24/m on new pool floors. This bounds content
@@ -203,7 +203,8 @@ All lengths are metres, `y` up.
   `outerRadius` around the box centre (or `center`), pierced by `openings`
   equal radial round-headed openings of half-width `openingRadius` whose heads
   spring at `spring`. Opening 0 faces -z; the rest follow at equal angles, and
-  they may not overlap at the inner face. Face 6 is the inner wall, faces 2/3
+  they may not overlap at the inner face. Face 6 is the inner wall, face 7 the
+  outer wall (both equal-area cylinder charts minus the openings), faces 2/3
   the annular ends, and face 8 one chart holding every opening's jambs and head,
   unfolded across the opening and stacked by depth. A box side that cuts
   through the wall is a solid planar face (0/1/4/5); every curved surface and

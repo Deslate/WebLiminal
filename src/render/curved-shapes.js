@@ -53,7 +53,7 @@ export function curvedShader(source, scene) {
   let r=select(s.params.x,s.params.z,a.topology.y==10u);let angle=q.x/r-PI;let radial=vec3f(cos(angle),sin(angle),0);
   p=vec3f((s.lo.x+s.hi.x)*.5,s.params.y,q.y)+radial*r;n=select(-radial,radial,a.topology.y==10u);
  }else if(a.topology.y>=2u){
-  let chartRadius=select(s.params.x,s.params.z,a.topology.y==4u);
+  let chartRadius=select(s.params.x,s.params.z,a.topology.y==4u||a.topology.y==12u);
   let angle=q.x/chartRadius-PI;let radial=vec3f(cos(angle),0,sin(angle));
   let center=shapeCenter(s);
   var radius=chartRadius;
@@ -63,7 +63,7 @@ export function curvedShader(source, scene) {
   if(a.topology.y==3u){n=-normalize(p-vec3f(center.x,s.params.y,center.y));}
  }else if(a.topology.y==1u){
   let angle=`);
-  replace('if(shape.info.y!=1u){return 0u;}', 'if(shape.info.y==10u){return select(select(0u,3u,face==6u),4u,face==8u);}\n if(shape.info.y>=2u&&face>=6u){return 3u;}\n if(shape.info.y!=1u){return 0u;}');
+  replace('if(shape.info.y!=1u){return 0u;}', 'if(shape.info.y==10u){return select(select(0u,3u,face==6u||face==7u),4u,face==8u);}\n if(shape.info.y>=2u&&face>=6u){return 3u;}\n if(shape.info.y!=1u){return 0u;}');
   replace('let q=h.p.xy-vec2f', `if(mode==4u){let d=h.p.xz-shapeCenter(shape);let ax=arcadeAxis(d,shape);return vec2f(archAlong(vec2f(dot(d,vec2f(-ax.y,ax.x)),h.p.y-shape.params.y),shape.params.w),dot(d,ax.xy));}
  if(mode==3u&&shape.info.y==9u){let v=h.p.xy-vec2f((shape.lo.x+shape.hi.x)*.5,shape.params.y);let r=select(shape.params.x,shape.params.z,h.sid%9u==7u);return vec2f(atan2(v.y,v.x)*r,h.p.z);}
  if(mode==3u){let v=h.p.xz-shapeCenter(shape);let r=select(shape.params.x,shape.params.z,h.sid%9u==7u);return vec2f(atan2(v.y,v.x)*r+select(0.,shape.params.w,shape.info.y==2u||shape.info.y==4u),h.p.y);}

@@ -28,9 +28,9 @@ const curvedPoint=(s,face,u,v)=>{const c=s.center??[(s.lo[0]+s.hi[0])/2,(s.lo[2]
 const ringRadius=(s,p)=>Math.hypot(p[0]-(s.lo[0]+s.hi[0])/2,p[1]-s.spring);
 // Chart topology codes read by the shaders: 1 arch intrados and jambs,
 // 2 cylinder, 3 dome, 4 oculus shaft, 6 concave cylinder, 9/10 ring,
-// 11 arcade opening reveals.
+// 11 arcade opening reveals, 12 outward cylinder at the outer radius.
 function topology(s,face){
- if(s.kind===10)return face===6?6:11;
+ if(s.kind===10)return face===6?6:face===7?12:11;
  if(s.kind===9)return face===6?9:10;
  return s.kind===3&&face===7?4:s.kind===4?6:s.kind;
 }
@@ -43,8 +43,9 @@ export function buildLightAtlases(shapes,gridScale=1){
   let disabled=face>=6&&s.kind!==1;
   if(s.kind===10){const c=centerOf(s),k=face<2?0:2,plane=face<6&&face!==2&&face!==3?(face%2?s.hi:s.lo)[k]:0;
    const cuts=[0,1,4,5].includes(face)&&Math.abs(plane-(k?c[1]:c[0]))<s.outerRadius-1e-6;
-   disabled=!([2,3,6,8].includes(face)||cuts);const rise=s.spring-s.lo[1];
+   disabled=!([2,3,6,7,8].includes(face)||cuts);const rise=s.spring-s.lo[1];
    if(face===6)bounds=[0,s.lo[1],2*Math.PI*s.radius,s.hi[1]];
+   if(face===7)bounds=[0,s.lo[1],2*Math.PI*s.outerRadius,s.hi[1]];
    if(face===8)bounds=[-rise,0,Math.PI*s.openingRadius+rise,s.openings*(s.outerRadius-arcadeStart(s))];}
   if(s.kind===9){disabled=![4,5,6,7].includes(face);if(face===6||face===7)bounds=[0,s.lo[2],2*Math.PI*(face===6?s.radius:s.outerRadius),s.hi[2]];}
   if(s.kind>=2&&s.kind<=7){
@@ -74,6 +75,7 @@ export function buildLightAtlases(shapes,gridScale=1){
  const owner=(g,u,v)=>{
   if(g.curved){const m=g.members[0],s=shapes[m.i];
    if(s.kind===10&&m.face===6){const p=curvedPoint(s,6,u,v);return inOpening(s,p)||!inBox(s,p)?null:m.sid;}
+   if(s.kind===10&&m.face===7){const p=curvedPoint({...s,radius:s.outerRadius},6,u,v);return inOpening(s,p)||!inBox(s,p)?null:m.sid;}
    if(s.kind===10){const p=revealPoint(s,u,v);return inAnnulus(s,p)&&inBox(s,p)?m.sid:null;}
    if(s.center&&(s.kind===3||s.kind===4)&&!inBox(s,curvedPoint(s,m.face,u,v)))return null;
    if(s.kind===9){const p=ringPoint(s,m.face===6?s.radius:s.outerRadius,u,v);return inBox(s,p)?m.sid:null;}

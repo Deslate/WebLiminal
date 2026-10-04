@@ -90,7 +90,10 @@ test('arcade drum charts the wall and its equal radial openings without overlap'
   // Each reveal: two jambs and a round head, about one wall thickness deep.
   const reveal=8*(2*1.5+Math.PI*.6)*1;
   assert(Math.abs(covered(8)-reveal)/reveal<.05,'opening reveals');
-  for(const face of [0,1,4,5,7])assert.equal(u[face*16+1]*u[face*16+2],4);
+  // The outer face also receives light, minus the same openings.
+  assert.equal(u[7*16+13],12);
+  assert(Math.abs(covered(7)-(2*Math.PI*5*3-8*opening))/(2*Math.PI*5*3)<.02,'outer wall minus openings');
+  for(const face of [0,1,4,5])assert.equal(u[face*16+1]*u[face*16+2],4);
 });
 test('ring and arcade intersection is specialised only when present', () => {
   const common=readFileSync(new URL('../src/render/common.wgsl',import.meta.url),'utf8');

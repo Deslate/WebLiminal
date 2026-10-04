@@ -50,7 +50,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   // The ring passage extends further so its terminal tunnel has depth.
   const minZ = kind === 'rings' || kind === 'rotunda' ? -16 : -12;
   // The rotunda's pool floor lies below the shared slab level.
-  const base = kind === 'rotunda' ? -2 : 0;
+  const base = kind === 'rotunda' ? -1.2 : 0;
   // The rotunda needs a wider window for its drum and ambulatory.
   const W = kind === 'rotunda' || kind === 'columns' ? 12 : 7, maxZ = kind === 'rotunda' ? 12 : 10;
   const bounds = { minX: -W, maxX: W, minZ, maxZ, ceiling: roof };
@@ -152,7 +152,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // under the openings; a deep pit fills its centre, and the ladder stands
     // on the shallow floor at the pit's near rim. Behind the openings a dry
     // tiled ambulatory is open to daylight above.
-    const R = 9.5, wall = .8, water = .55, shallow = .3, top = 5.35, open = 1.5, front = -9.2, outer = R + wall + 1.3, pit = 7.85;
+    const R = 9.5, wall = .8, water = .55, shallow = .3, top = 5.35, open = 1.5, front = -9.2, outer = R + wall + 2.5, pit = 7.85;
     const curved = (lo, hi, extra) => { add(lo, hi); Object.assign(shapes.at(-1), extra); };
     curved([-R - wall, top, front], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 1.5, center: [0, 0] });
     curved([-R - wall, shallow, front], [R + wall, top, R + wall],
