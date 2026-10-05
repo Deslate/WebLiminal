@@ -56,6 +56,25 @@ eta_tt + omega^2 eta = omega^2 b
 
 ### Known limitations
 
+Optional shared water previews are selected with `?waterPreview=fine`,
+`dense`, or `detail`. The default and unknown values keep production behaviour.
+The selection survives location changes and applies equally to all windows.
+
+- `fine` reduces pressure diffusion from eight passes to four; `dense` uses
+  two. These are intentional visual choices of excitation bandwidth, not
+  measured environmental forcing. They add resolved short-wave energy to the
+  actual evolved height field, affecting refraction, reflection and photons
+  together. There is no cosmetic normal layer. Gravity, surface tension,
+  dissipation, absorption and refractive index are unchanged.
+- `detail` keeps production waves, refines submerged solid hits with the
+  existing tile-relief intersection and near material, and bypasses reflected
+  radiance reconstruction. It does not change absorption, tile dimensions or
+  illumination. Near material filtering still uses the camera-to-hit footprint
+  approximation rather than refracted ray differentials; finite camera samples
+  can expose aliasing when reflection filtering is bypassed.
+
+These previews are alternatives, not an automatically selected new default.
+
 1. The body is a linear equivalent-pressure source, not fluid-structure interaction with an impermeable moving boundary. No horizontal velocity field, vorticity, turbulent wake, spray or breaking.
 2. The body component is added linearly to the background field; it does not change the background's propagation.
 3. The spectral body solver does not see interior walls or columns. Dry cells hide the water, but the response can pass through interior walls non-locally. Only the background field has true no-flux boundaries.

@@ -11,7 +11,7 @@ export function dispersionPolynomial(depth,degree=32,dx=1/32){
  for(let k=0;k<n;k++){let pivot=k;for(let j=k+1;j<n;j++)if(Math.abs(A[j][k])>Math.abs(A[pivot][k]))pivot=j;[A[k],A[pivot]]=[A[pivot],A[k]];const d=A[k][k];for(let j=k;j<=n;j++)A[k][j]/=d;for(let i=0;i<n;i++)if(i!==k){const v=A[i][k];for(let j=k;j<=n;j++)A[i][j]-=v*A[k][j];}}
  return {limit,coefficients:A.map(r=>r[n]),degree,depth};
 }
-export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,prelude}){
+export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,prelude,pressurePasses=8}){
  let degree=32;const maxDegree=80,module=device.createShaderModule({label:'finite depth on the wet-domain Neumann graph',code:prelude+code});
  for(const m of(await module.getCompilationInfo()).messages)if(m.type==='error')throw Error(`finite depth ${m.lineNum}: ${m.message}`);
  const storage=size=>device.createBuffer({size,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
@@ -43,7 +43,9 @@ export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,pre
  }
  function pressure(encoder,active,slot){
   dispatch(encoder,active,slot,4,0);let j=1;
-  for(let i=0;i<8;i++){dispatch(encoder,active,slot,5,j);j=1-j;}
+  // Opt-in previews broaden excitation for visual preference, not measured
+  // environmental forcing. Gravity, capillarity and dissipation stay fixed.
+  for(let i=0;i<pressurePasses;i++){dispatch(encoder,active,slot,5,j);j=1-j;}
   return j;
  }
  function initialize(encoder,active,slot){const j=pressure(encoder,active,slot);dispatch(encoder,active,slot,6,j);}
@@ -53,5 +55,5 @@ export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,pre
   for(let k=degree-1;k>=1;k--){dispatch(encoder,active,slot,2,j,k);j=1-j;}
   dispatch(encoder,active,slot,3,j,0);
  }
- return {reset,initialize,step,get info(){return {method:'G(L)=sqrt(L)tanh(H sqrt(L)), Neumann wet-domain graph',...fit,uniformDepth:true,forcing:'homogeneous band-limited stochastic pressure'}}};
+ return {reset,initialize,step,get info(){return {method:'G(L)=sqrt(L)tanh(H sqrt(L)), Neumann wet-domain graph',...fit,uniformDepth:true,pressurePasses,forcing:'homogeneous band-limited stochastic pressure'}}};
 }

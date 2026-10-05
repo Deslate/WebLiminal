@@ -1,6 +1,7 @@
 import {LAB_DEFAULTS,normalizeLab} from "../lab-settings.js";
 import {labShader} from "./lab-shaders.js";
 import { createWaveSimulation } from "./wave-simulation.js";
+import { waterPreview, waterPreviewCamera } from "./water-preview.js";
 import commonSource from "./common.wgsl?raw";
 import { curvedShader } from "./curved-shapes.js";
 import { conductorShader, conductorCommon } from "./conductor-shaders.js";
@@ -18,7 +19,8 @@ import { packScene, sceneShaderPrelude, waterGrid } from "./scene.js";
 
 // `level` is a level module (see docs/LEVELS.md): optics, limits, material
 // WGSL and a scene(options) builder. The renderer knows no level by name.
-export async function createRenderer(canvas, level) {
+export async function createRenderer(canvas, level, previewName = '') {
+  const preview = waterPreview(previewName);
   if (!navigator.gpu) throw new Error("This version needs a desktop browser with WebGPU support.");
   const adapter = await navigator.gpu.requestAdapter({
     powerPreference: "high-performance",
@@ -47,7 +49,7 @@ export async function createRenderer(canvas, level) {
   // Scattering adds one camera storage buffer; keep the legacy path on
   // adapters which cannot bind it. Other windows keep their shader source.
   const air = device.limits.maxStorageBuffersPerShaderStage >= 9 ? airGrid(initialScene) : null;
-  const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude });
+  const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude, pressurePasses: preview.pressurePasses });
   const { near: nearMaterial, photon: photonMaterial } = level.materials;
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
@@ -58,7 +60,7 @@ export async function createRenderer(canvas, level) {
   const shaderModules = [
     module("photon transport", prelude + common + photonMaterial + conductorShader('photons', photons, initialScene)),
     module("world irradiance estimate", prelude + common + labShader("resolve",resolve,lab)),
-    module("camera transport", prelude + common + nearMaterial + airCamera(conductorShader('camera', labShader("camera",camera,lab), initialScene), air ? initialScene : {})),
+    module("camera transport", prelude + common + nearMaterial + airCamera(conductorShader('camera', labShader("camera",waterPreviewCamera(camera,preview,initialScene.conductorMaterials),lab), initialScene), air ? initialScene : {})),
     module("lens and film", present),
     module("area sky integral", prelude + common + labShader("sky",sky,lab)),
     module("current water flux", prelude + common + labShader("water",waterCaustics,lab)),
@@ -150,7 +152,7 @@ export async function createRenderer(canvas, level) {
     focalLength: level.optics.focalLength ?? 28,
     fNumber: 5.6,
     reflectionCone: .018,
-    reflectionFilter:1,
+    reflectionFilter:preview.detail ? 0 : 1,
     grain: .004,
   };
   let wakes=[],body=null;

@@ -37,7 +37,8 @@ let dragging = false,
   holdTime = false,
   targetSamples = 0;
 const runId = crypto.randomUUID();
-let renderer = await createRenderer(canvas, windowLevel).catch((e) => {
+const waterPreviewName = new URLSearchParams(location.search).get('waterPreview') || '';
+let renderer = await createRenderer(canvas, windowLevel, waterPreviewName).catch((e) => {
   document.getElementById("audio-status").textContent = e.message;
   console.error(e);
   throw e;
@@ -267,7 +268,7 @@ async function teleport(index) {
     while (tickRunning || renderer.busy) await new Promise(r => setTimeout(r, 5));
     await renderer.destroy();
     // One resident window bounds GPU memory. Rebase the player to local metres.
-    renderer = await createRenderer(canvas, next);
+    renderer = await createRenderer(canvas, next, waterPreviewName);
     await renderer.setLab(labState);
     windowLevel = next;
     activeRegion = index;
