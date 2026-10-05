@@ -155,9 +155,15 @@ see it; ceiling reflections are not openings.
   0.8 m thick drum rises without a ledge into a hemispherical dome with a 3 m
   oculus at its crown, which admits a high sun and the sky. The direction
   toward the sun is normalized from `(0.17, 0.95, 0.18)`, at 75.4 degrees
-  elevation. From the default view facing +z, the sun lies to the upper left;
-  its beam through the oculus lands on the right half of the basin. The shaft
-  clips the beam, and water refraction sets its submerged footprint. Twelve equal, low
+  elevation and 43.4 degrees from +z toward +x. From the default view facing
+  +z, the sun lies to the upper left; its beam through the oculus lands on the
+  right half of the basin. Its axis crosses mean water near
+  `(x = -2.58, z = -2.73)` m and, after refraction, the pit floor near
+  `(-2.81, -2.98)` m. These estimates use the shaft's mid-height and flat water;
+  the shaft clips the beam and live-water refraction distorts its footprint.
+  The visible footprint is inside the pool, away from its near rim. Air is
+  transparent: the renderer does not make the beam itself visible through
+  scattering. Twelve equal, low
   round-headed openings (3 m wide, 3.6 m above the water, piers about two
   thirds of an opening) pierce its base at even intervals around the full
   circumference. A thin, flat plaster front wall cuts the circle as a chord;

@@ -62,6 +62,14 @@ eta_tt + omega^2 eta = omega^2 b
 - Sun: a finite disc (angular radius 0.00465 rad), sampled symmetrically.
 - Sky: an area light through the ceiling aperture, integrated with 16 x 16 samples (lab-configurable).
 
+Air is a nonparticipating medium: camera paths have no atmospheric extinction
+or in-scattering integral. Openings and solid visibility determine where direct
+sunlight can travel, but its path through air is invisible. A visible shaft of
+light would require transport through a scattering medium, including its phase
+function, extinction and source visibility; changing surface brightness or
+painting a beam is not an equivalent model. Water absorption and refraction
+remain separate from this air approximation.
+
 ### Photons and caustics (`photons.wgsl`, `water-caustics.wgsl`, `resolve.wgsl`)
 
 - Caustics come only from photon transport through the live water surface: Fresnel split, Snell refraction, absorption, and receiver-area normalisation. No painted or animated caustic textures exist.
