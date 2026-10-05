@@ -37,7 +37,7 @@ export function createPoolroomsWorld(data, materials) {
     const spawn = { x: 0, y: 1.62, z: 7, yaw: 0, pitch: -.12 };
     if (recipe === 'columns') { spawn.x = -1; spawn.z = 8.5; spawn.yaw = -.3; spawn.pitch = .02; optics.waterLevel = .58; optics.apertureWidth = 9.5; optics.apertureDepth = 8.9; optics.exposure = 1.15; optics.focalLength = 20; }
     if (recipe === 'rings') { spawn.x = 1.3; spawn.z = 5.8; spawn.yaw = .17; spawn.pitch = -.02; optics.apertureWidth = 2.05; optics.apertureDepth = 13; optics.focalLength = 12; }
-    if (recipe === 'rotunda') { spawn.z = -10.85; spawn.y = 2.22; spawn.yaw = Math.PI; spawn.pitch = -.14; optics.waterLevel = .55; optics.apertureWidth = 23.8; optics.apertureDepth = 21; optics.exposure = 2.3; optics.focalLength = 14; optics.waveAmplitude = .012; }
+    if (recipe === 'rotunda') { spawn.z = -10.85; spawn.y = 2.22; spawn.yaw = Math.PI; spawn.pitch = -.082; optics.waterLevel = .55; optics.apertureWidth = 23.8; optics.apertureDepth = 21; optics.exposure = 2.3; optics.focalLength = 14.17; optics.waveAmplitude = .012; }
     if (recipe === 'threshold') { spawn.x = -1.8; spawn.z = 8.4; spawn.pitch = 0; optics.apertureWidth = 8.9; optics.apertureDepth = 11.7; optics.focalLength = 18; }
     return { spawn, optics, materials: materials[recipe] ?? materials, scene: options => buildRegion(recipe, options),
       ...(limits[recipe] ? {limits:limits[recipe]} : {}) };
@@ -152,13 +152,15 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // under the openings; a deep pit fills its centre, and the ladder stands
     // on the shallow floor at the pit's near rim. Behind the openings a dry
     // tiled ambulatory is open to daylight above.
-    const R = 9.5, wall = .8, water = .55, shallow = .3, top = 5.35, open = 1.5, front = -9.2, outer = R + wall + 2.5, pit = 7.85;
+    // The pit, entrance and ladder share the spawn camera's reference fit.
+    // The observer remains at standing eye height on the antechamber floor.
+    const R = 9.5, wall = .8, water = .55, shallow = .3, top = 5.35, open = 1.5, front = -9.2, outer = R + wall + 2.5, pit = 6.67;
     const curved = (lo, hi, extra) => { add(lo, hi); Object.assign(shapes.at(-1), extra); };
     curved([-R - wall, top, front], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 1.5, center: [0, 0] });
     curved([-R - wall, shallow, front], [R + wall, top, R + wall],
       { kind: 10, radius: R, outerRadius: R + wall, spring: water + 3.6 - open, openingRadius: open, openings: 12, center: [0, 0] });
     // Thin plaster front wall; the viewer stands 1.4 m behind its doorway.
-    const arch = { radius: .85, spring: 2.22 };
+    const arch = { radius: .93, spring: 2.26 };
     add([-W, base, front - .25], [W, roof, front], 1, arch);
     solids.push({ minX: -W, maxX: -arch.radius, minZ: front - .25, maxZ: front }, { minX: arch.radius, maxX: W, minZ: front - .25, maxZ: front });
     // Outer ambulatory wall, concentric with the drum.
@@ -170,8 +172,8 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // Walking stays in the antechamber.
     solids.push({ minX: -W, maxX: W, minZ: front - .5, maxZ });
     // The ladder stands on the shallow floor and reaches down into the pit.
-    for (const x of [-.38, .38]) {
-      const radius=.48, tubeRadius=.026, rail=1.18, z=-pit;
+    for (const x of [-.43, .43]) {
+      const radius=.48, tubeRadius=.026, rail=.71, z=-pit;
       add([x-tubeRadius, base, z-radius-tubeRadius], [x+tubeRadius, rail+radius+tubeRadius, z+radius+tubeRadius], 3);
       Object.assign(shapes.at(-1), { kind: 5, radius, tubeRadius, spring: rail });
     }
@@ -225,14 +227,16 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     for(const x of [-5.4,-3.2,-1,1.2]) post(x,-9);
     solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
-  // The rotunda spawn faces +z, with screen-right along -x. Sun from +x
-  // projects the crown oculus onto the right half of the basin.
-  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.882,.259,.394] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [.17,.95,.18] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 36, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
+  // The rotunda spawn faces +z, with screen-right along -x. The +x/+z sun
+  // projects the crown oculus toward the near-right basin rim.
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.882,.259,.394] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [.15,.95,.28] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 36, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
   // The complete flooded hall fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
   const waterBounds = kind === 'rotunda' ? {minX:-10.5,maxX:10.5,minZ:-10.5,maxZ:10.5}
     : kind === 'columns' ? {minX:-2.5,maxX:7,minZ:-12,maxZ:10} : bounds;
   return { bounds, shapes, solids, illumination, conductorMaterials: ['rotunda','threshold'].includes(kind) ? [3] : undefined,
+    // Scattering is bounded by the existing 0.004/m extinction.
+    air: kind === 'rotunda' ? { scattering: .004, anisotropy: .6 } : undefined,
     reflectionSamples: kind === 'rotunda' ? {glaze:24,rough:32} : kind === 'threshold' ? {glaze:8,rough:16} : undefined,
     groutHalfWidth: ['columns','rotunda','threshold'].includes(kind) ? .0012 : undefined,
     tileSize: kind === 'threshold' ? thresholdTileSize : undefined,

@@ -4,6 +4,7 @@ import { createWaveSimulation } from "./wave-simulation.js";
 import commonSource from "./common.wgsl?raw";
 import { curvedShader } from "./curved-shapes.js";
 import { conductorShader, conductorCommon } from "./conductor-shaders.js";
+import { airGrid, airBakeSource, airCamera } from "./atmosphere.js";
 import photons from "./photons.wgsl?raw";
 import sky from "./sky.wgsl?raw";
 import resolve from "./resolve.wgsl?raw";
@@ -30,6 +31,7 @@ export async function createRenderer(canvas, level) {
         1024 * 1024 * 1024,
       ),
       maxBufferSize: Math.min(adapter.limits.maxBufferSize, 1024 * 1024 * 1024),
+      maxStorageBuffersPerShaderStage: Math.min(adapter.limits.maxStorageBuffersPerShaderStage, 10),
     },
   });
   const errors = [];
@@ -42,6 +44,9 @@ export async function createRenderer(canvas, level) {
   const initialScene = level.scene(level.optics);
   const common = conductorCommon(curvedShader(commonSource, initialScene), initialScene);
   const prelude = sceneShaderPrelude(initialScene);
+  // Scattering adds one camera storage buffer; keep the legacy path on
+  // adapters which cannot bind it. Other windows keep their shader source.
+  const air = device.limits.maxStorageBuffersPerShaderStage >= 9 ? airGrid(initialScene) : null;
   const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude });
   const { near: nearMaterial, photon: photonMaterial } = level.materials;
   const context = canvas.getContext("webgpu");
@@ -53,13 +58,14 @@ export async function createRenderer(canvas, level) {
   const shaderModules = [
     module("photon transport", prelude + common + photonMaterial + conductorShader('photons', photons, initialScene)),
     module("world irradiance estimate", prelude + common + labShader("resolve",resolve,lab)),
-    module("camera transport", prelude + common + nearMaterial + conductorShader('camera', labShader("camera",camera,lab), initialScene)),
+    module("camera transport", prelude + common + nearMaterial + airCamera(conductorShader('camera', labShader("camera",camera,lab), initialScene), air ? initialScene : {})),
     module("lens and film", present),
     module("area sky integral", prelude + common + labShader("sky",sky,lab)),
     module("current water flux", prelude + common + labShader("water",waterCaustics,lab)),
     module("instant diffuse transfer", prelude + common + photonMaterial + labShader("diffuse",diffuseTransfer,lab)),
     module("assemble current lighting",prelude+common+composeLight),
     module("continuous reflection footprint",prelude+common+reflectionFilter),
+    ...(air ? [module("air light grid",prelude+common+airBakeSource(initialScene))] : []),
   ];
   const infos = await Promise.all(
     shaderModules.map((m) => m.getCompilationInfo()),
@@ -102,6 +108,7 @@ export async function createRenderer(canvas, level) {
     device.createComputePipelineAsync({label:"compose current light",layout:"auto",compute:{module:shaderModules[7],entryPoint:"compose"}}),
     ...["horizontalReflection","verticalReflection"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[8],entryPoint}})),
     device.createComputePipelineAsync({label:"finite-volume diffuse source",layout:"auto",compute:{module:shaderModules[6],entryPoint:"restrictPatches"}}),
+    ...(air ? [device.createComputePipelineAsync({label:"air light grid",layout:"auto",compute:{module:shaderModules[9],entryPoint:"bakeAir"}})] : []),
   ]);
   }
   pipelines=await compileLab();
@@ -199,7 +206,7 @@ export async function createRenderer(canvas, level) {
       null,
       bindings(pipelines[2], [
         ...shared,
-        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field],
+        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field],...(air ? [[10,buffers.air]] : []),
       ]),
       bindings(pipelines[3], [
         [0, imageBuffer],
@@ -261,6 +268,7 @@ export async function createRenderer(canvas, level) {
     buffers.patchDelta=device.createBuffer({size:geometry.probeCount*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.links=device.createBuffer({size:geometry.probeCount*256*16*(lab.diffuseDirections/128),usage:GPUBufferUsage.STORAGE});
     for(let i=0;i<2;i++)buffers[`bounce${i}`]=device.createBuffer({size:geometry.probeCount*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+    if(air)buffers.air=device.createBuffer({label:"air light grid",size:air.count*16,usage:GPUBufferUsage.STORAGE});
     sceneBatches = 0;
     history = 0;
     if (imageBuffer) regroup();
@@ -413,7 +421,9 @@ export async function createRenderer(canvas, level) {
       };
       const compute=(enc,pipeline,group,count,workgroup=128)=>{const pass=enc.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(count/workgroup));pass.end();};
       if(sceneBatches===0){
-        const skyEncoder=device.createCommandEncoder();compute(skyEncoder,pipelines[4],skyGroup,geometry.totalCells,lab.gridScale>1?128:64);device.queue.submit([skyEncoder.finish()]);
+        const skyEncoder=device.createCommandEncoder();compute(skyEncoder,pipelines[4],skyGroup,geometry.totalCells,lab.gridScale>1?128:64);
+        if(air)compute(skyEncoder,pipelines[15],bindings(pipelines[15],[[0,uniforms],[1,buffers.geometry],[3,buffers.air]]),air.count,64);
+        device.queue.submit([skyEncoder.finish()]);
         const baseBudget=config.freeze?lightBatches():128;
         for(let b=1;b<=baseBudget;b++)photonBatch(0,lastWaveTime,b);
         const bakeEncoder=device.createCommandEncoder();compute(bakeEncoder,pipelines[9],bakeGroup,geometry.probeCount,64);device.queue.submit([bakeEncoder.finish()]);
@@ -522,6 +532,8 @@ export async function createRenderer(canvas, level) {
       const rb=device.createBuffer({size,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});const e=device.createCommandEncoder();e.copyBufferToBuffer(buffers.liveField,u[o]*16,rb,0,size);device.queue.submit([e.finish()]);await rb.mapAsync(GPUMapMode.READ);receivers[sid]={nx,ny,irradiance:Array.from(new Float32Array(rb.getMappedRange()))};rb.unmap();rb.destroy();
     }
     return {
+      air: { requested: Boolean(initialScene.air), enabled: Boolean(air),
+        scattering: air ? initialScene.air.scattering : 0 },
       simulation: options.simulation ? await simulation.audit() : simulation.info,
       receivers,
       floor,

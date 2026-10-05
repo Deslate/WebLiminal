@@ -154,26 +154,33 @@ see it; ceiling reflections are not openings.
 - **Still Rotunda.** One continuous tiled wall of revolution: a 9.5 m radius,
   0.8 m thick drum rises without a ledge into a hemispherical dome with a 3 m
   oculus at its crown, which admits a high sun and the sky. The direction
-  toward the sun is normalized from `(0.17, 0.95, 0.18)`, at 75.4 degrees
-  elevation and 43.4 degrees from +z toward +x. From the default view facing
-  +z, the sun lies to the upper left; its beam through the oculus lands on the
-  right half of the basin. Its axis crosses mean water near
-  `(x = -2.58, z = -2.73)` m and, after refraction, the pit floor near
-  `(-2.81, -2.98)` m. These estimates use the shaft's mid-height and flat water;
+  toward the sun is normalized from `(0.15, 0.95, 0.28)`, at 71.5 degrees
+  elevation and 28.2 degrees from +z toward +x. From the default view facing
+  +z, the sun lies to the upper left; its beam through the oculus lands toward
+  the near-right basin rim. Its axis crosses mean water near
+  `(x = -2.28, z = -4.25)` m and, after refraction, the pit floor near
+  `(-2.48, -4.63)` m. These estimates use the shaft's mid-height and flat water;
   the shaft clips the beam and live-water refraction distorts its footprint.
-  The visible footprint is inside the pool, away from its near rim. Air is
-  transparent: the renderer does not make the beam itself visible through
-  scattering. Twelve equal, low
+  The near rim partly occludes the footprint. This window declares scattering
+  air at 0.004/m, with anisotropy 0.6 (see `PHYSICS.md`). Twelve equal, low
   round-headed openings (3 m wide, 3.6 m above the water, piers about two
   thirds of an opening) pierce its base at even intervals around the full
   circumference. A thin, flat plaster front wall cuts the circle as a chord;
   the viewer stands in a dark antechamber 1.4 m behind its narrow doorway,
   which frames the hall. Shallow water (0.25 m) covers the whole hall floor and
-  runs under the openings; a 1.75 m deep pit, 7.85 m in radius, fills the
+  runs under the openings; a 1.75 m deep pit, 6.67 m in radius, fills the
   centre. The stainless U-tube ladder stands on the shallow floor at the pit's
   near rim and reaches down to the pit floor. Behind the openings a dry 2.5 m
   tiled ambulatory is open to daylight above. Only this window is 24 m wide and
   28 m deep, with its floor slab 1.2 m lower; the others are 14 m wide.
+
+  The pit radius is 6.67 m. The spawn remains at `(0, 2.22, -10.85)` m, at
+  standing eye height in the antechamber, with pitch -0.082 rad and a 14.17 mm
+  lens. The entrance arch has radius 0.93 m and spring height 2.26 m. Ladder
+  tube centres are 0.86 m apart, with bends of radius 0.48 m springing at
+  0.71 m. These dimensions and the camera form one reference-view fit: pool
+  rim projection includes refraction through the shallow water. The fit uses
+  the existing hall scale; one image does not determine absolute dimensions.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
 cells/m on general new surfaces and 24/m on new pool floors. This bounds content
@@ -254,6 +261,12 @@ All lengths are metres, `y` up.
 - **Aperture.** The only light source today: sun and sky enter through this
   rectangle. Its size may change at runtime (the renderer rebuilds geometry and
   light caches); its plane `y` may not.
+- **Air.** Optional `{scattering, anisotropy, cell?}` enables a world-space
+  single-scattering grid. Scattering is in inverse metres, from 0 to the
+  existing extinction coefficient 0.004/m; `abs(anisotropy)` must be less
+  than 1. Grid cells default to 1/3 m and must be finite and at least 0.1 m.
+  Adapters need nine camera storage bindings for this feature; otherwise the
+  legacy haze path remains active. `audit().air` reports the actual selection.
 
 `src/render/scene.js` validates the description, packs shapes for the GPU,
 builds the receiver atlases (`light-atlas.js`) and emits a WGSL prelude of

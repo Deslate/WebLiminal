@@ -41,6 +41,7 @@ src/render/
   diffuse-transfer.wgsl, compose-light.wgsl         light transport passes
   camera.wgsl, reflection-filter.wgsl, present.wgsl  camera and display
   lab-shaders.js            shader specialisation for lab settings
+  atmosphere.js             optional world-space single-scattering air grid
 materials/                  procedural WGSL materials (near + photon BRDF)
 levels/                     level registry and level modules (data, scene builder, materials)
 scripts/                    content validation, unit tests, visual benchmark
@@ -60,6 +61,8 @@ Coupling still to remove before large or streamed worlds: shaders test one stati
 These are directions, not decisions. Record the decision in this file when a piece is actually designed.
 
 ### Decisions
+
+- **Scattering air (implemented).** A window may declare `air` with scattering at most the existing 0.004/m extinction and anisotropy strictly between -1 and 1. Still Rotunda enables it at 0.004/m and 0.6. A 1/3 m world grid caches attenuated sun visibility and sky input through the roof aperture; 24 deterministic primary-ray steps replace the legacy constant haze colour with single scattering. No source strength or material compensation is applied. Adapters lacking a ninth camera storage binding retain the legacy haze path; `audit().air` reports the selection. Windows without air retain their camera shader text. See `docs/PHYSICS.md` for approximations.
 
 - **World locations (implemented).** A level may expose `world.generate({x,z})` and navigation bookmarks. Integer addresses are 64 m world cells; `src/world.js` maps local poses to world coordinates. Bookmarks are separate from the spatial resolver. The current resolver has five authored cells and rejects unauthored addresses; it is not a seeded or seamless generator. Teleport replaces one resident GPU window, releases the old device, rebases the player and resets local simulations. Left/right cycle bookmarks, 1–5 teleport, WASD and up/down move. Original scene and material paths remain unchanged. This establishes address/content/residency boundaries for future streaming; neighbor seams, corridors, seed generation, acceleration and simulation continuity remain future work. New content uses at most 80 shapes/window, 8 cells/m general receivers and 24/m pool floors; measure GPU-completed frame time rather than assuming a frame budget is met. Format and limitations: `docs/LEVELS.md`.
 - **Curved region geometry (implemented).** Capped cylinders, upper hemispherical cavities, cylindrical pool cutouts and continuous round U-tubes extend the analytic scene primitives for the new Poolrooms locations. Equal-area curved receiver charts preserve physical photon normalization; water masks respect columns and basin cutouts. Circular column collision is exact. Stainless steel has zero diffuse albedo, conductor reflectance and geometric tube normals; secondary metal reflections have a bounded traced continuation. Shader specialization leaves original windows' shared WGSL unchanged. The rotunda simulates only the rectangle enclosing its complete circular basin. See `docs/PHYSICS.md`.

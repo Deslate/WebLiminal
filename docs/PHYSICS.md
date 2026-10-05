@@ -62,13 +62,32 @@ eta_tt + omega^2 eta = omega^2 b
 - Sun: a finite disc (angular radius 0.00465 rad), sampled symmetrically.
 - Sky: an area light through the ceiling aperture, integrated with 16 x 16 samples (lab-configurable).
 
-Air is a nonparticipating medium: camera paths have no atmospheric extinction
-or in-scattering integral. Openings and solid visibility determine where direct
-sunlight can travel, but its path through air is invisible. A visible shaft of
-light would require transport through a scattering medium, including its phase
-function, extinction and source visibility; changing surface brightness or
-painting a beam is not an equivalent model. Water absorption and refraction
-remain separate from this air approximation.
+### Air (`atmosphere.js`)
+
+Air paths use 0.004/m extinction. Windows without `scene.air` retain the
+legacy light-independent haze colour in surface shading. A window declaring
+air replaces that colour with single scattering from the actual sun and sky.
+Still Rotunda uses 0.004/m scattering and Henyey-Greenstein anisotropy 0.6.
+Scattering may not exceed extinction; these are model coefficients, not a
+measurement of the atmosphere in a reference image.
+
+- A fixed world grid (1/3 m cells by default) is baked with the light caches.
+  Four sub-voxel visibility rays estimate solar transmittance, and a 4 x 4
+  aperture quadrature estimates incoming sky radiance. Both incoming paths
+  include extinction and solid occlusion through the actual roof geometry.
+- Primary camera rays integrate 24 deterministic midpoint steps to the first
+  solid or mean water plane. The sun uses the anisotropic phase function;
+  the sky uses an isotropic approximation. The viewer path includes extinction.
+- No screen-space shaft, surface brightening or temporal image history is
+  used. Unlit air adds no source-independent glow in this path. Secondary
+  reflection rays retain extinction but do not integrate in-scattering.
+- The grid requires a ninth camera storage buffer. Devices without that
+  binding capacity retain the legacy haze path; `audit().air` reports it.
+
+Limitations: finite grid and ray quadrature, no multiple scattering, no
+scattering of bounced light, a mean-plane water cutoff, and no underwater
+volume scattering. Water absorption and refraction remain separate. This
+approximation does not establish exact conservation for the full renderer.
 
 ### Photons and caustics (`photons.wgsl`, `water-caustics.wgsl`, `resolve.wgsl`)
 
