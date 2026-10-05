@@ -225,7 +225,9 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     for(const x of [-5.4,-3.2,-1,1.2]) post(x,-9);
     solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
-  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.882,.259,.394] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [-.17,.95,.18] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 36, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
+  // The rotunda spawn faces +z, with screen-right along -x. Sun from +x
+  // projects the crown oculus onto the right half of the basin.
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.882,.259,.394] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [.17,.95,.18] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 36, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
   // The complete flooded hall fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
   const waterBounds = kind === 'rotunda' ? {minX:-10.5,maxX:10.5,minZ:-10.5,maxZ:10.5}

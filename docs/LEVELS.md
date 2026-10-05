@@ -153,7 +153,11 @@ see it; ceiling reflections are not openings.
   give the tunnel depth.
 - **Still Rotunda.** One continuous tiled wall of revolution: a 9.5 m radius,
   0.8 m thick drum rises without a ledge into a hemispherical dome with a 3 m
-  oculus at its crown, which admits a high sun and the sky. Twelve equal, low
+  oculus at its crown, which admits a high sun and the sky. The direction
+  toward the sun is normalized from `(0.17, 0.95, 0.18)`, at 75.4 degrees
+  elevation. From the default view facing +z, the sun lies to the upper left;
+  its beam through the oculus lands on the right half of the basin. The shaft
+  clips the beam, and water refraction sets its submerged footprint. Twelve equal, low
   round-headed openings (3 m wide, 3.6 m above the water, piers about two
   thirds of an opening) pierce its base at even intervals around the full
   circumference. A thin, flat plaster front wall cuts the circle as a chord;
