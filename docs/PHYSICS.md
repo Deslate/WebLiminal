@@ -32,7 +32,7 @@ The visible water surface is the linear sum of two independent solvers. Both are
 - Propagation uses the finite-depth operator `sqrt(L) tanh(H sqrt(L))` on the wet-domain graph Laplacian `L` with no-flux (Neumann) boundaries at the real pool geometry. `G(s)/s` is fitted by a Chebyshev polynomial so that the constant mode is exactly null.
 - Explicit dissipation removes short waves; a band-limited random pressure over the whole wet domain replenishes them. The forcing is not a looping animation and has no fixed phase.
 - Approximation: uniform depth in the operator, grid resolution limits, and a polynomial fit of the dispersion relation.
-- The pressure field receives eight spatial diffusion passes before forcing
+- The pressure field receives four spatial diffusion passes before forcing
   and initialization. Together with short-wave dissipation and the grid,
   this limits the resolved slope spectrum. Bicubic reconstruction derives
   height and both slopes from the same evolved field; there is no independent
@@ -56,24 +56,31 @@ eta_tt + omega^2 eta = omega^2 b
 
 ### Known limitations
 
-Optional shared water previews are selected with `?waterPreview=fine`,
-`dense`, or `detail`. The default and unknown values keep production behaviour.
+Fine waves are the shared default, including original Poolrooms. This intentionally
+produces finer surface motion, more fragmented reflections and refraction, and
+changed live photon caustics in every location. Scene geometry, materials,
+illumination, camera and exposure are not adjusted to compensate.
+
+The URL option `?waterPreview=fine` explicitly selects the default; `calm`
+selects eight pressure diffusion passes without detail changes. `dense` and
+`detail` remain available alternatives. Missing and unknown values select `fine`.
 The selection survives location changes and applies equally to all windows.
 
-- `fine` reduces pressure diffusion from eight passes to four; `dense` uses
+- `fine` uses four pressure diffusion passes; `dense` uses
   two. These are intentional visual choices of excitation bandwidth, not
   measured environmental forcing. They add resolved short-wave energy to the
   actual evolved height field, affecting refraction, reflection and photons
   together. There is no cosmetic normal layer. Gravity, surface tension,
   dissipation, absorption and refractive index are unchanged.
-- `detail` keeps production waves, refines submerged solid hits with the
+- `detail` uses the calmer eight-pass waves, refines submerged solid hits with the
   existing tile-relief intersection and near material, and bypasses reflected
   radiance reconstruction. It does not change absorption, tile dimensions or
   illumination. Near material filtering still uses the camera-to-hit footprint
   approximation rather than refracted ray differentials; finite camera samples
   can expose aliasing when reflection filtering is bypassed.
 
-These previews are alternatives, not an automatically selected new default.
+Reflection and refraction trace the actual simulated surface and scene; no fake
+wave or normal layer, painted reflection, or painted caustic is introduced.
 
 1. The body is a linear equivalent-pressure source, not fluid-structure interaction with an impermeable moving boundary. No horizontal velocity field, vorticity, turbulent wake, spray or breaking.
 2. The body component is added linearly to the background field; it does not change the background's propagation.
