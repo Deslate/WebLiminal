@@ -184,7 +184,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // on the shallow floor at the pit's near rim. Behind the openings a dry
     // tiled ambulatory is open to daylight above.
     const R = 9.5, wall = .8, water = .55, shallow = .3, top = 5.35, open = 1.5, front = -9.2, outer = R + wall + 2.5, pit = 7.85;
-    const curved = (lo, hi, extra) => { add(lo, hi); Object.assign(shapes.at(-1), extra); };
+    const curved = (lo, hi, extra, material = 0) => { add(lo, hi, material); Object.assign(shapes.at(-1), extra); };
     curved([-R - wall, top, front], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 2.5, center: [0, 0] });
     curved([-R - wall, shallow, front], [R + wall, top, R + wall],
       { kind: 10, radius: R, outerRadius: R + wall, spring: water + 3.6 - open, openingRadius: open, openings: 12, center: [0, 0] });
@@ -197,8 +197,8 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // drum opening and falls across the pool towards the viewer.
     // Shallow floor everywhere except the deep central pit; a dry deck outside
     // the drum's outer face, including the antechamber.
-    curved([-W, base, minZ], [W, shallow, maxZ], { kind: 4, radius: pit, center: [0, 0] });
-    curved([-W, shallow, minZ], [W, .6, maxZ], { kind: 4, radius: R + wall, center: [0, 0] });
+    curved([-W, base, minZ], [W, shallow, maxZ], { kind: 4, radius: pit, center: [0, 0] }, 2);
+    curved([-W, shallow, minZ], [W, .6, maxZ], { kind: 4, radius: R + wall, center: [0, 0] }, 2);
     // Walking stays in the antechamber.
     solids.push({ minX: -W, maxX: W, minZ: front - .5, maxZ });
     // The ladder stands on the shallow floor and reaches down into the pit.

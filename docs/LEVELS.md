@@ -171,7 +171,9 @@ see it; ceiling reflections are not openings.
   the viewer stands in a dark antechamber 1.4 m behind its narrow doorway,
   which frames the hall. Shallow water (0.25 m) covers the whole hall floor and
   runs under the openings; a 1.75 m deep pit, 7.85 m in radius, fills the
-  centre. The stainless U-tube ladder stands on the shallow floor at the pit's
+  centre. The shallow floor and dry deck use the same green floor ceramic as
+  the pit floor (material 2); the drum and dome retain the wall ceramic.
+  The stainless U-tube ladder stands on the shallow floor at the pit's
   near rim and reaches down to the pit floor. Behind the openings a dry
   ambulatory reaches the shell walls and is open to daylight above. The
   location is turned -96 degrees in the world, so the 14 degree world sun
