@@ -533,9 +533,7 @@ export async function createRenderer(canvas, level) {
     }
     return {
       air: { requested: Boolean(initialScene.air), enabled: Boolean(air),
-        scattering: air ? initialScene.air.scattering : 0,
-        sunGain: air ? (initialScene.air.sunGain ?? 1) : 0,
-        effectiveSunScattering: air ? initialScene.air.scattering * (initialScene.air.sunGain ?? 1) : 0 },
+        scattering: air ? initialScene.air.scattering : 0 },
       simulation: options.simulation ? await simulation.audit() : simulation.info,
       receivers,
       floor,

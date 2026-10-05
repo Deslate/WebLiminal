@@ -67,19 +67,9 @@ eta_tt + omega^2 eta = omega^2 b
 Air paths use 0.004/m extinction. Windows without `scene.air` retain the
 legacy light-independent haze colour in surface shading. A window declaring
 air replaces that colour with single scattering from the actual sun and sky.
-Still Rotunda deliberately boosts solar in-scattering for a visible shaft:
-base scattering is 0.004/m, `sunGain` is 3.5, and the effective solar
-coefficient is **0.014/m (3.5 times the base physical coefficient)**.
-Sky scattering and extinction remain 0.004/m. Anisotropy is 0 (isotropic),
-which avoids concentrating the visual boost at the upper end of the shaft.
-This is an intentional **nonphysical visual choice**, not a measured fog
-density: the added solar in-scattering is not balanced by extra extinction,
-so this path does not conserve energy. The gain applies only to light
-scattered in air; surface sun/sky strengths, BRDFs and photon flux are not
-multiplied. A missing `sunGain` means 1; zero disables the solar air term.
-The base scattering remains bounded by extinction; the optional visual gain
-must be finite and nonnegative. One reference image cannot uniquely separate
-fog from surface reflectance, water reflections and camera response.
+Still Rotunda uses 0.004/m scattering and Henyey-Greenstein anisotropy 0.6.
+Scattering may not exceed extinction; these are model coefficients, not a
+measurement of the atmosphere in a reference image.
 
 - A fixed world grid (1/3 m cells by default) is baked with the light caches.
   Four sub-voxel visibility rays estimate solar transmittance, and a 4 x 4
