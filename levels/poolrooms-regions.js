@@ -218,33 +218,22 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     add([cx-radius,0,cz-radius],[cx+radius,roof,cz+radius]);
     Object.assign(shapes.at(-1),{kind:2,radius});
     solids.push({kind:'circle',x:cx,z:cz,radius});
-    // The sun-facing quadrant keeps the circular reveal's curvature but moves
-    // its centre 1.5 m toward the sun. Its projected clearance grows from
-    // 0.6 to 2.1 m, admitting the low sun below the corridor ceiling.
-    const horizontalSun=Math.hypot(worldSun[0],worldSun[2]);
-    const extendedCenter=[cx+1.5*worldSun[0]/horizontalSun,cz+1.5*worldSun[2]/horizontalSun];
-    for(const [x0,x1,z0,z1,center] of [
-      [-7,cx,hallZ,cz,[cx,cz]], [cx,7,hallZ,cz,[cx,cz]],
-      [-7,cx,cz,9.2,extendedCenter], [cx,7,cz,9.2,[cx,cz]],
-    ]) {
-      add([x0,lowRoof,z0],[x1,lowRoof+.25,z1]);
-      Object.assign(shapes.at(-1),{kind:4,radius:recess,center});
-    }
-    // A tiled channel roof screens the enlarged reveal from overhead sky.
-    // Low-angle sunlight travels beneath it; the cylinder keeps the inner
-    // boundary, so this is a physical overhang rather than a light override.
-    add([extendedCenter[0]-recess,4.85,cz],[cx,5.05,extendedCenter[1]+recess]);
-    Object.assign(shapes.at(-1),{kind:4,radius,center:[cx,cz]});
-    // Above the recess the shaft wall remains an
+    // A thin ceiling ring around the recess, and above it the shaft wall as an
     // arcade drum: its openings on the sun side admit the low sun from the
     // void above the corridor ceiling, which grazes round the annular gap and
     // lights the cylinder just under the rim.
+    add([cx-recess,lowRoof,cz-recess],[cx+recess,lowRoof+.25,cz+recess]);
+    Object.assign(shapes.at(-1),{kind:4,radius:recess});
     add([cx-recess-.3,lowRoof+.25,cz-recess-.3],[cx+recess+.3,roof,cz+recess+.3]);
     Object.assign(shapes.at(-1),{kind:10,radius:recess,outerRadius:recess+.3,spring:lowRoof+.6,openingRadius:.7,openings:8});
-    // The corridor ceiling stops at the hall threshold. Daylight also falls
-    // into the void above the corridor ceiling; its
+    // Corridor ceiling around the recess; it stops at the hall threshold.
+    // Daylight also falls into the void above the corridor ceiling; its
     // bounced light reaches the corridor through a slot behind the viewer,
     // lighting the near column and the cylinder's camera-facing side.
+    add([-7,lowRoof,hallZ],[cx-recess,lowRoof+.25,9.2]);
+    add([cx-recess,lowRoof,cz+recess],[7,lowRoof+.25,9.2]);
+    add([cx-recess,lowRoof,hallZ],[7,lowRoof+.25,cz-recess]);
+    add([cx+recess,lowRoof,cz-recess],[7,lowRoof+.25,cz+recess]);
     // Straight left wall with a low dark opening at the waterline.
     add([L-.3,.62,hallZ],[L,lowRoof,10]);
     add([L-.3,0,hallZ],[L,.62,1]);add([L-.3,0,2.8],[L,.62,10]);
