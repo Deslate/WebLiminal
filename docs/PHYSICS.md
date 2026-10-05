@@ -59,29 +59,8 @@ eta_tt + omega^2 eta = omega^2 b
 
 ### Sources
 
-- Sun: a finite disc (angular radius 0.00465 rad), sampled symmetrically. There is one
-  world sun, 14 degrees above the horizon, toward (-0.886, 0.242, 0.396). A location
-  rotated in the world sees it in its own frame; its strength is set per location.
+- Sun: a finite disc (angular radius 0.00465 rad), sampled symmetrically.
 - Sky: an area light through the ceiling aperture, integrated with 16 x 16 samples (lab-configurable).
-
-### Air scattering (`atmosphere.js`, new locations only)
-
-- A window may declare `air: { scattering, anisotropy }`. A fixed world grid (0.33 m
-  voxels over the window) stores the sun's visibility (four sub-voxel points) and
-  the sky radiance arriving through the roof and wall apertures, baked with the
-  light caches.
-- Each primary camera ray marches 24 fixed midpoint steps to its first surface or
-  the water and adds single scattering: Henyey-Greenstein phase for the sun,
-  isotropic for the sky, attenuated by the existing 0.004/m extinction. The new
-  locations use anisotropy 0.6 and scattering 0.02/m. **This is a deliberate,
-  non-physical visual choice:** it is five times the 0.004/m extinction used
-  for attenuation, so the air adds scattered light without removing the same
-  energy from beams and surfaces. It was fitted to the reference haze by one
-  measure (tile contrast beside the Lightwell Threshold's far doorway relative
-  to the near wall: reference 1.33, 1x 2.66, 5x 1.36, 10x 0.81).
-- The former light-independent haze term is removed where air is declared.
-  Not modelled: multiple scattering, scattering of bounced light, underwater
-  scattering, and beam edges finer than a voxel.
 
 ### Photons and caustics (`photons.wgsl`, `water-caustics.wgsl`, `resolve.wgsl`)
 

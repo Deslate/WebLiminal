@@ -29,11 +29,6 @@ export function validateScene(scene) {
   if (scene.groutHalfWidth !== undefined && !(Number.isFinite(scene.groutHalfWidth)&&scene.groutHalfWidth>0&&scene.groutHalfWidth<.01)) fail('invalid grout width');
   if (scene.tileSize !== undefined && !(Number.isFinite(scene.tileSize)&&scene.tileSize>.04&&scene.tileSize<1)) fail('invalid tile module');
   if (scene.illumination && (!(Number.isFinite(scene.illumination.skyScale)&&scene.illumination.skyScale>0)||!Array.isArray(scene.illumination.sun)||scene.illumination.sun.length!==3||!scene.illumination.sun.every(v=>Number.isFinite(v)&&v>=0))) fail('invalid illumination');
-  if (scene.wallApertures !== undefined && !(Array.isArray(scene.wallApertures) && scene.wallApertures.length <= 8 && scene.wallApertures.every(a =>
-    [0, 2].includes(a.axis) && Number.isFinite(a.at) && [1, -1].includes(a.outward) && a.from?.length === 2 && a.to?.length === 2
-    && [...a.from, ...a.to].every(Number.isFinite) && a.from[0] < a.to[0] && a.from[1] < a.to[1]))) fail('invalid wall aperture');
-  if (scene.air !== undefined && !(Number.isFinite(scene.air.scattering) && scene.air.scattering >= 0 && scene.air.scattering < 1
-    && Number.isFinite(scene.air.anisotropy) && Math.abs(scene.air.anisotropy) < 1 && (scene.air.cell === undefined || scene.air.cell >= .1))) fail('invalid air scattering');
   if (scene.illumination?.sunDirection && !(Array.isArray(scene.illumination.sunDirection)&&scene.illumination.sunDirection.length===3&&scene.illumination.sunDirection.every(Number.isFinite)&&scene.illumination.sunDirection[1]>.05)) fail('invalid sun direction');
   if (!(bounds.minX < bounds.maxX && bounds.minZ < bounds.maxZ && bounds.ceiling > 0)) fail("empty bounds");
   if (!shapes.length) fail("no shapes");

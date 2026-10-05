@@ -20,23 +20,11 @@ const authoredCells = new Map([
 
 // Apertures sit over courts and lightwells; they may not grow past them.
 const limits = {
-  columns: { apertureWidth: [.5, 12.45], apertureDepth: [.5, 8.9] },
-  rings: { apertureWidth: [.5, 15], apertureDepth: [.5, 13] },
+  columns: { apertureWidth: [.5, 9.5], apertureDepth: [.5, 8.9] },
+  rings: { apertureWidth: [.5, 2.05], apertureDepth: [.5, 13] },
   rotunda: { apertureWidth: [.5, 23.8], apertureDepth: [.5, 21] },
   threshold: { apertureWidth: [.5, 8.9], apertureDepth: [.5, 11.7] },
 };
-
-// The one world sun (src/render/common.wgsl). A location is placed in the
-// world rotated about the vertical axis, its camera turning with it; its
-// local sun is the world sun in the location's own frame, so the rotation
-// decides where light falls without moving the sun.
-export const worldSun = [-.8858, .2419, .3959];
-const orientations = { rings: 149.5 * Math.PI / 180, rotunda: -96 * Math.PI / 180 };
-export function rotateY([x, y, z], angle) {
-  const c = Math.cos(angle), s = Math.sin(angle);
-  return [c * x + s * z, y, -s * x + c * z];
-}
-const localSun = kind => rotateY(worldSun, -(orientations[kind] ?? 0));
 
 export function createPoolroomsWorld(data, materials) {
   return { bookmarks, generate(address) {
@@ -47,11 +35,11 @@ export function createPoolroomsWorld(data, materials) {
     if (!recipe) throw Error(`Unloaded Poolrooms address: ${address.x},${address.z}`);
     const optics = { ...data.optics, apertureWidth: 4, apertureDepth: 4, exposure: 1.35 };
     const spawn = { x: 0, y: 1.62, z: 7, yaw: 0, pitch: -.12 };
-    if (recipe === 'columns') { spawn.x = -1; spawn.z = 8.5; spawn.yaw = -.3; spawn.pitch = .02; optics.waterLevel = .58; optics.apertureWidth = 12.45; optics.apertureDepth = 8.9; optics.exposure = 1.15; optics.focalLength = 20; }
-    if (recipe === 'rings') { spawn.x = 1.3; spawn.z = 5.8; spawn.yaw = .17; spawn.pitch = -.02; optics.apertureWidth = 15; optics.apertureDepth = 13; optics.focalLength = 12; }
+    if (recipe === 'columns') { spawn.x = -1; spawn.z = 8.5; spawn.yaw = -.3; spawn.pitch = .02; optics.waterLevel = .58; optics.apertureWidth = 9.5; optics.apertureDepth = 8.9; optics.exposure = 1.15; optics.focalLength = 20; }
+    if (recipe === 'rings') { spawn.x = 1.3; spawn.z = 5.8; spawn.yaw = .17; spawn.pitch = -.02; optics.apertureWidth = 2.05; optics.apertureDepth = 13; optics.focalLength = 12; }
     if (recipe === 'rotunda') { spawn.z = -10.85; spawn.y = 2.22; spawn.yaw = Math.PI; spawn.pitch = -.14; optics.waterLevel = .55; optics.apertureWidth = 23.8; optics.apertureDepth = 21; optics.exposure = 2.3; optics.focalLength = 14; optics.waveAmplitude = .012; }
     if (recipe === 'threshold') { spawn.x = -1.8; spawn.z = 8.4; spawn.pitch = 0; optics.apertureWidth = 8.9; optics.apertureDepth = 11.7; optics.focalLength = 18; }
-    return { spawn, optics, orientation: orientations[recipe] ?? 0, materials: materials[recipe] ?? materials, scene: options => buildRegion(recipe, options),
+    return { spawn, optics, materials: materials[recipe] ?? materials, scene: options => buildRegion(recipe, options),
       ...(limits[recipe] ? {limits:limits[recipe]} : {}) };
   } };
 }
@@ -64,9 +52,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   // The rotunda's pool floor lies below the shared slab level.
   const base = kind === 'rotunda' ? -1.2 : 0;
   // The rotunda needs a wider window for its drum and ambulatory.
-  // The column court reaches x = -15 so the 14 degree sun clears its outer
-  // wall and reaches the curved wall down to the water through the slits.
-  const W = kind === 'columns' ? 15 : kind === 'rings' ? 20 : kind === 'rotunda' ? 12 : 7, maxZ = kind === 'rotunda' ? 12 : 10;
+  const W = kind === 'rotunda' || kind === 'columns' ? 12 : 7, maxZ = kind === 'rotunda' ? 12 : 10;
   const bounds = { minX: -W, maxX: W, minZ, maxZ, ceiling: roof };
   const add = (lo, hi, material = 0, arch = null, solid = false) => {
     shapes.push({ lo, hi, material, kind: arch ? 1 : 0, radius: arch?.radius ?? 0, spring: arch?.spring ?? 0,
@@ -75,23 +61,12 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   };
   add([-W, base - .3, minZ], [W, base, maxZ], 2);
   shapes[0].density[3] = 24;
-  // Shell walls; a location may cut daylight openings into them, which the
-  // renderer then treats as wall apertures for sky, photons and water light.
-  const wallOpenings = kind === 'rotunda' ? [{ axis: 2, at: maxZ, from: [5, .6], to: [9, 6.5], outward: 1 }]
-    : kind === 'threshold' ? [{ axis: 0, at: -W, from: [-1, 4.5], to: [9.5, 6.2], outward: -1 }] : [];
-  const shellWall = (lo, hi, axis, at) => {
-    const o = wallOpenings.find(w => w.axis === axis && w.at === at);
-    if (!o) { add(lo, hi); return; }
-    const u = axis === 0 ? 2 : 0, cut = (k, a, b, y0, y1) => { const l = [...lo], h = [...hi]; l[k] = a; h[k] = b; l[1] = y0; h[1] = y1; add(l, h); };
-    cut(u, lo[u], o.from[0], lo[1], hi[1]); cut(u, o.to[0], hi[u], lo[1], hi[1]);
-    cut(u, o.from[0], o.to[0], lo[1], o.from[1]); cut(u, o.from[0], o.to[0], o.to[1], hi[1]);
-  };
-  shellWall([-W - .3, base, minZ], [-W, roof + .3, maxZ], 0, -W);
-  shellWall([W, base, minZ], [W + .3, roof + .3, maxZ], 0, W);
-  shellWall([-W, base, minZ - .3], [W, roof + .3, minZ], 2, minZ);
-  shellWall([-W, base, maxZ], [W, roof + .3, maxZ + .3], 2, maxZ);
+  add([-W - .3, base, minZ], [-W, roof + .3, maxZ]);
+  add([W, base, minZ], [W + .3, roof + .3, maxZ]);
+  add([-W, base, minZ - .3], [W, roof + .3, minZ]);
+  add([-W, base, maxZ], [W, roof + .3, maxZ + .3]);
   const az = kind === 'threshold' ? 1.7 : kind === 'rotunda' ? 1.4 : kind === 'columns' ? 5.45 : -3.6;
-  const ax = kind === 'threshold' ? 2.4 : kind === 'rotunda' ? 0 : kind === 'columns' ? -8.725 : 12.45;
+  const ax = kind === 'threshold' ? 2.4 : kind === 'rotunda' ? 0 : kind === 'columns' ? -7.24 : 5.925;
   const a = { minX: ax - apertureWidth / 2, maxX: ax + apertureWidth / 2,
     minZ: az - apertureDepth / 2, maxZ: az + apertureDepth / 2, y: roof + .3 };
   const roofMaterial=['threshold','columns','rings'].includes(kind) ? 0 : 1;
@@ -150,12 +125,8 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
   } else if (kind === 'rings') {
     // A row of thick transverse walls, each pierced by one equal round hole
     // on a common axis; seen through the nearest, the holes stack into a
-    // chain of rings that ends in a dark round tunnel. The location is turned
-    // in the world so the low sun stands ahead and to the right; it crosses a
-    // wide roofless court and enters each segment through an opening in the
-    // right wall, which the holes keep out of view, falling towards the viewer.
-    // The passage keeps its 14 m width: explicit outer walls bound it, and the
-    // window widens only so the court can receive the low sun.
+    // chain of rings that ends in a dark round tunnel. Daylight enters each
+    // segment from a side court through an opening the holes keep out of view.
     const axisY = 1.35, hole = 2.6;
     const wall = (z0, z1, radius) => {
       add([-7, 0, z0], [7, roof, z1]); Object.assign(shapes.at(-1), { kind: 9, radius, outerRadius: 20, spring: axisY });
@@ -172,33 +143,30 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     let z0 = -10.2;
     for (const [lo, hi] of [[-6.6, -4], [-3.2, -.6], [.2, 2.8]]) { add([4.6, 0, z0], [4.9, roof, lo], 0, null, true); z0 = hi; }
     add([4.6, 0, z0], [4.9, roof, 3], 0, null, true);
-    add([-7.3, 0, minZ], [-7, roof, maxZ], 0, null, true);
-    add([7, 0, 3], [7.3, roof, maxZ], 0, null, true);
   } else if (kind === 'rotunda') {
     // Seen from a dark antechamber through a narrow doorway in a thin, flat
     // front wall that cuts the round hall as a chord. The hall's tiled wall
-    // rises without a ledge into a dome with a 5 m oculus at its crown.
+    // rises without a ledge into a dome with a 3 m oculus at its crown.
     // Twelve equal round-headed openings pierce the base of the wall around
     // its full circumference. Shallow water covers the hall floor and runs
     // under the openings; a deep pit fills its centre, and the ladder stands
     // on the shallow floor at the pit's near rim. Behind the openings a dry
     // tiled ambulatory is open to daylight above.
     const R = 9.5, wall = .8, water = .55, shallow = .3, top = 5.35, open = 1.5, front = -9.2, outer = R + wall + 2.5, pit = 7.85;
-    const curved = (lo, hi, extra, material = 0) => { add(lo, hi, material); Object.assign(shapes.at(-1), extra); };
-    curved([-R - wall, top, front], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 2.5, center: [0, 0] });
+    const curved = (lo, hi, extra) => { add(lo, hi); Object.assign(shapes.at(-1), extra); };
+    curved([-R - wall, top, front], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 1.5, center: [0, 0] });
     curved([-R - wall, shallow, front], [R + wall, top, R + wall],
       { kind: 10, radius: R, outerRadius: R + wall, spring: water + 3.6 - open, openingRadius: open, openings: 12, center: [0, 0] });
     // Thin plaster front wall; the viewer stands 1.4 m behind its doorway.
     const arch = { radius: .85, spring: 2.22 };
     add([-W, base, front - .25], [W, roof, front], 1, arch);
     solids.push({ minX: -W, maxX: -arch.radius, minZ: front - .25, maxZ: front }, { minX: arch.radius, maxX: W, minZ: front - .25, maxZ: front });
-    // The ambulatory reaches the shell walls; the far wall has a daylight
-    // opening through which the turned location's low sun reaches a far
-    // drum opening and falls across the pool towards the viewer.
+    // Outer ambulatory wall, concentric with the drum.
+    curved([-W, shallow, front], [W, top, maxZ], { kind: 4, radius: outer, center: [0, 0] });
     // Shallow floor everywhere except the deep central pit; a dry deck outside
     // the drum's outer face, including the antechamber.
-    curved([-W, base, minZ], [W, shallow, maxZ], { kind: 4, radius: pit, center: [0, 0] }, 2);
-    curved([-W, shallow, minZ], [W, .6, maxZ], { kind: 4, radius: R + wall, center: [0, 0] }, 2);
+    curved([-W, base, minZ], [W, shallow, maxZ], { kind: 4, radius: pit, center: [0, 0] });
+    curved([-W, shallow, minZ], [W, .6, maxZ], { kind: 4, radius: R + wall, center: [0, 0] });
     // Walking stays in the antechamber.
     solids.push({ minX: -W, maxX: W, minZ: front - .5, maxZ });
     // The ladder stands on the shallow floor and reaches down into the pit.
@@ -218,14 +186,8 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     add([cx-radius,0,cz-radius],[cx+radius,roof,cz+radius]);
     Object.assign(shapes.at(-1),{kind:2,radius});
     solids.push({kind:'circle',x:cx,z:cz,radius});
-    // A thin ceiling ring around the recess, and above it the shaft wall as an
-    // arcade drum: its openings on the sun side admit the low sun from the
-    // void above the corridor ceiling, which grazes round the annular gap and
-    // lights the cylinder just under the rim.
-    add([cx-recess,lowRoof,cz-recess],[cx+recess,lowRoof+.25,cz+recess]);
+    add([cx-recess,lowRoof,cz-recess],[cx+recess,roof,cz+recess]);
     Object.assign(shapes.at(-1),{kind:4,radius:recess});
-    add([cx-recess-.3,lowRoof+.25,cz-recess-.3],[cx+recess+.3,roof,cz+recess+.3]);
-    Object.assign(shapes.at(-1),{kind:10,radius:recess,outerRadius:recess+.3,spring:lowRoof+.6,openingRadius:.7,openings:8});
     // Corridor ceiling around the recess; it stops at the hall threshold.
     // Daylight also falls into the void above the corridor ceiling; its
     // bounced light reaches the corridor through a slot behind the viewer,
@@ -263,18 +225,14 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     for(const x of [-5.4,-3.2,-1,1.2]) post(x,-9);
     solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
-  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4 } : kind === 'rotunda' ? { sun: [6,5.58,4.69], skyScale: 5, sunDirection: localSun('rotunda') } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 14, sunDirection: localSun('rings') } : kind === 'threshold' ? {sun:[6,5.58,4.69],skyScale:32} : undefined;
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.882,.259,.394] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [-.17,.95,.18] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 36, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
   // The complete flooded hall fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
   const waterBounds = kind === 'rotunda' ? {minX:-10.5,maxX:10.5,minZ:-10.5,maxZ:10.5}
-    : kind === 'columns' ? {minX:-2.5,maxX:7,minZ:-12,maxZ:10} : kind === 'rings' ? {minX:-7,maxX:4.625,minZ,maxZ} : bounds;
+    : kind === 'columns' ? {minX:-2.5,maxX:7,minZ:-12,maxZ:10} : bounds;
   return { bounds, shapes, solids, illumination, conductorMaterials: ['rotunda','threshold'].includes(kind) ? [3] : undefined,
     reflectionSamples: kind === 'rotunda' ? {glaze:24,rough:32} : kind === 'threshold' ? {glaze:8,rough:16} : undefined,
     groutHalfWidth: ['columns','rotunda','threshold'].includes(kind) ? .0012 : undefined,
     tileSize: kind === 'threshold' ? thresholdTileSize : undefined,
-    water: { ...waterBounds, cell: 1 / 32 }, aperture: a, floor: { shape: 0, face: 3 },
-    ...(wallOpenings.length ? { wallApertures: wallOpenings } : {}),
-    // Deliberate visual choice: 0.02/m is five times the 0.004/m extinction the
-    // renderer attenuates with, fitted to the reference haze (docs/PHYSICS.md).
-    air: { scattering: .02, anisotropy: .6 } };
+    water: { ...waterBounds, cell: 1 / 32 }, aperture: a, floor: { shape: 0, face: 3 } };
 }

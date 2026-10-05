@@ -304,7 +304,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       region: activeRegion,
       regionChanging,
       address: { ...windowLevel.address },
-      worldView: worldPosition(windowLevel.address, view, windowLevel.orientation),
+      worldView: worldPosition(windowLevel.address, view),
       paused,
       frameScheduled: frameTimer !== null,
       rendering: tickRunning || renderer.busy,

@@ -1,5 +1,4 @@
 import test from 'node:test';
-import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {sceneShaderPrelude,validateScene,waterGrid,packScene} from '../src/render/scene.js';
 import {poolroomsScene} from './geometry-fixture.mjs';
@@ -65,20 +64,4 @@ test('explicit curved centres are packed and flagged; rings and arcades validate
   const packedArcade=new Uint32Array(packScene({...scene,shapes:[...scene.shapes,arcade]}).geometryData);
   assert.equal(packedArcade[scene.shapes.length*16+11],8<<8);
   assert.throws(()=>validateScene({...scene,shapes:[...scene.shapes,{...arcade,openings:24}]}),/arcade/,'openings would overlap');
-});
-
-test('wall apertures validate and specialise only the windows that declare them', async () => {
-  const { apertureCommon, apertureShader } = await import('../src/render/apertures.js');
-  const scene = minimal();
-  const wall = { axis: 2, at: 4, from: [0, .5], to: [2, 3], outward: 1 };
-  assert.doesNotThrow(() => validateScene({ ...scene, wallApertures: [wall] }));
-  for (const bad of [{ ...wall, axis: 1 }, { ...wall, outward: 0 }, { ...wall, to: [0, 3] }])
-    assert.throws(() => validateScene({ ...scene, wallApertures: [bad] }), /wall aperture/);
-  const read = name => readFileSync(new URL(`../src/render/${name}`, import.meta.url), 'utf8');
-  for (const [kind, file] of [['sky', 'sky.wgsl'], ['photons', 'photons.wgsl'], ['water', 'water-caustics.wgsl']]) {
-    assert.equal(apertureShader(kind, read(file), scene), read(file));
-    assert.notEqual(apertureShader(kind, read(file), { ...scene, wallApertures: [wall] }), read(file));
-  }
-  assert.equal(apertureCommon('x', scene), 'x');
-  assert(apertureCommon('x', { ...scene, wallApertures: [wall] }).includes('WALL_APERTURES:u32=1u'));
 });

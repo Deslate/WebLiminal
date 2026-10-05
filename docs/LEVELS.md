@@ -40,10 +40,7 @@ below). Unauthored addresses report an error; this is not
 yet an endless generator. The bookmark list does not define the world's extent.
 
 `src/world.js` maps the resident window's local coordinates into world metres:
-`world = address * 64 + R(orientation) * local`, where a location may be turned
-about the vertical axis in the world (its camera turns with it). The level
-gives a turned location the world sun in its own frame, so orientation, not a
-per-location sun, decides where light falls. Renderer, collision and water operate in local
+`world = address * 64 + local`. Renderer, collision and water operate in local
 metres. `snapshot().worldView` exposes the world pose, while `view` remains local
 for existing diagnostics. The level identity is preserved through teleportation.
 
@@ -101,22 +98,18 @@ variation and a wider ceramic GGX lobe. Sun/sky radiance and, where set, the
 sun direction are calibrated per window through `illumination`; this changes
 transported light, not display masks or an ambient shading term. Sky strength
 (`skyScale`, multiplying the historical sky radiance) is set per window so the
-indirect light in shaded areas matches each reference view. The four new
-locations share one sun strength (6, 5.58, 4.69); exposure is unchanged. Column Reservoir uses 4, Ring Passage 14, Still
-Rotunda 5 and Lightwell Threshold 32. The threshold's sky aperture covers the
+indirect light in shaded areas matches each reference view; sun strength and
+exposure are unchanged. Column Reservoir uses 4, Ring Passage 36, Still
+Rotunda 16 and Lightwell Threshold 32. The threshold's sky aperture covers the
 lightwell and the void above the corridor ceiling towards the viewer, not the
 far hall, so the hall no longer floods the doorway. Light from that void
 reaches the corridor through a 0.8 m slot behind the viewer and lights the near
-column and the cylinder's camera-facing side. The world sun (14 degrees,
-behind-left of the viewer) enters the void above the corridor ceiling through a
-wall aperture high in the left shell wall; the shaft wall around the recess is
-an arcade drum whose openings on that side let it into the lightwell. Its
-direct light stays above the corridor ceiling; the corridor receives it only as
-bounced light. The white glaze hue
+column and the cylinder's camera-facing side; a soft steep (78 degree) sun of
+strength 1.5 comes down the lightwell gap onto the upper cylinder face. The white glaze hue
 is matched per window with luminance-preserving tints of its albedo endpoints
 (Column Reservoir R x1.19 B x0.80, Ring Passage R x1.09 B x1.05, Lightwell
 Threshold R x1.06 B x1.13; the rotunda is unchanged). Each window
-has one rectangular roof aperture and may add vertical wall apertures. A window may restrict the lab's
+still has exactly one rectangular sky aperture. A window may restrict the lab's
 aperture range with `limits`, so the opening cannot grow past the court or
 well it lights.
 
@@ -130,11 +123,10 @@ see it; ceiling reflections are not openings.
   near the viewer, each tangent to the next. The bay is a box minus a cylinder
   whose box edges pass through both inflection points; the nose and lobe are
   capped cylinders. Beyond the nose stand a mid-distance column and a left wall
-  bulge with a dark passage between them. The world sun (14 degrees) enters a
-  12.5 m wide roofless court behind the viewer, clears its outer wall at
-  x = -15 and crosses the hall through five full-height slit windows, striping
-  the bay from the water to about 3.3 m. This window is 30 m wide; its water
-  simulation covers only the hall.
+  bulge with a dark passage between them. A low sun (15 degrees) enters a 9.5 m
+  wide roofless court behind the viewer and crosses the hall through five
+  full-height slit windows, striping the bay from the water to about 3.3 m.
+  This window is 24 m wide; its water simulation covers only the hall.
 - **Lightwell Threshold.** A corridor with a 4.2 m ceiling between a straight
   left wall and a 3.3 m radius convex cylinder, 2.3 m apart at their closest,
   with a slim round column at its mouth. The cylinder rises through a 3.9 m
@@ -154,32 +146,23 @@ see it; ceiling reflections are not openings.
   axis, so the holes stack into a chain of rings. Each flooded segment between
   walls has a flat tiled ceiling. Steps, seen through the second hole, lean
   against the third wall left of its hole and descend to the right into the
-  water. The location is turned 149.5 degrees in the world, so the world sun
-  stands ahead and to the right at 14 degrees. It crosses a 15 m wide roofless
-  court and enters every segment except the last through full-height openings
-  in the right side wall, which the holes keep out of view, falling towards the
-  viewer: the floor beyond the portal is sunlit up to the curved shadow of the
-  hole, and the terminal tunnel stays dark. Explicit walls keep the passage
-  14 m wide; the window is 40 m wide for the court, extends to z = -16 m to
-  give the tunnel depth, and simulates water only in the passage.
+  water. Daylight reaches every
+  segment except the last from a side court through full-height openings in
+  the right side wall, which the holes keep out of view, so the terminal tunnel
+  stays dark; the window extends to z = -16 m to
+  give the tunnel depth.
 - **Still Rotunda.** One continuous tiled wall of revolution: a 9.5 m radius,
-  0.8 m thick drum rises without a ledge into a hemispherical dome with a 5 m
-  oculus at its crown, which admits the sky that lights the dome. Twelve equal, low
+  0.8 m thick drum rises without a ledge into a hemispherical dome with a 3 m
+  oculus at its crown, which admits a high sun and the sky. Twelve equal, low
   round-headed openings (3 m wide, 3.6 m above the water, piers about two
   thirds of an opening) pierce its base at even intervals around the full
   circumference. A thin, flat plaster front wall cuts the circle as a chord;
   the viewer stands in a dark antechamber 1.4 m behind its narrow doorway,
   which frames the hall. Shallow water (0.25 m) covers the whole hall floor and
   runs under the openings; a 1.75 m deep pit, 7.85 m in radius, fills the
-  centre. The shallow floor and dry deck use the same green floor ceramic as
-  the pit floor (material 2); the drum and dome retain the wall ceramic.
-  The stainless U-tube ladder stands on the shallow floor at the pit's
-  near rim and reaches down to the pit floor. Behind the openings a dry
-  ambulatory reaches the shell walls and is open to daylight above. The
-  location is turned -96 degrees in the world, so the 14 degree world sun
-  stands ahead and to the left; it enters through a 4 x 5.9 m opening in the
-  far shell wall, passes one far drum opening and falls across the pool
-  towards the viewer's right. Only this window is 24 m wide and
+  centre. The stainless U-tube ladder stands on the shallow floor at the pit's
+  near rim and reaches down to the pit floor. Behind the openings a dry 2.5 m
+  tiled ambulatory is open to daylight above. Only this window is 24 m wide and
   28 m deep, with its floor slab 1.2 m lower; the others are 14 m wide.
 
 The initial resident-window content budget is at most 80 shapes, 8 receiver
@@ -258,13 +241,8 @@ All lengths are metres, `y` up.
 - **Water.** `cell` must tile the rectangle exactly; the background solver runs
   on that grid. The water height is `optics.waterLevel`; depth comes from the
   shapes below it.
-- **Aperture.** Sun and sky enter through this horizontal roof rectangle.
-  Optional `wallApertures` add vertical daylight openings in the walls:
-  `{ axis: 0 | 2, at, from: [u, y], to: [u, y], outward: 1 | -1 }`, a rectangle
-  in the plane x = at (u along z) or z = at (u along x), with the outward
-  normal's sign. The geometry must actually be open there. The sky integral,
-  photon emission and live water sources then include every aperture; the
-  camera's direct sun already tests visibility to infinity. Its size may change at runtime (the renderer rebuilds geometry and
+- **Aperture.** The only light source today: sun and sky enter through this
+  rectangle. Its size may change at runtime (the renderer rebuilds geometry and
   light caches); its plane `y` may not.
 
 `src/render/scene.js` validates the description, packs shapes for the GPU,
@@ -277,8 +255,7 @@ rebuild changes them.
 ## Current limits
 
 - One water body per resident window, and water is required.
-- One rectangular roof aperture plus optional vertical wall apertures are the
-  only light sources; there are no artificial lights.
+- One rectangular sky aperture is the only light source.
 - The spectral body-wake window is a fixed 32 x 64 m domain centred on the
   local window origin; the window's water rectangle must lie well inside it.
 - Shapes are a flat list tested one by one in every ray; there is no
