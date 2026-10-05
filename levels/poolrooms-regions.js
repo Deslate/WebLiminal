@@ -156,7 +156,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // The observer remains at standing eye height on the antechamber floor.
     const R = 9.5, wall = .8, water = .55, shallow = .3, top = 5.35, open = 1.5, front = -9.2, outer = R + wall + 2.5, pit = 6.67;
     const curved = (lo, hi, extra) => { add(lo, hi); Object.assign(shapes.at(-1), extra); };
-    curved([-R - wall, top, front], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 1.5, center: [0, 0] });
+    curved([-R - wall, top, front], [R + wall, roof, R + wall], { kind: 3, radius: R, spring: top, oculus: 3.85, center: [0, 0] });
     curved([-R - wall, shallow, front], [R + wall, top, R + wall],
       { kind: 10, radius: R, outerRadius: R + wall, spring: water + 3.6 - open, openingRadius: open, openings: 12, center: [0, 0] });
     // Thin plaster front wall; the viewer stands 1.4 m behind its doorway.
@@ -227,16 +227,25 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     for(const x of [-5.4,-3.2,-1,1.2]) post(x,-9);
     solids.push({minX:-6.6,maxX:1.4,minZ:-9-tube,maxZ:-9+tube});
   } else throw Error('Unknown region recipe');
+  if (kind === 'rotunda') {
+    // A real offset roof reveal clips the crown shaft to a slanted lens.
+    // Its vertical clear area is about 6.26 m2; both sunlight and air use
+    // these same solid boundaries, without a separate beam-shaped light.
+    add([-4.2,15.2,-4.2],[4.2,15.3,4.2]);
+    Object.assign(shapes.at(-1), {kind:4, radius:3.85, center:[3.072,4.998]});
+  }
   // The rotunda spawn faces +z, with screen-right along -x. The +x/+z sun
   // projects the crown oculus toward the near-right basin rim.
-  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.882,.259,.394] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [.15,.95,.28] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 36, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
+  const illumination = kind === 'columns' ? { sun: [6,5.58,4.69], skyScale: 4, sunDirection: [-.882,.259,.394] } : kind === 'rotunda' ? { sun: [5,4.65,3.91], skyScale: 16, sunDirection: [.237,.95,.366] } : kind === 'rings' ? { sun: [6,5.58,4.69], skyScale: 36, sunDirection: [.75,.6,.25] } : kind === 'threshold' ? {sun:[1.5,1.4,1.18],skyScale:32,sunDirection:[-.102,.978,.181]} : undefined;
   // The complete flooded hall fits inside this simulation rectangle. Do not
   // spend finite-depth updates on the surrounding dry deck and entrance hall.
   const waterBounds = kind === 'rotunda' ? {minX:-10.5,maxX:10.5,minZ:-10.5,maxZ:10.5}
     : kind === 'columns' ? {minX:-2.5,maxX:7,minZ:-12,maxZ:10} : bounds;
   return { bounds, shapes, solids, illumination, conductorMaterials: ['rotunda','threshold'].includes(kind) ? [3] : undefined,
-    // Scattering is bounded by the existing 0.004/m extinction.
-    air: kind === 'rotunda' ? { scattering: .004, anisotropy: .6 } : undefined,
+    // Intentional visual departure: solar in-scattering is 3.5x the base
+    // coefficient (0.014/m). Sky scattering and extinction stay at 0.004/m.
+    // This is art direction, not a physically denser homogeneous atmosphere.
+    air: kind === 'rotunda' ? { scattering: .004, anisotropy: 0, sunGain: 3.5 } : undefined,
     reflectionSamples: kind === 'rotunda' ? {glaze:24,rough:32} : kind === 'threshold' ? {glaze:8,rough:16} : undefined,
     groutHalfWidth: ['columns','rotunda','threshold'].includes(kind) ? .0012 : undefined,
     tileSize: kind === 'threshold' ? thresholdTileSize : undefined,

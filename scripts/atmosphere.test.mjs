@@ -17,7 +17,7 @@ test('windows without air preserve the complete camera shader', () => {
 test('air coefficients cannot exceed the extinction or produce an invalid grid', () => {
   validateScene(scene());
   for (const patch of [{ scattering: .02 }, { scattering: -1 }, { scattering: NaN },
-    { anisotropy: 1 }, { anisotropy: -1 }, { cell: Infinity }, { cell: NaN }, { cell: 0 }]) {
+    { sunGain: -1 }, { sunGain: NaN }, { sunGain: Infinity }, { anisotropy: 1 }, { anisotropy: -1 }, { cell: Infinity }, { cell: NaN }, { cell: 0 }]) {
     assert.throws(() => validateScene({ ...scene(), air: { ...scene().air, ...patch } }), /invalid air scattering/);
   }
   assert.throws(() => validateScene({ ...scene(), air: null }), /invalid air scattering/);
@@ -41,4 +41,15 @@ test('air shader integration removes the legacy haze and fails on a missing hook
   assert(source.includes('layers.base+=airScatter(ro,rd)'));
   assert(!airBakeSource(scene()).includes('WALL_APERTURES'));
   assert.throws(() => airCamera(camera.replace('fn radiance(', 'fn renamedRadiance('), scene()), /Missing air scattering shader hook/);
+});
+
+test('solar visibility gain is explicit and does not alter extinction or base scattering', () => {
+  const s = scene(); s.air.sunGain = 2.5;
+  validateScene(s);
+  const source = airCamera(camera, s);
+  assert(source.includes('const AIR_SUN_GAIN:f32=2.5;'));
+  assert(source.includes('const AIR_EXTINCTION:f32=.004;'));
+  assert(source.includes('const AIR_SCATTERING:f32=0.004;'));
+  assert(source.includes('sunIrradiance()*a.w*phase*AIR_SUN_GAIN+a.rgb/(4.*PI)'));
+  assert(airCamera(camera, scene()).includes('const AIR_SUN_GAIN:f32=1.;'));
 });

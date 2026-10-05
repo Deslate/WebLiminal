@@ -152,17 +152,20 @@ see it; ceiling reflections are not openings.
   stays dark; the window extends to z = -16 m to
   give the tunnel depth.
 - **Still Rotunda.** One continuous tiled wall of revolution: a 9.5 m radius,
-  0.8 m thick drum rises without a ledge into a hemispherical dome with a 3 m
-  oculus at its crown, which admits a high sun and the sky. The direction
-  toward the sun is normalized from `(0.15, 0.95, 0.28)`, at 71.5 degrees
-  elevation and 28.2 degrees from +z toward +x. From the default view facing
-  +z, the sun lies to the upper left; its beam through the oculus lands toward
-  the near-right basin rim. Its axis crosses mean water near
-  `(x = -2.28, z = -4.25)` m and, after refraction, the pit floor near
-  `(-2.48, -4.63)` m. These estimates use the shaft's mid-height and flat water;
-  the shaft clips the beam and live-water refraction distorts its footprint.
-  The near rim partly occludes the footprint. This window declares scattering
-  air at 0.004/m, with anisotropy 0.6 (see `PHYSICS.md`). Twelve equal, low
+  0.8 m thick drum rises without a ledge into a hemispherical dome with a shaped
+  crown opening. A cylindrical shaft of radius 3.85 m is clipped by a 0.1 m
+  thick roof reveal at y=15.2..15.3 m. Its circular cutout also has radius
+  3.85 m, centred at (x=3.072, z=4.998) m. Their overlap forms a slanted lens
+  with about 6.26 square metres of vertical clear area (equivalent circular
+  diameter 2.82 m). This is an authored opening fit, not a claim that the
+  reference photograph uniquely determines the hidden roof construction.
+  The direction toward the sun is normalized from `(0.237, 0.95, 0.366)`, at
+  65.3 degrees elevation and 32.9 degrees from +z toward +x. From the default
+  view facing +z, rays propagate toward the near-right basin. Both the pool
+  footprint and air shaft use this actual compound opening; shaft clipping,
+  near-rim occlusion and live-water refraction determine the visible envelope.
+  This window declares base air scattering at 0.004/m, anisotropy 0 and a
+  deliberate solar scattering gain of 3.5 (see `PHYSICS.md`). Twelve equal, low
   round-headed openings (3 m wide, 3.6 m above the water, piers about two
   thirds of an opening) pierce its base at even intervals around the full
   circumference. A thin, flat plaster front wall cuts the circle as a chord;
@@ -261,10 +264,12 @@ All lengths are metres, `y` up.
 - **Aperture.** The only light source today: sun and sky enter through this
   rectangle. Its size may change at runtime (the renderer rebuilds geometry and
   light caches); its plane `y` may not.
-- **Air.** Optional `{scattering, anisotropy, cell?}` enables a world-space
+- **Air.** Optional `{scattering, anisotropy, sunGain?, cell?}` enables a world-space
   single-scattering grid. Scattering is in inverse metres, from 0 to the
   existing extinction coefficient 0.004/m; `abs(anisotropy)` must be less
-  than 1. Grid cells default to 1/3 m and must be finite and at least 0.1 m.
+  than 1. Optional `sunGain` (default 1) is a finite, nonnegative visual
+  multiplier on solar in-scattering, deliberately allowed to exceed the
+  physical scattering coefficient without raising extinction. Grid cells default to 1/3 m and must be finite and at least 0.1 m.
   Adapters need nine camera storage bindings for this feature; otherwise the
   legacy haze path remains active. `audit().air` reports the actual selection.
 

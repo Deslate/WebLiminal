@@ -20,6 +20,8 @@ const AIR_MAX=vec3f(${g.hi.map(f).join(',')});
 const AIR_N=vec3u(${g.n.join('u,')}u);
 const AIR_EXTINCTION:f32=.004;
 const AIR_SCATTERING:f32=${f(a.scattering)};
+// Intentional art direction: solar in-scattering gain does not raise extinction.
+const AIR_SUN_GAIN:f32=${f(a.sunGain ?? 1)};
 const AIR_ANISOTROPY:f32=${f(a.anisotropy)};
 `;
 }
@@ -83,7 +85,7 @@ fn airScatter(ro:vec3f,rd:vec3f)->vec3f {
   let steps=24u;let ds=end/f32(steps);var sum=vec3f(0);
   for(var i=0u;i<steps;i++){
     let s=(f32(i)+.5)*ds;let a=airSample(ro+rd*s);
-    sum+=exp(-AIR_EXTINCTION*s)*(sunIrradiance()*a.w*phase+a.rgb/(4.*PI))*ds;
+    sum+=exp(-AIR_EXTINCTION*s)*(sunIrradiance()*a.w*phase*AIR_SUN_GAIN+a.rgb/(4.*PI))*ds;
   }
   return sum*AIR_SCATTERING;
 }
