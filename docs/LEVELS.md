@@ -111,8 +111,9 @@ column and the cylinder's camera-facing side. The world sun (14 degrees,
 behind-left of the viewer) enters the void above the corridor ceiling through a
 wall aperture high in the left shell wall; the shaft wall around the recess is
 an arcade drum whose openings on that side let it into the lightwell. Its
-direct light stays above the corridor ceiling; the corridor receives it only as
-bounced light. The white glaze hue
+  sun-side lower reveal has a local channel under the arcade drum. Its tiled
+  roof excludes overhead sky while low-angle sunlight crosses underneath and
+  reaches the cylinder below the corridor ceiling. The white glaze hue
 is matched per window with luminance-preserving tints of its albedo endpoints
 (Column Reservoir R x1.19 B x0.80, Ring Passage R x1.09 B x1.05, Lightwell
 Threshold R x1.06 B x1.13; the rotunda is unchanged). Each window
@@ -138,8 +139,15 @@ see it; ceiling reflections are not openings.
 - **Lightwell Threshold.** A corridor with a 4.2 m ceiling between a straight
   left wall and a 3.3 m radius convex cylinder, 2.3 m apart at their closest,
   with a slim round column at its mouth. The cylinder rises through a 3.9 m
-  radius circular recess in the ceiling; overcast daylight reaches it down the
-  0.6 m annular gap, whose edge lands above the far doorway's pillar. The
+  radius circular recess in the ceiling. Most of its annular gap is 0.6 m;
+  the sun-facing quadrant's circular reveal retains its 3.9 m curvature radius
+  but moves 1.5 m toward the horizontal world sun, widening the projected
+  clearance there to 2.1 m. Four clipped cylindrical cutout slabs close the
+  surrounding ceiling. A local tiled overhang at 4.85-5.05 m limits overhead
+  sky entry into this channel; the existing shaft drum and exterior apertures
+  remain in place. The 14-degree sun reaches approximately 3.93-4.20 m on the
+  cylinder near the solar azimuth, with neighboring rays cut off by the drum
+  and overhang. The unchanged far reveal lands above the doorway's pillar. The
   recess shaft is tall enough that the sky is not visible from the corridor.
   Free-standing stainless rails stand in the water on round posts; the left
   wall has a low dark opening at the waterline. The corridor ends at a narrow
