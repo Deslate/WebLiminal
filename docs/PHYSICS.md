@@ -32,6 +32,12 @@ The visible water surface is the linear sum of two independent solvers. Both are
 - Propagation uses the finite-depth operator `sqrt(L) tanh(H sqrt(L))` on the wet-domain graph Laplacian `L` with no-flux (Neumann) boundaries at the real pool geometry. `G(s)/s` is fitted by a Chebyshev polynomial so that the constant mode is exactly null.
 - Explicit dissipation removes short waves; a band-limited random pressure over the whole wet domain replenishes them. The forcing is not a looping animation and has no fixed phase.
 - Approximation: uniform depth in the operator, grid resolution limits, and a polynomial fit of the dispersion relation.
+- The pressure field receives eight spatial diffusion passes before forcing
+  and initialization. Together with short-wave dissipation and the grid,
+  this limits the resolved slope spectrum. Bicubic reconstruction derives
+  height and both slopes from the same evolved field; there is no independent
+  ripple normal layer. Changing the forcing bandwidth changes water dynamics,
+  not just its specular appearance.
 
 ### Body wake and footsteps (`src/render/body-waves.*`, `src/kick-impacts.js`)
 
@@ -107,6 +113,19 @@ approximation does not establish exact conservation for the full renderer.
 - Grout and tile relief use real primary-ray height-field intersections with local visibility. Near material is `surfaceMaterial(Hit) -> Material` in `materials/porcelain.wgsl`; secondary footprints use `filteredMaterial`; `materials/photon-porcelain.wgsl` is the area-average BRDF for photon transport.
 - Opaque primary reflections trace deterministic GGX directions weighted by Fresnel, Smith and the NDF. Pixel-footprint normal moments widen roughness instead of a distance cut-off.
 - Secondary rough reflection and the terminal `photons * coat * .08` term are approximations used only where no traced continuation exists.
+- Primary water rays split into traced reflection and transmission using exact
+  dielectric Fresnel and Snell refraction (index 1.333). Transmission includes
+  RGB Beer absorption with coefficients `(0.34, 0.075, 0.037)` per metre and
+  the radiance index factor. Water colour therefore also depends on submerged
+  material, lighting and path length; it is not a surface tint.
+- Solids seen through water use `filteredMaterial` and geometric intersections,
+  without the opaque primary ray's tile-relief intersection. Fine submerged
+  grout relief is consequently approximate even when the water is resolved.
+- A separable, surface/depth-guided spatial filter reconstructs only reflected
+  radiance, with a water footprint capped at 0.8 internal pixels. It leaves
+  transmitted floor detail and the simulation untouched. `reflectionFilter: 0`
+  bypasses it for diagnostics. This is a bounded image-space approximation,
+  not additional physical water roughness or a wave-spectrum model.
 - Output includes subtle, deterministic film grain.
 
 ### Stainless steel and curved handrails
