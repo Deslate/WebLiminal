@@ -29,3 +29,18 @@ test('water detail preview refines submerged solid hits and guards missing hooks
   assert.match(waterPreviewCamera(camera,waterPreview('detail'),[3]),/base.material!=3u/);
   assert.throws(()=>waterPreviewCamera('',waterPreview('detail')),/hook missing/);
 });
+
+test('preview menu preserves preset URL compatibility and unrelated query settings', async () => {
+  const {WATER_OPTIONS, previewSelection, previewUrl} = await import('../src/preview-menu.js');
+  const names = ['fine','patches','contacts','bands','calm','moderate','gentle','dense','detail','wind','gust','swell','mixed','settle'];
+  assert.deepEqual(WATER_OPTIONS.map(([name]) => name), names);
+  for (const name of names) {
+    const url = new URL(previewUrl('http://localhost/?level=poolrooms-v1&playback=0.5#view', name));
+    assert.equal(previewSelection(url.searchParams.get('waterPreview')), name);
+    assert.deepEqual(waterPreview(url.searchParams.get('waterPreview')), waterPreview(name));
+    assert.equal(url.searchParams.get('playback'), '0.5');
+    assert.equal(url.searchParams.get('level'), 'poolrooms-v1');
+    assert.equal(url.hash, '#view');
+  }
+  for (const name of ['', null, 'unknown', '__proto__']) assert.equal(previewSelection(name), 'fine');
+});

@@ -40,3 +40,18 @@ LAB_CONFIG='{"diffuseDirections":64,"resolution":0.75}' npm run benchmark
 ```
 
 High-cost options are not guaranteed to hold 30 fps. Extra reflection continuation is especially expensive and is off by default.
+
+## Development preview selector
+
+The top-left preview selector is visible in Vite development and explicit
+`vite build --mode preview` builds only. Ordinary production builds omit it.
+Click its title to collapse or reopen it. The water dropdown includes all
+existing `waterPreview` URL presets; Fine (A) remains the default. Selection
+rebuilds the single resident renderer in place, resets water/light caches,
+retains the camera and lab settings, and writes the preset into the URL for
+reloads and sharing. It does not change any preset's physics or optics.
+The location dropdown uses the same bookmark navigation as keys 1–5, including
+spawn placement and pause preservation. Keyboard navigation updates the dropdown.
+The optional playback diagnostic moves inside this panel to avoid overlap.
+Evidence mode hides the panel. Choose Fine (A) to return to the default water;
+existing URL-only previews continue to work without the panel in production.

@@ -264,3 +264,23 @@ body.paused *, body.paused *::before, body.paused *::after { animation-play-stat
 .playback-preview { position: fixed; top: 14px; left: 14px; z-index: 100; padding: 10px; background: #182020; color: #fff; font: 14px system-ui; }
 .playback-preview select { font: inherit; }
 .evidence .playback-preview { display: none; }
+
+/* Development preview controls share the light lab's palette and typography. */
+#preview-menu{position:fixed;z-index:99;left:22px;top:22px;width:min(360px,calc(100vw - 44px));box-sizing:border-box;background:#152727;color:#e5efeb;border:1px solid #769894;box-shadow:0 12px 45px #0006;font:13px system-ui,sans-serif}
+#preview-menu summary{padding:14px 18px;cursor:pointer;font-weight:600}
+#preview-menu small{float:right;font-size:10px;letter-spacing:.12em;color:#aecac2}
+#preview-menu .preview-fields{padding:0 18px 12px;max-height:calc(100vh - 110px);overflow:auto}
+#preview-menu label{display:grid;gap:7px;margin:10px 0 14px}
+#preview-menu select{width:100%;font:inherit;color:#e5efeb;background:#243e3b;border:1px solid #698a81;border-radius:3px;padding:8px;cursor:pointer}
+#preview-menu select:focus-visible,#preview-menu summary:focus-visible{outline:2px solid #e1d7a5;outline-offset:2px}
+#preview-menu p{font-size:12px;line-height:1.6;color:#bdcfca;margin:8px 0}
+#preview-menu [data-status]{color:#e1d7a5;min-height:19px}
+#preview-menu [disabled]{opacity:.55;cursor:wait}
+#preview-menu .playback-preview{position:static;padding:0;background:transparent;font:inherit}
+body.evidence #preview-menu{display:none}
+@supports (appearance:base-select){
+ #preview-menu select,#preview-menu select::picker(select){appearance:base-select}
+ #preview-menu select::picker(select){color:#e5efeb;background:#243e3b;border:1px solid #698a81;max-height:55vh;overflow:auto}
+ #preview-menu option{padding:7px 10px;font:13px system-ui,sans-serif}
+ #preview-menu option:checked{background:#3d5b53}
+}
