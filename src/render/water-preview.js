@@ -4,6 +4,9 @@
 export function waterPreview(name) {
   const previews = {
     fine: { pressurePasses: 4, detail: false },
+    // Reduced short-wave excitation density: visual alternatives to fine.
+    moderate: { pressurePasses: 5, detail: false },
+    gentle: { pressurePasses: 6, detail: false },
     calm: { pressurePasses: 8, detail: false },
     dense: { pressurePasses: 2, detail: false },
     detail: { pressurePasses: 8, detail: true },

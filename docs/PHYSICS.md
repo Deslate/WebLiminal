@@ -66,6 +66,15 @@ selects eight pressure diffusion passes without detail changes. `dense` and
 `detail` remain available alternatives. Missing and unknown values select `fine`.
 The selection survives location changes and applies equally to all windows.
 
+`moderate` and `gentle` are opt-in alternatives using five and six pressure
+diffusion passes respectively. They reduce short-wave excitation density
+relative to the four-pass `fine` default, toward the eight-pass `calm` option.
+This is an intentional visual choice of the physical pressure source's spatial
+bandwidth, not an image blur or a change to water absorption or roughness.
+It is not a uniform half/third amplitude multiplier. The actual evolved surface
+changes reflection, refraction and photon caustics together; no reflected-only
+normal layer preserves highlights independently of the water geometry.
+
 - `fine` uses four pressure diffusion passes; `dense` uses
   two. These are intentional visual choices of excitation bandwidth, not
   measured environmental forcing. They add resolved short-wave energy to the
