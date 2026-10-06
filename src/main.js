@@ -1,5 +1,6 @@
 import {LAB_DEFAULTS,normalizeLab,readLab,saveLab} from "./lab-settings.js";
 import {createLabMenu} from "./lab-menu.js";
+let previewPanel=null;
 let labPanel=null,labState={...LAB_DEFAULTS},labApplying=false,labPauseAfter=false;
 import {createWakeTrail} from "./wake-trail.js";
 const wakeTrail=createWakeTrail();
@@ -37,7 +38,7 @@ let dragging = false,
   holdTime = false,
   targetSamples = 0;
 const runId = crypto.randomUUID();
-const waterPreviewName = new URLSearchParams(location.search).get('waterPreview') || '';
+let waterPreviewName = new URLSearchParams(location.search).get('waterPreview') || '';
 let renderer = await createRenderer(canvas, windowLevel, waterPreviewName).catch((e) => {
   document.getElementById("audio-status").textContent = e.message;
   console.error(e);
@@ -254,13 +255,17 @@ async function applyLab(value,persist=true){
   }
   labPanel?.sync();return persist?saveLab(localStorage,labState):true;
 }
-async function teleport(index) {
+async function teleport(index, previewName = waterPreviewName) {
   if (!Number.isInteger(index) || !bookmarks[index]) throw Error('Unknown location');
   if (regionChanging || labApplying) throw Error('A region or settings change is in progress');
-  if (index === activeRegion) return;
+  const changingWater = previewName !== waterPreviewName;
+  if (index === activeRegion && !changingWater) return;
+  const savedView = changingWater ? {...view} : null;
+  const savedObserver = changingWater ? observer : null;
   const next = loadWindow(level, bookmarks[index].address);
   const wasPaused = paused;
   regionChanging = true;
+  previewPanel?.sync();
   setPaused(true);
   const status = document.getElementById('audio-status');
   status.textContent = `Loading ${bookmarks[index].name}...`;
@@ -268,19 +273,20 @@ async function teleport(index) {
     while (tickRunning || renderer.busy) await new Promise(r => setTimeout(r, 5));
     await renderer.destroy();
     // One resident window bounds GPU memory. Rebase the player to local metres.
-    renderer = await createRenderer(canvas, next, waterPreviewName);
+    renderer = await createRenderer(canvas, next, previewName);
     await renderer.setLab(labState);
     windowLevel = next;
     activeRegion = index;
+    waterPreviewName = previewName;
     ROOM = renderer.bounds;
-    Object.assign(view, next.spawn);
-    observer = null;
+    Object.assign(view, savedView || next.spawn);
+    observer = savedObserver;
     elapsed = 0; targetSamples = 0; holdTime = false;
     wakeTrail.reset(); frameMs = []; lastView = ''; lastCompleted = null;
     renderer.resize(innerWidth, innerHeight, scale);
     resizePending = false;
     renderer.setBody(bodyEnabled ? view : null);
-    await renderer.render(view, 0, false, 1);
+    await renderer.render(cameraPose(), 0, false, 1);
     document.querySelector('.caption h1').textContent = bookmarks[index].name;
     document.querySelector('.caption .index').textContent = `POOLROOMS / LOCATION ${index + 1} OF ${bookmarks.length}`;
     document.querySelector('.coordinates').textContent = `DEPTH ${next.optics.waterLevel.toFixed(2)} M / OCCUPANCY 01`;
@@ -290,12 +296,26 @@ async function teleport(index) {
     throw error;
   } finally {
     regionChanging = false;
+    previewPanel?.sync();
     if (renderer && activeRegion === index && !wasPaused) setPaused(false);
     resetClock();
   }
 }
 labPanel=createLabMenu({apply:applyLab,getState:()=>({...labState})});
 await applyLab(readLab(localStorage),false);
+if (import.meta.env.DEV || import.meta.env.MODE === 'preview') {
+  const {createPreviewMenu, previewUrl} = await import('./preview-menu.js');
+  previewPanel = createPreviewMenu({
+    bookmarks,
+    getState: () => ({water: waterPreviewName, region: activeRegion, busy: regionChanging || labApplying}),
+    releaseInput: () => {keys.clear(); dragging = false;},
+    teleport,
+    applyWater: async name => {
+      await teleport(activeRegion, name);
+      history.replaceState(null, '', previewUrl(location.href, name));
+    },
+  });
+}
 scheduleFrame();
 Object.defineProperty(window, "__POOLROOMS_V1__", {
   value: {
