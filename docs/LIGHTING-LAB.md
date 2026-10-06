@@ -11,11 +11,19 @@ Press **G** to open the lab panel. Close it with the button, G or Esc. Tab still
 | Diffuse directions | 32 / 64 / **128** / 256 | Compiles the actual number of integration directions and resizes link buffers and normalisation. |
 | Cached photons per batch | 49152 / 98304 / **196608** | Real emission count per batch (128 batches); normalised by the actual count, not a brightness multiplier. |
 | Sky area samples | 64 / 256 / **1024** | 8 x 8, 16 x 16 or 32 x 32 fixed aperture integration with matching PDF normalisation. Changes cache construction work, not its size or per-frame lookup count. |
-| Internal resolution | **Auto** / 100% / 75% / 50% | Rebuilds camera buffers and changes the ray count. Fixed options are not overridden by the adaptive scaler. |
+| Internal resolution | **Auto** / 100% / 75% / 50% | Scales both camera target dimensions from the canvas CSS size. Fixed options are not overridden by the adaptive scaler. Auto starts from a symmetric 1280 x 832 pixel-area budget. |
 | Irradiance grid density | 0.5x / **1x** / 1.5x | Changes the shared receiver atlas cell count (pool floor about 4.17 / 2.08 / 1.39 cm). |
 | Photon reconstruction radius | 0.5x / **1x** / 1.5x | Changes the normalised reconstruction support of cached and live photons in the light domain. No screen-space blur. |
 
 Code: `src/lab-settings.js` (whitelist, defaults, persistence), `src/lab-menu.js` (UI and readouts), `src/main.js` (input, pause, lab state), `src/render/lab-shaders.js` (shader specialisation), `src/render/renderer.js` and the atlas builder.
+
+Resolution percentages refer to CSS pixels, not device pixels, so a high-DPI
+display does not silently multiply camera ray counts. The presentation backing
+store uses CSS size times `devicePixelRatio`; both allocations obey GPU limits.
+The camera uses the unrounded CSS aspect ratio at every quality. Internal targets
+round to whole pixels without independent width/height floors or 8-pixel alignment;
+only compute dispatch counts round up to workgroups, with out-of-bounds guards.
+Viewport changes also redraw a paused scene without advancing its clock.
 
 ## Applying settings
 

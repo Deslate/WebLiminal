@@ -7,6 +7,7 @@ const wakeTrail=createWakeTrail();
 import { selectLevel } from "../levels/index.js";
 import { loadWindow, regionIndex, worldPosition } from "./world.js";
 import { createRenderer } from "./render/renderer.js";
+import { initialRenderScale } from "./render/viewport-size.js";
 import { movePlayer, canStand } from "./collision.js";
 import { createSoundscape } from "./audio.js";
 const canvas = document.createElement("canvas");
@@ -33,7 +34,7 @@ let dragging = false,
   frameMs = [],
   completed = 0,
   firstFrame = null,
-  scale = Math.min(1,1280/innerWidth),
+  scale = initialRenderScale(canvas.clientWidth, canvas.clientHeight),
   paused = false,
   holdTime = false,
   targetSamples = 0;
@@ -45,14 +46,47 @@ let renderer = await createRenderer(canvas, windowLevel, waterPreviewName).catch
   throw e;
 });
 let ROOM = renderer.bounds;
-let resizePending = false;
-function resize() {
-  if (paused) { resizePending = true; return; }
+let resizePending = false, resizeRefreshing = false;
+function applyViewportSize() {
+  const bounds = canvas.getBoundingClientRect();
+  if(labState.resolution==="auto")scale=Math.min(scale,initialRenderScale(bounds.width,bounds.height));
+  renderer.resize(bounds.width, bounds.height, scale);
   resizePending = false;
-  renderer.resize(innerWidth, innerHeight, scale);
+}
+async function refreshPausedViewport() {
+  if(resizeRefreshing)return;
+  resizeRefreshing=true;
+  try {
+    while(resizePending && paused){
+      while(renderer.busy || tickRunning || labApplying || regionChanging)await new Promise(r=>setTimeout(r,5));
+      if(!paused || !resizePending)break;
+      applyViewportSize();
+      await renderer.render(cameraPose(),elapsed,false,1);
+    }
+  } finally {resizeRefreshing=false;if(!paused)scheduleFrame();}
+}
+function resize() {
+  resizePending=true;
+  if(paused)refreshPausedViewport().catch(console.error);
 }
 resize();
 addEventListener("resize", resize);
+new ResizeObserver(resize).observe(canvas.parentElement);
+let pixelRatioQuery, observedPixelRatio=devicePixelRatio;
+function watchPixelRatio() {
+  pixelRatioQuery=matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+  pixelRatioQuery.addEventListener('change',()=>{
+    observedPixelRatio=devicePixelRatio;resize();watchPixelRatio();
+  },{once:true});
+}
+watchPixelRatio();
+// DPR-only transitions can omit resize/media-query events (including Chrome
+// device emulation). This cheap fallback also updates a paused presentation.
+setInterval(()=>{
+  if(!document.hidden && observedPixelRatio!==devicePixelRatio){
+    observedPixelRatio=devicePixelRatio;resize();
+  }
+},500);
 addEventListener("keydown", (e) => {
   if (e.target.closest?.('input, select, textarea, [contenteditable="true"]')) return;
   const destination = regionIndex(e.code, activeRegion, bookmarks.length);
@@ -162,7 +196,7 @@ async function tick(now) {
     resumeFrame = false;
     previous = lastSimulation = now;
     if (!holdTime) elapsed += dt;
-    if (resizePending) resize();
+    if (resizePending) applyViewportSize();
     let f =
       Number(keys.has("KeyW") || keys.has("ArrowUp")) -
       Number(keys.has("KeyS") || keys.has("ArrowDown"));
@@ -224,10 +258,10 @@ async function tick(now) {
           scale = Math.max(0.36, scale * Math.min(.93, Math.sqrt(28.5 / samples[6])));
           resize();
           lastResize = done;
-        } else if(samples[6] < 28 && done-lastResize>1200 && scale < Math.min(1,1280/innerWidth)) {
+        } else if(samples[6] < 28 && done-lastResize>1200 && scale < initialRenderScale(canvas.clientWidth,canvas.clientHeight)) {
           // Recover detail after leaving a costly inspection view. Hysteresis
           // avoids chasing individual frame spikes or oscillating every frame.
-          scale=Math.min(Math.min(1,1280/innerWidth),scale+.025);
+          scale=Math.min(initialRenderScale(canvas.clientWidth,canvas.clientHeight),scale+.025);
           resize();lastResize=done;
         }
       }
@@ -260,8 +294,8 @@ async function applyLab(value,persist=true){
       while(renderer.busy||tickRunning)await new Promise(r=>setTimeout(r,5));
       releaseFrame = await holdPresentedFrame();
       await renderer.setLab(next);labState=next;
-      scale=next.resolution==="auto"?Math.min(1,1280/innerWidth):next.resolution;
-      renderer.resize(innerWidth,innerHeight,scale);resizePending=false;
+      scale=next.resolution==="auto"?initialRenderScale(canvas.clientWidth,canvas.clientHeight):next.resolution;
+      applyViewportSize();
       elapsed=0;wakeTrail.reset();frameMs=[];lastCompleted=null;resetClock();
       // Explicit edits refresh one paused frame; Tab during rebuild records intent.
       renderer.setBody(bodyEnabled?view:null);await renderer.render(cameraPose(),elapsed,false,1);
@@ -299,8 +333,7 @@ async function teleport(index, previewName = waterPreviewName) {
     observer = savedObserver;
     elapsed = 0; targetSamples = 0; holdTime = false;
     wakeTrail.reset(); frameMs = []; lastView = ''; lastCompleted = null;
-    renderer.resize(innerWidth, innerHeight, scale);
-    resizePending = false;
+    applyViewportSize();
     renderer.setBody(bodyEnabled ? view : null);
     await renderer.render(cameraPose(), 0, false, 1);
     document.querySelector('.caption h1').textContent = bookmarks[index].name;
@@ -375,8 +408,7 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       if (parameters.view) Object.assign(view, parameters.view);
       if (parameters.scale) {
         scale = parameters.scale;
-        renderer.resize(innerWidth, innerHeight, scale);
-        resizePending = false;
+        applyViewportSize();
       }
       targetSamples = parameters.targetSamples || 0;
       holdTime = parameters.freeze ?? holdTime;

@@ -1,5 +1,6 @@
 import {LAB_DEFAULTS,normalizeLab} from "../lab-settings.js";
 import {labShader} from "./lab-shaders.js";
+import {viewportSize} from "./viewport-size.js";
 import { createWaveSimulation } from "./wave-simulation.js";
 import { waterPreview, waterPreviewCamera } from "./water-preview.js";
 import commonSource from "./common.wgsl?raw";
@@ -161,6 +162,7 @@ export async function createRenderer(canvas, level, previewName = '') {
     groups = [],
     width = 960,
     height = 624,
+    viewportAspect = width / height,
     frame = 0,
     sceneBatches = 0,
     history = 0,
@@ -275,11 +277,16 @@ export async function createRenderer(canvas, level, previewName = '') {
     history = 0;
     if (imageBuffer) regroup();
   }
-  function resize(w, h, scale = 1) {
-    width = Math.max(256, Math.round((w * scale) / 8) * 8);
-    height = Math.max(192, Math.round((h * scale) / 8) * 8);
-    if(canvas.width!==Math.round(w))canvas.width = Math.round(w);
-    if(canvas.height!==Math.round(h))canvas.height = Math.round(h);
+  function resize(w, h, scale = 1, pixelRatio = globalThis.devicePixelRatio || 1) {
+    const size = viewportSize(w, h, scale, pixelRatio, {
+      maxDimension: device.limits.maxTextureDimension2D,
+      maxPixels: Math.min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize) / 16,
+    });
+    viewportAspect = size.aspect;
+    if(canvas.width!==size.canvasWidth)canvas.width = size.canvasWidth;
+    if(canvas.height!==size.canvasHeight)canvas.height = size.canvasHeight;
+    if(imageBuffer && width===size.width && height===size.height)return;
+    width = size.width; height = size.height;
     if (imageBuffer) imageBuffer.destroy();
     imageBuffer = device.createBuffer({
       label: "camera radiance accumulation",
@@ -293,7 +300,8 @@ export async function createRenderer(canvas, level, previewName = '') {
     regroup();
   }
   rebuild();
-  resize(1512, 982, 0.63);
+  const initialViewport = canvas.getBoundingClientRect();
+  resize(initialViewport.width, initialViewport.height, 0.63);
   let autoStatic=false;
   function configure(patch) {
     if(patch.wakes?.length)throw Error('Analytic wake lists are obsolete: replay physical pressure sources in time order.');
@@ -388,10 +396,10 @@ export async function createRenderer(canvas, level, previewName = '') {
       f.set([-sy * cp, sp, -cy * cp, 0], 12);
       // A 36 x 24 mm full-frame gate, cropped to the viewport; focal length in mm.
       const tanY =
-        (Math.min(24, 36 / (width / height)) * 0.5) / config.focalLength;
+        (Math.min(24, 36 / viewportAspect) * 0.5) / config.focalLength;
       f.set(
         [
-          width / height,
+          viewportAspect,
           tanY,
           (config.focalLength / config.fNumber) * 0.0005,
           config.focusDistance,
