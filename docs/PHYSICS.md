@@ -26,6 +26,22 @@ tile layout rather than a construction-grade spherical tiling.
 
 The visible water surface is the linear sum of two independent solvers. Both are stateful: they integrate real elapsed time from a reset and are never seeked analytically to an arbitrary time.
 
+The runtime clock uses `performance.now()` deltas, capped at 50 ms per frame;
+pausing, hiding or resuming the page excludes the intervening time. Therefore
+stalls below 20 fps lose simulation time rather than accelerating water. The
+background integrates at 1/60 s with `waveSpeed=1` in Poolrooms, while the body
+solver receives the same runtime seconds. `waveTime=1.7` is an offset, not a
+speed multiplier. Pressure-bandwidth previews do not change these clocks.
+
+`?playback=1`, `0.5` or `0.33` exposes an in-page diagnostic rate selector
+(the last value means exactly one third). This intentionally slows the whole
+simulation clock and locomotion together, preserving source velocities in
+simulation seconds. It is a visual diagnostic departure from wall-clock time,
+not a physical correction or a new default. Water, body sources and live photon
+caustics share that clock; gravity, dispersion and excitation bandwidth stay
+unchanged. Rate switches are continuous and do not reset or seek the water.
+Explicit-time evidence replay remains independent of this runtime selector.
+
 ### Background field (`src/render/wave-simulation.*`, `src/render/finite-depth.*`)
 
 - A grid over the level's water rectangle at the level's cell size, integrated at 60 Hz (Poolrooms: 448 x 864 at 1/32 m).
