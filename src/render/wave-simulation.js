@@ -3,8 +3,8 @@ import code from './wave-simulation.wgsl?raw';
 import {createBodyWaves} from './body-waves.js';
 // The water grid covers the scene's water rectangle; `prelude` carries the
 // matching compile-time constants (see scene.js).
-export async function createWaveSimulation(device,{grid,prelude,pressurePasses=4,excitation=0}){
- const bodyWaves=await createBodyWaves(device,prelude);
+export async function createWaveSimulation(device,{grid,prelude,pressurePasses=4,excitation=0,bodySource=0}){
+ const bodyWaves=await createBodyWaves(device,prelude,bodySource);
  const {nx,nz,dx,dt,minX,minZ}=grid,count=nx*nz,size=count*8;
  const module=device.createShaderModule({label:'shared water initial state and reconstruction',code:prelude+code});
  const info=await module.getCompilationInfo();for(const m of info.messages)if(m.type==='error')throw Error(`wave simulation ${m.lineNum}: ${m.message}`);

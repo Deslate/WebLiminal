@@ -5,7 +5,7 @@ import {waterPreview, waterPreviewCamera} from '../src/render/water-preview.js';
 
 const camera=readFileSync(new URL('../src/render/camera.wgsl',import.meta.url),'utf8');
 test('unselected and unknown water previews preserve the production camera',()=>{
-  for(const name of ['', 'unknown', '__proto__', 'constructor', 'fine', 'dense', 'calm', 'moderate', 'gentle', 'swell', 'mixed', 'settle', 'wind', 'gust']){
+  for(const name of ['', 'unknown', '__proto__', 'constructor', 'fine', 'dense', 'calm', 'moderate', 'gentle', 'swell', 'mixed', 'settle', 'wind', 'gust', 'patches', 'bands', 'contacts']){
     assert.equal(waterPreviewCamera(camera,waterPreview(name)),camera);
   }
   for(const name of ['', 'unknown', '__proto__', 'constructor']){
@@ -17,6 +17,9 @@ test('unselected and unknown water previews preserve the production camera',()=>
   assert.deepEqual(waterPreview('gentle'),{pressurePasses:6,detail:false});
   for(const [name,excitation] of [['swell',1],['mixed',2],['settle',3],['wind',4],['gust',5]]){
     assert.deepEqual(waterPreview(name),{pressurePasses:4,detail:false,excitation});
+  }
+  for(const [name,excitation,bodySource] of [['patches',6,1],['bands',7,2],['contacts',6,3]]){
+    assert.deepEqual(waterPreview(name),{pressurePasses:4,detail:false,excitation,bodySource});
   }
 });
 test('water detail preview refines submerged solid hits and guards missing hooks',()=>{

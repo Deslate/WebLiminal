@@ -72,6 +72,51 @@ eta_tt + omega^2 eta = omega^2 b
 
 ### Known limitations
 
+The opt-in `waterPreview=patches`, `bands` and `contacts` combine heterogeneous ambient
+forcing with smaller contact-driven wading sources. These are **authored visual
+simulation inputs**, not measured wind or foot loads; default `fine` is unchanged.
+
+- Ambient pressure uses a fixed advected noise field with irregular envelopes.
+  `patches` uses a 3.2 m envelope domain and 0.18 m/s source advection;
+  `bands` uses a 5.5 by 2.4 m envelope domain and 0.24 m/s. Direction remains
+  normalize(1, 0.35). Fine excitation can reach zero inside quiet patches. These masks act on
+  pressure only: propagated waves may cross into quiet areas; the evolved
+  height and its normals are never spatially masked.
+- A larger spatial source band varies its lattice spacing from 0.10 to 0.20 m
+  (`patches`) or 0.26 m (`bands`). Its gain is (spacing / 0.065 m)^2 times
+  an irregular envelope spanning 0.12 to 1. A separate 0.045 m lattice band
+  has gain 0.55 or 0.35 and is present only in stronger wind patches. Four
+  diffusion passes still band-limit pressure before it enters the solver.
+  The pressure/density coefficient is 0.12 m²/s² for `patches` and
+  0.055 m²/s² for `bands`, scaled by the
+  wave-amplitude control. These are source scales, not promised wave wavelengths.
+- Envelope phases are fixed offsets (31.7, -12.3), (-9.2, 8.4) and (7, 13)
+  in the corresponding noise coordinates. Thresholds and gains are deliberately
+  authored; no patch is aligned to a particular room's highlight.
+- The continuous body's equivalent-pressure amplitude is 0.4 of the default.
+  The previously broad depth-dependent bow load instead uses radius 0.18 or
+  0.22 m and gain 0.10 or 0.17, gated by each actual foot contact's 0.14-second
+  pulse. A small continuous compact body load remains; footsteps do not erase
+  the displaced body between contacts.
+- The planted-foot pressure radius is 0.10 or 0.12 m, with gain 0.35 or 0.50.
+  A radial source cutoff from wavenumber 18 to 24 per metre avoids exciting
+  unresolved FFT-edge modes. Contact cadence is unchanged: one alternating
+  contact per 0.48 m, at least 0.4 seconds apart, from resolved movement.
+  Blocked motion, turning and teleports still do not create footsteps.
+
+`contacts` uses exactly the `patches` environment and source radii (0.18 m bow,
+0.10 m foot), but raises the contact-gated bow gain to 0.65 and foot gain to 0.55.
+This isolates a more legible compact pulse without restoring continuous broad
+body pressure. Its gain is also an authored source choice, not measured loading.
+
+No V silhouette is prescribed. Any wedge, bow ridge or radiated packet must
+emerge from the finite-depth dispersion of the compact moving pressure and
+contact pulses. At a fixed depth and walking speed, the wake angle cannot be
+arbitrarily narrowed by changing source radius. The 0.125 m body grid limits
+how sharp a small packet can be; this is not a high-resolution foot/fluid
+boundary solver. Ambient and body heights remain one shared optical surface.
+Optics, gravity, dispersion, damping and walking speed are unchanged.
+
 The opt-in `waterPreview=wind` and `gust` retain the default A's four-pass
 spatial pressure bandwidth, but replace white-in-time forcing with a fixed
 seeded pressure texture advected continuously through broad gust envelopes.

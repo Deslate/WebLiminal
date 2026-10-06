@@ -80,8 +80,9 @@ fn lapNoise(i:u32)->vec2f {
 // pressure texture advects continuously through broad, slowly moving gusts.
 // Four diffusion passes retain A's spatial bandwidth. No time-random reseeding,
 // analytic animated surface, added normals, or change to physical dispersion.
-fn windVelocity()->vec2f{return normalize(vec2f(1.,.35))*select(.22,.30,EXCITATION_MODE==5u);}
+fn windVelocity()->vec2f{if(EXCITATION_MODE>=6u){return normalize(vec2f(1.,.35))*select(.18,.24,EXCITATION_MODE==7u);}return normalize(vec2f(1.,.35))*select(.22,.30,EXCITATION_MODE==5u);}
 fn windEnvelope(q:vec2f)->f32{
+ if(EXCITATION_MODE>=6u){return 1.;}
  let scale=select(3.5,6.,EXCITATION_MODE==5u);
  let p=(q-windVelocity()*P.clock.x)/scale;
  return .75+.35*sin(p.x*2.1+p.y*.8)*sin(p.y*1.7-p.x*.4);
@@ -89,15 +90,30 @@ fn windEnvelope(q:vec2f)->f32{
 fn latticePressure(p:vec2i)->f32{
  return randomGaussianApprox(hashNoise(bitcast<u32>(p.x)^hashNoise(bitcast<u32>(p.y))^u32(P.settings.z)));
 }
-fn advectedPressure(q:vec2f)->f32{
- let p=(q-windVelocity()*P.clock.x)/WATER_DX;
+fn spatialPressure(p:vec2f)->f32{
  let cell=vec2i(floor(p));let f=fract(p);let u=f*f*(3.-2.*f);
  return mix(mix(latticePressure(cell),latticePressure(cell+vec2i(1,0)),u.x),
             mix(latticePressure(cell+vec2i(0,1)),latticePressure(cell+vec2i(1,1)),u.x),u.y);
 }
+// Authored heterogeneous wind patches: the fine-band envelope reaches zero,
+// while a separately scaled, larger band remains visible. Spatial scales and
+// gains are source choices, never a cosmetic height/normal layer or image blur.
+fn advectedPressure(q:vec2f)->f32{
+ let r=q-windVelocity()*P.clock.x;
+ if(EXCITATION_MODE<6u){return spatialPressure(r/WATER_DX);}
+ let broad=EXCITATION_MODE==7u;
+ let domain=select(r/3.2,r/vec2f(5.5,2.4),broad);
+ let weather=spatialPressure(domain+vec2f(31.7,-12.3));
+ let activity=smoothstep(-.15,.55,weather);
+ let spacing=mix(.10,select(.20,.26,broad),smoothstep(-.6,.6,spatialPressure(domain+vec2f(-9.2,8.4))));
+ let coarse=spatialPressure(r/spacing)*pow(spacing/.065,2.)*mix(.12,1.,activity);
+ let fineMask=smoothstep(.2,.65,weather);
+ let fine=spatialPressure(r/.045+vec2f(7.,13.))*fineMask*select(.55,.35,broad);
+ return coarse+fine;
+}
 fn windPressure(i:u32)->f32{
  let envelope=windEnvelope(sourcePosition(i));
- return -(P.settings.x/.018)*(select(.15,.23,EXCITATION_MODE==5u)*envelope*lapNoise(i).x/1024.
+ return -(P.settings.x/.018)*(select(select(.15,.23,EXCITATION_MODE==5u),select(.12,.055,EXCITATION_MODE==7u),EXCITATION_MODE>=6u)*envelope*lapNoise(i).x/1024.
                               +.04*(envelope-.75));
 }
 fn noiseDirectionalDerivative(i:u32)->f32{
@@ -120,7 +136,7 @@ fn noiseDirectionalDerivative(i:u32)->f32{
  let i=id.x;if(i>=N){return;}
  if(EXCITATION_MODE>=4u){
   if((links[i]&0x80000000u)==0u){next[i]=vec2f(0);return;}
-  let scale=select(.15,.23,EXCITATION_MODE==5u)*.75*(P.settings.x/.018)/(9.81*1024.);
+  let scale=select(select(.15,.23,EXCITATION_MODE==5u)*.75,select(.12,.055,EXCITATION_MODE==7u),EXCITATION_MODE>=6u)*(P.settings.x/.018)/(9.81*1024.);
   let h=scale*lapNoise(i).x;
   let center=noiseDirectionalDerivative(i);var lapDerivative=0.;
   for(var j=0u;j<8u;j++){if((links[i]&(1u<<j))!=0u){lapDerivative+=weight(j)*(center-noiseDirectionalDerivative(u32(i32(i)+OFFSETS[j])));}}

@@ -4,6 +4,10 @@
 export function waterPreview(name) {
   const previews = {
     fine: { pressurePasses: 4, detail: false },
+    // Authored patchy ambient pressure and compact per-contact body sources.
+    patches: { pressurePasses: 4, detail: false, excitation: 6, bodySource: 1 },
+    contacts: { pressurePasses: 4, detail: false, excitation: 6, bodySource: 3 },
+    bands: { pressurePasses: 4, detail: false, excitation: 7, bodySource: 2 },
     // A's spatial bandwidth, driven by coherent advected pressure, not white noise.
     wind: { pressurePasses: 4, detail: false, excitation: 4 },
     gust: { pressurePasses: 4, detail: false, excitation: 5 },

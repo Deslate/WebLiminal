@@ -72,5 +72,5 @@ export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,pre
   for(let k=degree-1;k>=1;k--){dispatch(encoder,active,slot,2,j,k);j=1-j;}
   dispatch(encoder,active,slot,3,j,0);
  }
- return {reset,initialize,step,get info(){return {method:'G(L)=sqrt(L)tanh(H sqrt(L)), Neumann wet-domain graph',...fit,uniformDepth:true,pressurePasses,excitation,sourceCenters,forcing:excitation===0?'homogeneous band-limited stochastic pressure':['','localized broad pressure pulses','localized broad and small pressure pulses','free release without background forcing','coherent advected pressure in small gust patches','coherent advected pressure in broad gust patches'][excitation]}}};
+ return {reset,initialize,step,get info(){return {method:'G(L)=sqrt(L)tanh(H sqrt(L)), Neumann wet-domain graph',...fit,uniformDepth:true,pressurePasses,excitation,sourceCenters,forcing:excitation===0?'homogeneous band-limited stochastic pressure':['','localized broad pressure pulses','localized broad and small pressure pulses','free release without background forcing','coherent advected pressure in small gust patches','coherent advected pressure in broad gust patches','heterogeneous wind patches with spatially varying bands','broad irregular wind bands with sparse fine patches'][excitation]}}};
 }
