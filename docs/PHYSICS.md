@@ -72,6 +72,42 @@ eta_tt + omega^2 eta = omega^2 b
 
 ### Known limitations
 
+The opt-in `waterPreview=wind` and `gust` retain the default A's four-pass
+spatial pressure bandwidth, but replace white-in-time forcing with a fixed
+seeded pressure texture advected continuously through broad gust envelopes.
+These are **authored visual simulation inputs**, not measured indoor wind or
+an air-flow solver. They do not change wave playback rate or dispersion.
+
+- Both use direction normalize(1, 0.35) in local water-grid coordinates.
+  `wind` advects at 0.22 m/s with envelope scale 3.5 m and pressure/density
+  coefficient 0.15 m²/s²; `gust` uses 0.30 m/s, 6 m and 0.23 m²/s².
+  These velocities move the pressure source, not the water's physical wave speed.
+- The smooth envelope is 0.75 + 0.35 sin(2.1 x + 0.8 z)
+  sin(1.7 z - 0.4 x), evaluated in advected, scale-normalized coordinates.
+  Fine pressure is multiplied by this envelope; a broad component has
+  coefficient 0.04 m²/s² times its deviation from 0.75. Pressure scales with
+  the existing wave-amplitude control. Positions and phases follow the shared
+  grid and seed, not per-room reflection placement.
+- A fixed spatial random lattice is interpolated with cubic smooth weights
+  before the existing four diffusion passes. No frame draws a new random field.
+  Initial height uses the fine pressure component at the envelope's mean,
+  divided by gravity. Initial vertical velocity uses its directional advective
+  derivative rather than an unrelated random kick. Both are constructed with
+  the symmetric wet-domain Laplacian last, keeping zero mean height and velocity
+  so the initial condition does not add water volume.
+  Subsequent heights evolve only through the physical stateful solver.
+- Gravity, capillarity, damping, optical parameters and the unified geometric
+  surface remain unchanged. Reflections, refraction and photon caustics change
+  together, including in original Poolrooms. Default A remains selected unless
+  a preview is requested; the older `calm` entry remains available.
+
+The envelope is deliberately simple and repetitive in space. It is not CFD,
+wind shear, nonlinear transport of short waves by long waves, or a full turbulent
+cascade. Directional pressure does not force every wave to travel in that
+same direction: dispersion and real pool boundaries still create reflected
+waves. Retaining the source bandwidth does not guarantee identical evolved
+wave energy or identical ripple counts to A.
+
 The opt-in `waterPreview=swell`, `mixed` and `settle` source scenarios replace
 the homogeneous random initial state and continuing random pressure. They do
 not change playback speed, dispersion, damping, material optics or normals.
@@ -98,7 +134,7 @@ not measurements of indoor pool forcing. They enter initial conditions or
 pressure in the existing stateful physical solver, never a prescribed animated
 height/normal layer. The same resulting geometry drives reflections, refraction
 and photon caustics. The pulses have a repeated authored cadence; nonlinear
-sloshing, wind and actual inlet/outlet flow are not modelled. `settle` can become
+sloshing and actual inlet/outlet flow are not modelled. `settle` can become
 nearly still after its initial disturbance dissipates. The ordinary `fine`
 default and the older preview entries retain their existing random forcing.
 

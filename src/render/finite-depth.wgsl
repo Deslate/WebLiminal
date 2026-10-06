@@ -32,6 +32,7 @@ fn shiftedLaplacian(i:u32)->f32 {
  // scaled by 1/sqrt(dt); it excites the physical oscillators, never the image.
  var p=0.;
  if(EXCITATION_MODE==0u){p=.003*(P.settings.x/.018)*P.settings.w/sqrt(P.clock.y)*lapNoise(i).x/1024.;}
+ else if(EXCITATION_MODE>=4u){p=windPressure(i)*P.settings.w;}
  else if(EXCITATION_MODE!=3u){p=localPressure(i)*P.settings.w;}
  potential[i]=9.81*state[i].x+.000073*lapState(i).x+p;
 }
@@ -75,8 +76,40 @@ fn localPressure(i:u32)->f32{
 fn lapNoise(i:u32)->vec2f {
  var r=vec2f(0);let center=excitation[i];for(var j=0u;j<8u;j++){if((links[i]&(1u<<j))!=0u){r+=weight(j)*(center-excitation[u32(i32(i)+OFFSETS[j])]);}}return r;
 }
+// Authored wind-like input, not an atmosphere simulation: a fixed turbulent
+// pressure texture advects continuously through broad, slowly moving gusts.
+// Four diffusion passes retain A's spatial bandwidth. No time-random reseeding,
+// analytic animated surface, added normals, or change to physical dispersion.
+fn windVelocity()->vec2f{return normalize(vec2f(1.,.35))*select(.22,.30,EXCITATION_MODE==5u);}
+fn windEnvelope(q:vec2f)->f32{
+ let scale=select(3.5,6.,EXCITATION_MODE==5u);
+ let p=(q-windVelocity()*P.clock.x)/scale;
+ return .75+.35*sin(p.x*2.1+p.y*.8)*sin(p.y*1.7-p.x*.4);
+}
+fn latticePressure(p:vec2i)->f32{
+ return randomGaussianApprox(hashNoise(bitcast<u32>(p.x)^hashNoise(bitcast<u32>(p.y))^u32(P.settings.z)));
+}
+fn advectedPressure(q:vec2f)->f32{
+ let p=(q-windVelocity()*P.clock.x)/WATER_DX;
+ let cell=vec2i(floor(p));let f=fract(p);let u=f*f*(3.-2.*f);
+ return mix(mix(latticePressure(cell),latticePressure(cell+vec2i(1,0)),u.x),
+            mix(latticePressure(cell+vec2i(0,1)),latticePressure(cell+vec2i(1,1)),u.x),u.y);
+}
+fn windPressure(i:u32)->f32{
+ let envelope=windEnvelope(sourcePosition(i));
+ return -(P.settings.x/.018)*(select(.15,.23,EXCITATION_MODE==5u)*envelope*lapNoise(i).x/1024.
+                              +.04*(envelope-.75));
+}
+fn noiseDirectionalDerivative(i:u32)->f32{
+ var adjacent=vec4f(excitation[i].x);
+ for(var j=0u;j<4u;j++){if((links[i]&(1u<<j))!=0u){adjacent[j]=excitation[u32(i32(i)+OFFSETS[j])].x;}}
+ return dot(windVelocity(),vec2f(adjacent.y-adjacent.x,adjacent.w-adjacent.z)/(2.*WATER_DX));
+}
 @compute @workgroup_size(128) fn seedPressure(@builtin(global_invocation_id) id:vec3u){
  let i=id.x;if(i>=N){return;}
+ if(EXCITATION_MODE>=4u){
+  output[i]=select(vec2f(0),vec2f(advectedPressure(sourcePosition(i)),0.),(links[i]&0x80000000u)!=0u);return;
+ }
  let seed=hashNoise(i^hashNoise(u32(round(P.clock.x*120.))+u32(P.settings.z)));
  output[i]=select(vec2f(0),vec2f(randomGaussianApprox(seed),randomGaussianApprox(seed^0xa511e9b3u)),(links[i]&0x80000000u)!=0u);
 }
@@ -85,6 +118,16 @@ fn lapNoise(i:u32)->vec2f {
 }
 @compute @workgroup_size(128) fn initializeState(@builtin(global_invocation_id) id:vec3u){
  let i=id.x;if(i>=N){return;}
+ if(EXCITATION_MODE>=4u){
+  if((links[i]&0x80000000u)==0u){next[i]=vec2f(0);return;}
+  let scale=select(.15,.23,EXCITATION_MODE==5u)*.75*(P.settings.x/.018)/(9.81*1024.);
+  let h=scale*lapNoise(i).x;
+  let center=noiseDirectionalDerivative(i);var lapDerivative=0.;
+  for(var j=0u;j<8u;j++){if((links[i]&(1u<<j))!=0u){lapDerivative+=weight(j)*(center-noiseDirectionalDerivative(u32(i32(i)+OFFSETS[j])));}}
+  // Apply the symmetric Laplacian last: height and velocity both have zero
+  // wet-domain mean, so a directional initial kick cannot change pool volume.
+  next[i]=vec2f(h,-scale*lapDerivative);return;
+ }
  if(EXCITATION_MODE!=0u){
   // A single broad release starts at rest and then evolves freely.
   let h=select(0.,.022*(P.settings.x/.018)*(pressurePatch(sourcePosition(i),C.centers.xy,1.1)-C.releaseMean),EXCITATION_MODE==3u);

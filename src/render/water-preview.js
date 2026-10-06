@@ -4,6 +4,9 @@
 export function waterPreview(name) {
   const previews = {
     fine: { pressurePasses: 4, detail: false },
+    // A's spatial bandwidth, driven by coherent advected pressure, not white noise.
+    wind: { pressurePasses: 4, detail: false, excitation: 4 },
+    gust: { pressurePasses: 4, detail: false, excitation: 5 },
     // Authored physical source scenarios, not cosmetic surface layers.
     swell: { pressurePasses: 4, detail: false, excitation: 1 },
     mixed: { pressurePasses: 4, detail: false, excitation: 2 },

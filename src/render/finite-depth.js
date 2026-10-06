@@ -58,7 +58,7 @@ export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,pre
   const p=encoder.beginComputePass();p.setPipeline(pipelines[pipeline]);p.setBindGroup(0,groups[active][j],[slot*1024,k*256]);p.dispatchWorkgroups(Math.ceil(count/128));p.end();
  }
  function pressure(encoder,active,slot){
-  if(excitation!==0)return 0;
+  if(excitation>0&&excitation<4)return 0;
   dispatch(encoder,active,slot,4,0);let j=1;
   // The default fine-wave bandwidth is a visual choice, not measured
   // environmental forcing. Gravity, capillarity and dissipation stay fixed.
@@ -72,5 +72,5 @@ export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,pre
   for(let k=degree-1;k>=1;k--){dispatch(encoder,active,slot,2,j,k);j=1-j;}
   dispatch(encoder,active,slot,3,j,0);
  }
- return {reset,initialize,step,get info(){return {method:'G(L)=sqrt(L)tanh(H sqrt(L)), Neumann wet-domain graph',...fit,uniformDepth:true,pressurePasses,excitation,sourceCenters,forcing:excitation===0?'homogeneous band-limited stochastic pressure':['','localized broad pressure pulses','localized broad and small pressure pulses','free release without background forcing'][excitation]}}};
+ return {reset,initialize,step,get info(){return {method:'G(L)=sqrt(L)tanh(H sqrt(L)), Neumann wet-domain graph',...fit,uniformDepth:true,pressurePasses,excitation,sourceCenters,forcing:excitation===0?'homogeneous band-limited stochastic pressure':['','localized broad pressure pulses','localized broad and small pressure pulses','free release without background forcing','coherent advected pressure in small gust patches','coherent advected pressure in broad gust patches'][excitation]}}};
 }
