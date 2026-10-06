@@ -4,6 +4,10 @@
 export function waterPreview(name) {
   const previews = {
     fine: { pressurePasses: 4, detail: false },
+    // Authored physical source scenarios, not cosmetic surface layers.
+    swell: { pressurePasses: 4, detail: false, excitation: 1 },
+    mixed: { pressurePasses: 4, detail: false, excitation: 2 },
+    settle: { pressurePasses: 4, detail: false, excitation: 3 },
     // Reduced short-wave excitation density: visual alternatives to fine.
     moderate: { pressurePasses: 5, detail: false },
     gentle: { pressurePasses: 6, detail: false },

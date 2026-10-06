@@ -72,6 +72,36 @@ eta_tt + omega^2 eta = omega^2 b
 
 ### Known limitations
 
+The opt-in `waterPreview=swell`, `mixed` and `settle` source scenarios replace
+the homogeneous random initial state and continuing random pressure. They do
+not change playback speed, dispersion, damping, material optics or normals.
+Two source centres are placed at the wet cells nearest normalized domain
+positions (0.3, 0.35) and (0.7, 0.65); positions are shared renderer policy,
+not per-room highlight adjustments.
+
+- `swell` starts at rest. Gaussian pressure patches with radii 0.85 and 1.1 m
+  receive smooth squared-sine pulses of 1.6 and 2 seconds, alternating every
+  five seconds. Peak pressure/density is 0.24 m²/s², scaled by the existing
+  wave-amplitude control. Quiet intervals allow the resulting waves to travel
+  and reflect at real pool boundaries.
+- `mixed` adds a local 0.24 m patch, with peak pressure/density 0.16 m²/s²,
+  active for 0.45 seconds every 3.7 seconds. This adds shorter waves locally,
+  rather than exciting every cell continuously.
+- `settle` releases one 22 mm Gaussian initial displacement of radius 1.1 m
+  from zero velocity, subtracting its wet-domain mean to conserve volume.
+  Its height scales with the existing wave-amplitude control, as do the pulses.
+  No continuing background pressure is applied; it freely
+  propagates and decays. Body waves remain active in every scenario.
+
+These source shapes, amplitudes and cadences are intentional visual choices,
+not measurements of indoor pool forcing. They enter initial conditions or
+pressure in the existing stateful physical solver, never a prescribed animated
+height/normal layer. The same resulting geometry drives reflections, refraction
+and photon caustics. The pulses have a repeated authored cadence; nonlinear
+sloshing, wind and actual inlet/outlet flow are not modelled. `settle` can become
+nearly still after its initial disturbance dissipates. The ordinary `fine`
+default and the older preview entries retain their existing random forcing.
+
 Fine waves are the shared default, including original Poolrooms. This intentionally
 produces finer surface motion, more fragmented reflections and refraction, and
 changed live photon caustics in every location. Scene geometry, materials,

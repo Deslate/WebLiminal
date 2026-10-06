@@ -5,7 +5,7 @@ import {waterPreview, waterPreviewCamera} from '../src/render/water-preview.js';
 
 const camera=readFileSync(new URL('../src/render/camera.wgsl',import.meta.url),'utf8');
 test('unselected and unknown water previews preserve the production camera',()=>{
-  for(const name of ['', 'unknown', '__proto__', 'constructor', 'fine', 'dense', 'calm', 'moderate', 'gentle']){
+  for(const name of ['', 'unknown', '__proto__', 'constructor', 'fine', 'dense', 'calm', 'moderate', 'gentle', 'swell', 'mixed', 'settle']){
     assert.equal(waterPreviewCamera(camera,waterPreview(name)),camera);
   }
   for(const name of ['', 'unknown', '__proto__', 'constructor']){
@@ -15,6 +15,9 @@ test('unselected and unknown water previews preserve the production camera',()=>
   assert.deepEqual(waterPreview('calm'),{pressurePasses:8,detail:false});
   assert.deepEqual(waterPreview('moderate'),{pressurePasses:5,detail:false});
   assert.deepEqual(waterPreview('gentle'),{pressurePasses:6,detail:false});
+  for(const [name,excitation] of [['swell',1],['mixed',2],['settle',3]]){
+    assert.deepEqual(waterPreview(name),{pressurePasses:4,detail:false,excitation});
+  }
 });
 test('water detail preview refines submerged solid hits and guards missing hooks',()=>{
   const source=waterPreviewCamera(camera,waterPreview('detail'));

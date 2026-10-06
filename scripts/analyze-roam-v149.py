@@ -1,6 +1,6 @@
 """Video triage, not a universal physical-truth classifier. No rendered pixels modified."""
 from pathlib import Path
-import sys,json
+import sys,json,tempfile
 import av,cv2,numpy as np
 from PIL import Image,ImageDraw
 root=Path(sys.argv[1] if len(sys.argv)>1 else '../workroom-v1.49-evidence/benchmark')
@@ -11,11 +11,24 @@ for folder in [root/'current']+sorted(p for p in root.iterdir() if p.is_dir() an
  if not (folder/'manifest.json').exists():continue
  m=json.loads((folder/'manifest.json').read_text());fps=m['fps'];h=m['height'];w=m['width'];lag=round(fps*.1)
  # The entire delivered video is decoded, including motion. Exact source is a codec control.
- cap=av.open(str(folder/'roam.mp4'));video=np.stack([np.rint(f.to_ndarray(format='rgb24')@np.array([.2126,.7152,.0722])).astype('uint8') for f in cap.decode(video=0)]);cap.close()
- source=np.load(folder/'source-luma.npy',mmap_mode='r');assert video.shape==source.shape,(video.shape,source.shape)
+ source=np.load(folder/'source-luma.npy',mmap_mode='r')
+ # Keep decoded pixels on disk and compare one frame at a time. Building the
+ # complete float video here otherwise needs several GB before hold analysis.
+ decodedFile=tempfile.TemporaryFile(dir=folder)
+ video=np.memmap(decodedFile,dtype='uint8',mode='w+',shape=source.shape)
+ codecError=0;decodedFrames=0
+ with av.open(str(folder/'roam.mp4')) as cap:
+  for frame in cap.decode(video=0):
+   assert decodedFrames<len(source),'More decoded frames than source frames'
+   luma=np.rint(frame.to_ndarray(format='rgb24')@np.array([.2126,.7152,.0722])).astype('uint8')
+   assert luma.shape==source.shape[1:]
+   video[decodedFrames]=luma
+   codecError+=int(np.abs(luma.astype(np.int16)-source[decodedFrames]).sum())
+   decodedFrames+=1
+ assert decodedFrames==len(source),(decodedFrames,len(source))
  if folder.name=='current':base=source;baseManifest=m
  elif m.get('renderEquivalenceHash',m['sourceHash'])!=baseManifest.get('renderEquivalenceHash',baseManifest['sourceHash']):raise RuntimeError('Cannot compare different render-equivalence hashes')
- report={'decodedFrames':len(video),'durationSeconds':len(video)/fps,'codecMAE':float(np.mean(abs(video.astype(np.float32)-source)))/255,'holds':{},'moving':[]}
+ report={'decodedFrames':len(video),'durationSeconds':len(video)/fps,'codecMAE':codecError/source.size/255,'holds':{},'moving':[]}
  for seg in m['segments']:
   # Exclude cuts, and first second of settling; cover stop separately in trace.
   lo=round((seg['start']+1)*fps);hi=round(seg['end']*fps)
@@ -69,9 +82,11 @@ for folder in [root/'current']+sorted(p for p in root.iterdir() if p.is_dir() an
   for p in stream.encode():clip.mux(p)
   clip.close()
  report['status']='REVIEW' if any(x['alert'] for x in report['holds'].values()) else 'NO_THRESHOLD_ALERT_NOT_VISUAL_PASS'
- if folder.name=='repeat':report['repeatMaxLumaError']=int(np.max(abs(source.astype(np.int16)-base.astype(np.int16))))
+ if folder.name=='repeat':report['repeatMaxLumaError']=max(int(np.abs(source[i].astype(np.int16)-base[i].astype(np.int16)).max()) for i in range(len(source)))
  (folder/'analysis.json').write_text(json.dumps(report,indent=2));summary['cases'][folder.name]=report
  print(folder.name,report['status'],[(k,round(v['delta100msBlockP99'],5),v['maxConnectedBlocks']) for k,v in report['holds'].items()],flush=True)
+ del video
+ decodedFile.close()
 (root/'report.json').write_text(json.dumps(summary,indent=2))
 lines=['# Automated roaming triage','',summary['meaning'],'','Thresholds: `'+json.dumps(TH)+'`','', '| Case / hold | 100ms block p99 | Max cluster (8px blocks) | Flagged frames | Status |','|---|---:|---:|---:|---|']
 for name,r in summary['cases'].items():

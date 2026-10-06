@@ -49,7 +49,7 @@ export async function createRenderer(canvas, level, previewName = '') {
   // Scattering adds one camera storage buffer; keep the legacy path on
   // adapters which cannot bind it. Other windows keep their shader source.
   const air = device.limits.maxStorageBuffersPerShaderStage >= 9 ? airGrid(initialScene) : null;
-  const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude, pressurePasses: preview.pressurePasses });
+  const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude, pressurePasses: preview.pressurePasses, excitation: preview.excitation });
   const { near: nearMaterial, photon: photonMaterial } = level.materials;
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();

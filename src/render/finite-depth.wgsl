@@ -11,7 +11,7 @@ struct SimParams { clock:vec4f, settings:vec4f, sources:array<vec4f,24>, shapes:
 @group(0) @binding(6) var<storage,read> previous:array<vec2f>;
 @group(0) @binding(7) var<storage,read_write> output:array<vec2f>;
 @group(0) @binding(8) var<storage,read> links:array<u32>;
-struct Control { coefficient:f32, limit:f32, order:u32, pad:u32 };
+struct Control { coefficient:f32, limit:f32, order:u32, releaseMean:f32, centers:vec4f };
 @group(0) @binding(9) var<uniform> C:Control;
 const N:u32=WATER_NX*WATER_NZ;
 const W:i32=i32(WATER_NX);
@@ -30,7 +30,9 @@ fn shiftedLaplacian(i:u32)->f32 {
  let i=id.x;if(i>=N){return;}if((links[i]&0x80000000u)==0u){potential[i]=0.;return;}
  // Spatially homogeneous pressure fluctuations. White-in-time forcing is
  // scaled by 1/sqrt(dt); it excites the physical oscillators, never the image.
- let p=.003*(P.settings.x/.018)*P.settings.w/sqrt(P.clock.y)*lapNoise(i).x/1024.;
+ var p=0.;
+ if(EXCITATION_MODE==0u){p=.003*(P.settings.x/.018)*P.settings.w/sqrt(P.clock.y)*lapNoise(i).x/1024.;}
+ else if(EXCITATION_MODE!=3u){p=localPressure(i)*P.settings.w;}
  potential[i]=9.81*state[i].x+.000073*lapState(i).x+p;
 }
 @compute @workgroup_size(128) fn beginPolynomial(@builtin(global_invocation_id) id:vec3u){
@@ -51,6 +53,25 @@ fn randomUnit(v:u32)->f32{return f32(hashNoise(v))/4294967296.*2.-1.;}
 fn randomGaussianApprox(v:u32)->f32 {
  return .86602540378*(randomUnit(v)+randomUnit(v+7919u)+randomUnit(v+104729u)+randomUnit(v+15485863u));
 }
+// Authored source amplitudes, widths and cadence are visual choices, not
+// measured pool forcing. Only pressure enters the physical solver; there is
+// no prescribed moving height/normal wave or secondary reflection surface.
+fn sourcePosition(i:u32)->vec2f{return vec2f(f32(i%WATER_NX),f32(i/WATER_NX))*WATER_DX;}
+fn pressurePatch(q:vec2f,center:vec2f,radius:f32)->f32{let d=(q-center)/radius;return exp(-.5*dot(d,d));}
+fn pulse(time:f32,start:f32,duration:f32)->f32{
+ let t=(time-start)/duration;if(t<=0.||t>=1.){return 0.;}
+ let s=sin(3.14159265359*t);return s*s;
+}
+fn localPressure(i:u32)->f32{
+ let q=sourcePosition(i);let t=P.clock.x;
+ // Alternate broad disturbances, with quiet intervals for free propagation.
+ var p=.24*(pressurePatch(q,C.centers.xy,.85)*pulse(t%10.,0.,1.6)
+                  +pressurePatch(q,C.centers.zw,1.1)*pulse(t%10.,5.,2.));
+ if(EXCITATION_MODE==2u){
+  p+=.16*pressurePatch(q,C.centers.zw,.24)*pulse(t%3.7,.8,.45);
+ }
+ return p*(P.settings.x/.018);
+}
 fn lapNoise(i:u32)->vec2f {
  var r=vec2f(0);let center=excitation[i];for(var j=0u;j<8u;j++){if((links[i]&(1u<<j))!=0u){r+=weight(j)*(center-excitation[u32(i32(i)+OFFSETS[j])]);}}return r;
 }
@@ -64,6 +85,11 @@ fn lapNoise(i:u32)->vec2f {
 }
 @compute @workgroup_size(128) fn initializeState(@builtin(global_invocation_id) id:vec3u){
  let i=id.x;if(i>=N){return;}
+ if(EXCITATION_MODE!=0u){
+  // A single broad release starts at rest and then evolves freely.
+  let h=select(0.,.022*(P.settings.x/.018)*(pressurePatch(sourcePosition(i),C.centers.xy,1.1)-C.releaseMean),EXCITATION_MODE==3u);
+  next[i]=select(vec2f(0),vec2f(h,0.),(links[i]&0x80000000u)!=0u);return;
+ }
  let q=lapNoise(i)/1024.*(.01*P.settings.x/.018);
  next[i]=vec2f(q.x,18.*q.y);
 }
