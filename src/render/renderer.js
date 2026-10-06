@@ -326,6 +326,39 @@ export async function createRenderer(canvas, level, previewName = '') {
     try{const compiled=await compileLab();await device.queue.onSubmittedWorkDone();pipelines=compiled;config.photonCount=lab.photonCount;rebuild();quality=0;lastRenderTime=null;liveFrames=0;wakes=[];}
     catch(e){lab=old;throw e;}
   }
+  // Presentation only: reused to copy the completed image before canvas teardown.
+  // This pass does not advance water, trace rays or change exposure.
+  function drawDisplay(encoder) {
+    const draw = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: context.getCurrentTexture().createView(),
+          loadOp: "clear",
+          storeOp: "store",
+          clearValue: { r: 0.7, g: 0.7, b: 0.6, a: 1 },
+        },
+      ],
+    });
+    draw.setPipeline(pipelines[3]);
+    draw.setBindGroup(0, groups[3]);
+    draw.draw(3);
+    draw.end();
+  }
+  async function copyDisplayTo(target) {
+    // WebGPU discards the canvas drawing buffer after browser composition.
+    // Re-present the existing image before copying; reading an idle canvas can
+    // otherwise produce a transparent snapshot and reveal the page background.
+    const encoder = device.createCommandEncoder();
+    drawDisplay(encoder);
+    device.queue.submit([encoder.finish()]);
+    const copy = target.getContext('2d', {willReadFrequently: true});
+    copy.drawImage(canvas, 0, 0);
+    // Materialize independent pixels before yielding or destroying the device.
+    // A deferred canvas copy can otherwise still reference the discarded texture.
+    const pixels = copy.getImageData(0, 0, target.width, target.height);
+    copy.putImageData(pixels, 0, 0);
+    await device.queue.onSubmittedWorkDone();
+  }
   async function render(view, time, moving, sun = 1) {
     if (activeJobs > 1) return false;
     activeJobs++;
@@ -465,20 +498,7 @@ export async function createRenderer(canvas, level, previewName = '') {
       pass.end();
       compute(encoder,pipelines[12],reflectionHorizontalGroup,width*height);
       compute(encoder,pipelines[13],reflectionVerticalGroup,width*height);
-      const draw = encoder.beginRenderPass({
-        colorAttachments: [
-          {
-            view: context.getCurrentTexture().createView(),
-            loadOp: "clear",
-            storeOp: "store",
-            clearValue: { r: 0.7, g: 0.7, b: 0.6, a: 1 },
-          },
-        ],
-      });
-      draw.setPipeline(pipelines[3]);
-      draw.setBindGroup(0, groups[3]);
-      draw.draw(3);
-      draw.end();
+      drawDisplay(encoder);
       device.queue.submit([encoder.finish()]);
       await device.queue.onSubmittedWorkDone();
       if(config.profile)frameCost={simulation:simulationDone-costStart,lighting:lightingDone-simulationDone,camera:performance.now()-lightingDone};
@@ -569,6 +589,7 @@ export async function createRenderer(canvas, level, previewName = '') {
       device.destroy();
     },
     render,
+    copyDisplayTo,
     setBody(p){body=p?{...p}:null;simulation.setBody(body);},
     addWake(w){simulation.addWake(w);wakes.push(w);wakes=wakes.slice(-12);},
     get wakes(){return wakes.map(w=>({...w}));},

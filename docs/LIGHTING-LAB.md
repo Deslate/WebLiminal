@@ -55,3 +55,10 @@ The location dropdown uses the same bookmark navigation as keys 1–5, including
 spawn placement and pause preservation. Keyboard navigation updates the dropdown.
 Click the panel title to collapse or reopen it. Evidence mode hides the panel.
 No water or optical parameters are edited by these controls.
+
+Loading and rebuilds have no tracking-band overlay or introductory horizontal
+image displacement. While replacing the renderer or rebuilding lab resources,
+the UI holds an unmodified copy of the last complete canvas until the new
+GPU frame finishes. This temporary canvas is then released; it is not used by
+water, lighting, temporal filtering or the simulation. Existing tape labels,
+caption, timecode, grain and lens treatment are unchanged.

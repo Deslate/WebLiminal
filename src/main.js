@@ -237,21 +237,35 @@ async function tick(now) {
   // actual render when its predecessor is complete, capped at 60 submissions/s.
   scheduleFrame(Math.max(0,1000/60-(performance.now()-now)));
 }
+// Rebuilds already pause the simulation. Keep the last displayed frame in the
+// UI until the replacement is GPU-complete; do not blend it into rendered light.
+async function holdPresentedFrame() {
+  if (!ready) return () => {};
+  const frame = document.createElement('canvas');
+  frame.className = 'rebuild-frame';
+  frame.setAttribute('aria-hidden', 'true');
+  frame.width = canvas.width; frame.height = canvas.height;
+  await renderer.copyDisplayTo(frame);
+  canvas.parentElement.append(frame);
+  return () => frame.remove();
+}
 async function applyLab(value,persist=true){
   if (regionChanging) throw Error('A region is loading');
   const next=normalizeLab(value);
   if(JSON.stringify(next)!==JSON.stringify(labState)){
     if(labApplying)throw Error("A settings change is already in progress");
     labApplying=true;labPauseAfter=paused;setPaused(true);
+    let releaseFrame = () => {};
     try{
       while(renderer.busy||tickRunning)await new Promise(r=>setTimeout(r,5));
+      releaseFrame = await holdPresentedFrame();
       await renderer.setLab(next);labState=next;
       scale=next.resolution==="auto"?Math.min(1,1280/innerWidth):next.resolution;
       renderer.resize(innerWidth,innerHeight,scale);resizePending=false;
       elapsed=0;wakeTrail.reset();frameMs=[];lastCompleted=null;resetClock();
       // Explicit edits refresh one paused frame; Tab during rebuild records intent.
       renderer.setBody(bodyEnabled?view:null);await renderer.render(cameraPose(),elapsed,false,1);
-    }finally{labApplying=false;if(!labPauseAfter)setPaused(false);}
+    }finally{releaseFrame();labApplying=false;if(!labPauseAfter)setPaused(false);}
   }
   labPanel?.sync();return persist?saveLab(localStorage,labState):true;
 }
@@ -269,8 +283,10 @@ async function teleport(index, previewName = waterPreviewName) {
   setPaused(true);
   const status = document.getElementById('audio-status');
   status.textContent = `Loading ${bookmarks[index].name}...`;
+  let releaseFrame = () => {};
   try {
     while (tickRunning || renderer.busy) await new Promise(r => setTimeout(r, 5));
+    releaseFrame = await holdPresentedFrame();
     await renderer.destroy();
     // One resident window bounds GPU memory. Rebase the player to local metres.
     renderer = await createRenderer(canvas, next, previewName);
@@ -295,6 +311,7 @@ async function teleport(index, previewName = waterPreviewName) {
     status.textContent = `Location loading failed: ${error.message}. Reload to recover.`;
     throw error;
   } finally {
+    releaseFrame();
     regionChanging = false;
     previewPanel?.sync();
     if (renderer && activeRegion === index && !wasPaused) setPaused(false);

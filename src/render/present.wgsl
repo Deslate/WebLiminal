@@ -12,7 +12,7 @@ fn grainHash(p:vec2f,k:f32)->f32 {
   return f32(x^(x>>16u))/4294967296.-.5;
 }
 @fragment fn fs(o:Out)->@location(0) vec4f {
-  var uv=o.uv;let intro=1.-smoothstep(.3,2.6,D.style.y);uv.x+=intro*sin(uv.y*770.+D.style.y*67.)*.0007;
+  let uv=o.uv;
   let ca=(uv-.5)*dot(uv-.5,uv-.5)*.0018;
   let color=vec3f(load(uv+ca).r,load(uv).g,load(uv-ca).b)*D.style.x;
   let vignette=1.-dot(uv-.5,uv-.5)*.24;
