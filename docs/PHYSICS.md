@@ -85,7 +85,7 @@ These previews are alternatives, not an automatically selected new default.
 ### Sources
 
 - Sun: a finite disc (angular radius 0.00465 rad), sampled symmetrically.
-- Sky: an area light through the ceiling aperture, integrated with 16 x 16 samples (lab-configurable).
+- Sky: an area light through the ceiling aperture, integrated with 32 x 32 fixed samples and binary visibility per sample (lab-configurable). This uses four times the sample evaluations of 16 x 16 during cache construction; receiver cache allocation and the four-cell bilinear lookup during rendering are unchanged. Finer sampling reduces broad visibility steps but does not guarantee convergence at every opening.
 
 ### Air (`atmosphere.js`)
 

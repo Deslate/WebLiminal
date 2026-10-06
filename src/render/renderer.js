@@ -103,7 +103,7 @@ export async function createRenderer(canvas, level, previewName = '') {
       },
       primitive: { topology: "triangle-list" },
     }),
-    device.createComputePipelineAsync({label:"64-point area sky",layout:"auto",compute:{module:shaderModules[4],entryPoint:"integrateSky"}}),
+    device.createComputePipelineAsync({label:"area sky integral",layout:"auto",compute:{module:shaderModules[4],entryPoint:"integrateSky"}}),
     device.createComputePipelineAsync({label:"separable photon kernel",layout:"auto",compute:{module:shaderModules[1],entryPoint:"horizontal"}}),
     ...["emitWater","waterHorizontal","waterResolve"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[5],entryPoint}})),
     ...["bakeTransfer","propagate"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[6],entryPoint}})),

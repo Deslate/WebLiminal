@@ -4,7 +4,7 @@ export function labShader(kind,source,lab){
  if(kind==='sky'&&lab.gridScale>1)s=s.replace('@workgroup_size(64)','@workgroup_size(128)');
  if(kind==='water'&&lab.waterMode==='transmission')s=s.replace('for(var branch=0u;branch<2u;branch++)','for(var branch=1u;branch<2u;branch++)').replace('const ENABLE_SKY_REFLECTION:bool=true','const ENABLE_SKY_REFLECTION:bool=false');
  if(kind==='diffuse'&&lab.diffuseDirections!==128)s=s.replace('DIFFUSE_DIRECTIONS:u32=128u',`DIFFUSE_DIRECTIONS:u32=${lab.diffuseDirections}u`);
- if(kind==='sky'&&lab.skySamples!==256)s=s.replaceAll('256u','64u').replaceAll('16u','8u').replaceAll('/16.','/8.').replaceAll('/256.','/64.');
+ if(kind==='sky'&&lab.skySamples!==1024)s=s.replace('SKY_SIDE:u32=32u',`SKY_SIDE:u32=${Math.sqrt(lab.skySamples)}u`);
  // Keep physical support approximately fixed when receiver density changes.
  const scale=lab.filterScale*lab.gridScale;
  if(kind==='resolve'&&scale!==1){const broad=Math.max(1,Math.round(6*scale)),fine=Math.max(1,Math.round(4*scale));s=s.replaceAll('-6','-'+broad).replaceAll('<=6','<='+broad).replaceAll('7-abs',`${broad+1}-abs`).replaceAll('5-abs',`${fine+1}-abs`);}
