@@ -26,29 +26,13 @@ tile layout rather than a construction-grade spherical tiling.
 
 The visible water surface is the linear sum of two independent solvers. Both are stateful: they integrate real elapsed time from a reset and are never seeked analytically to an arbitrary time.
 
-The runtime clock uses `performance.now()` deltas, capped at 50 ms per frame;
-pausing, hiding or resuming the page excludes the intervening time. Therefore
-stalls below 20 fps lose simulation time rather than accelerating water. The
-background integrates at 1/60 s with `waveSpeed=1` in Poolrooms, while the body
-solver receives the same runtime seconds. `waveTime=1.7` is an offset, not a
-speed multiplier. Pressure-bandwidth previews do not change these clocks.
-
-`?playback=1`, `0.5` or `0.33` exposes an in-page diagnostic rate selector
-(the last value means exactly one third). This intentionally slows the whole
-simulation clock and locomotion together, preserving source velocities in
-simulation seconds. It is a visual diagnostic departure from wall-clock time,
-not a physical correction or a new default. Water, body sources and live photon
-caustics share that clock; gravity, dispersion and excitation bandwidth stay
-unchanged. Rate switches are continuous and do not reset or seek the water.
-Explicit-time evidence replay remains independent of this runtime selector.
-
 ### Background field (`src/render/wave-simulation.*`, `src/render/finite-depth.*`)
 
 - A grid over the level's water rectangle at the level's cell size, integrated at 60 Hz (Poolrooms: 448 x 864 at 1/32 m).
 - Propagation uses the finite-depth operator `sqrt(L) tanh(H sqrt(L))` on the wet-domain graph Laplacian `L` with no-flux (Neumann) boundaries at the real pool geometry. `G(s)/s` is fitted by a Chebyshev polynomial so that the constant mode is exactly null.
 - Explicit dissipation removes short waves; a band-limited random pressure over the whole wet domain replenishes them. The forcing is not a looping animation and has no fixed phase.
 - Approximation: uniform depth in the operator, grid resolution limits, and a polynomial fit of the dispersion relation.
-- The pressure field receives four spatial diffusion passes before forcing
+- The pressure field receives eight spatial diffusion passes before forcing
   and initialization. Together with short-wave dissipation and the grid,
   this limits the resolved slope spectrum. Bicubic reconstruction derives
   height and both slopes from the same evolved field; there is no independent
@@ -72,151 +56,24 @@ eta_tt + omega^2 eta = omega^2 b
 
 ### Known limitations
 
-The opt-in `waterPreview=patches`, `bands` and `contacts` combine heterogeneous ambient
-forcing with smaller contact-driven wading sources. These are **authored visual
-simulation inputs**, not measured wind or foot loads; default `fine` is unchanged.
-
-- Ambient pressure uses a fixed advected noise field with irregular envelopes.
-  `patches` uses a 3.2 m envelope domain and 0.18 m/s source advection;
-  `bands` uses a 5.5 by 2.4 m envelope domain and 0.24 m/s. Direction remains
-  normalize(1, 0.35). Fine excitation can reach zero inside quiet patches. These masks act on
-  pressure only: propagated waves may cross into quiet areas; the evolved
-  height and its normals are never spatially masked.
-- A larger spatial source band varies its lattice spacing from 0.10 to 0.20 m
-  (`patches`) or 0.26 m (`bands`). Its gain is (spacing / 0.065 m)^2 times
-  an irregular envelope spanning 0.12 to 1. A separate 0.045 m lattice band
-  has gain 0.55 or 0.35 and is present only in stronger wind patches. Four
-  diffusion passes still band-limit pressure before it enters the solver.
-  The pressure/density coefficient is 0.12 m²/s² for `patches` and
-  0.055 m²/s² for `bands`, scaled by the
-  wave-amplitude control. These are source scales, not promised wave wavelengths.
-- Envelope phases are fixed offsets (31.7, -12.3), (-9.2, 8.4) and (7, 13)
-  in the corresponding noise coordinates. Thresholds and gains are deliberately
-  authored; no patch is aligned to a particular room's highlight.
-- The continuous body's equivalent-pressure amplitude is 0.4 of the default.
-  The previously broad depth-dependent bow load instead uses radius 0.18 or
-  0.22 m and gain 0.10 or 0.17, gated by each actual foot contact's 0.14-second
-  pulse. A small continuous compact body load remains; footsteps do not erase
-  the displaced body between contacts.
-- The planted-foot pressure radius is 0.10 or 0.12 m, with gain 0.35 or 0.50.
-  A radial source cutoff from wavenumber 18 to 24 per metre avoids exciting
-  unresolved FFT-edge modes. Contact cadence is unchanged: one alternating
-  contact per 0.48 m, at least 0.4 seconds apart, from resolved movement.
-  Blocked motion, turning and teleports still do not create footsteps.
-
-`contacts` uses exactly the `patches` environment and source radii (0.18 m bow,
-0.10 m foot), but raises the contact-gated bow gain to 0.65 and foot gain to 0.55.
-This isolates a more legible compact pulse without restoring continuous broad
-body pressure. Its gain is also an authored source choice, not measured loading.
-
-No V silhouette is prescribed. Any wedge, bow ridge or radiated packet must
-emerge from the finite-depth dispersion of the compact moving pressure and
-contact pulses. At a fixed depth and walking speed, the wake angle cannot be
-arbitrarily narrowed by changing source radius. The 0.125 m body grid limits
-how sharp a small packet can be; this is not a high-resolution foot/fluid
-boundary solver. Ambient and body heights remain one shared optical surface.
-Optics, gravity, dispersion, damping and walking speed are unchanged.
-
-The opt-in `waterPreview=wind` and `gust` retain the default A's four-pass
-spatial pressure bandwidth, but replace white-in-time forcing with a fixed
-seeded pressure texture advected continuously through broad gust envelopes.
-These are **authored visual simulation inputs**, not measured indoor wind or
-an air-flow solver. They do not change wave playback rate or dispersion.
-
-- Both use direction normalize(1, 0.35) in local water-grid coordinates.
-  `wind` advects at 0.22 m/s with envelope scale 3.5 m and pressure/density
-  coefficient 0.15 m²/s²; `gust` uses 0.30 m/s, 6 m and 0.23 m²/s².
-  These velocities move the pressure source, not the water's physical wave speed.
-- The smooth envelope is 0.75 + 0.35 sin(2.1 x + 0.8 z)
-  sin(1.7 z - 0.4 x), evaluated in advected, scale-normalized coordinates.
-  Fine pressure is multiplied by this envelope; a broad component has
-  coefficient 0.04 m²/s² times its deviation from 0.75. Pressure scales with
-  the existing wave-amplitude control. Positions and phases follow the shared
-  grid and seed, not per-room reflection placement.
-- A fixed spatial random lattice is interpolated with cubic smooth weights
-  before the existing four diffusion passes. No frame draws a new random field.
-  Initial height uses the fine pressure component at the envelope's mean,
-  divided by gravity. Initial vertical velocity uses its directional advective
-  derivative rather than an unrelated random kick. Both are constructed with
-  the symmetric wet-domain Laplacian last, keeping zero mean height and velocity
-  so the initial condition does not add water volume.
-  Subsequent heights evolve only through the physical stateful solver.
-- Gravity, capillarity, damping, optical parameters and the unified geometric
-  surface remain unchanged. Reflections, refraction and photon caustics change
-  together, including in original Poolrooms. Default A remains selected unless
-  a preview is requested; the older `calm` entry remains available.
-
-The envelope is deliberately simple and repetitive in space. It is not CFD,
-wind shear, nonlinear transport of short waves by long waves, or a full turbulent
-cascade. Directional pressure does not force every wave to travel in that
-same direction: dispersion and real pool boundaries still create reflected
-waves. Retaining the source bandwidth does not guarantee identical evolved
-wave energy or identical ripple counts to A.
-
-The opt-in `waterPreview=swell`, `mixed` and `settle` source scenarios replace
-the homogeneous random initial state and continuing random pressure. They do
-not change playback speed, dispersion, damping, material optics or normals.
-Two source centres are placed at the wet cells nearest normalized domain
-positions (0.3, 0.35) and (0.7, 0.65); positions are shared renderer policy,
-not per-room highlight adjustments.
-
-- `swell` starts at rest. Gaussian pressure patches with radii 0.85 and 1.1 m
-  receive smooth squared-sine pulses of 1.6 and 2 seconds, alternating every
-  five seconds. Peak pressure/density is 0.24 m²/s², scaled by the existing
-  wave-amplitude control. Quiet intervals allow the resulting waves to travel
-  and reflect at real pool boundaries.
-- `mixed` adds a local 0.24 m patch, with peak pressure/density 0.16 m²/s²,
-  active for 0.45 seconds every 3.7 seconds. This adds shorter waves locally,
-  rather than exciting every cell continuously.
-- `settle` releases one 22 mm Gaussian initial displacement of radius 1.1 m
-  from zero velocity, subtracting its wet-domain mean to conserve volume.
-  Its height scales with the existing wave-amplitude control, as do the pulses.
-  No continuing background pressure is applied; it freely
-  propagates and decays. Body waves remain active in every scenario.
-
-These source shapes, amplitudes and cadences are intentional visual choices,
-not measurements of indoor pool forcing. They enter initial conditions or
-pressure in the existing stateful physical solver, never a prescribed animated
-height/normal layer. The same resulting geometry drives reflections, refraction
-and photon caustics. The pulses have a repeated authored cadence; nonlinear
-sloshing and actual inlet/outlet flow are not modelled. `settle` can become
-nearly still after its initial disturbance dissipates. The ordinary `fine`
-default and the older preview entries retain their existing random forcing.
-
-Fine waves are the shared default, including original Poolrooms. This intentionally
-produces finer surface motion, more fragmented reflections and refraction, and
-changed live photon caustics in every location. Scene geometry, materials,
-illumination, camera and exposure are not adjusted to compensate.
-
-The URL option `?waterPreview=fine` explicitly selects the default; `calm`
-selects eight pressure diffusion passes without detail changes. `dense` and
-`detail` remain available alternatives. Missing and unknown values select `fine`.
+Optional shared water previews are selected with `?waterPreview=fine`,
+`dense`, or `detail`. The default and unknown values keep production behaviour.
 The selection survives location changes and applies equally to all windows.
 
-`moderate` and `gentle` are opt-in alternatives using five and six pressure
-diffusion passes respectively. They reduce short-wave excitation density
-relative to the four-pass `fine` default, toward the eight-pass `calm` option.
-This is an intentional visual choice of the physical pressure source's spatial
-bandwidth, not an image blur or a change to water absorption or roughness.
-It is not a uniform half/third amplitude multiplier. The actual evolved surface
-changes reflection, refraction and photon caustics together; no reflected-only
-normal layer preserves highlights independently of the water geometry.
-
-- `fine` uses four pressure diffusion passes; `dense` uses
+- `fine` reduces pressure diffusion from eight passes to four; `dense` uses
   two. These are intentional visual choices of excitation bandwidth, not
   measured environmental forcing. They add resolved short-wave energy to the
   actual evolved height field, affecting refraction, reflection and photons
   together. There is no cosmetic normal layer. Gravity, surface tension,
   dissipation, absorption and refractive index are unchanged.
-- `detail` uses the calmer eight-pass waves, refines submerged solid hits with the
+- `detail` keeps production waves, refines submerged solid hits with the
   existing tile-relief intersection and near material, and bypasses reflected
   radiance reconstruction. It does not change absorption, tile dimensions or
   illumination. Near material filtering still uses the camera-to-hit footprint
   approximation rather than refracted ray differentials; finite camera samples
   can expose aliasing when reflection filtering is bypassed.
 
-Reflection and refraction trace the actual simulated surface and scene; no fake
-wave or normal layer, painted reflection, or painted caustic is introduced.
+These previews are alternatives, not an automatically selected new default.
 
 1. The body is a linear equivalent-pressure source, not fluid-structure interaction with an impermeable moving boundary. No horizontal velocity field, vorticity, turbulent wake, spray or breaking.
 2. The body component is added linearly to the background field; it does not change the background's propagation.

@@ -11,22 +11,8 @@ export function dispersionPolynomial(depth,degree=32,dx=1/32){
  for(let k=0;k<n;k++){let pivot=k;for(let j=k+1;j<n;j++)if(Math.abs(A[j][k])>Math.abs(A[pivot][k]))pivot=j;[A[k],A[pivot]]=[A[pivot],A[k]];const d=A[k][k];for(let j=k;j<=n;j++)A[k][j]/=d;for(let i=0;i<n;i++)if(i!==k){const v=A[i][k];for(let j=k;j<=n;j++)A[i][j]-=v*A[k][j];}}
  return {limit,coefficients:A.map(r=>r[n]),degree,depth};
 }
-// Source geometry is independent of camera, lighting and reflection surfaces.
-export function pressureSourceLayout(nx,nz,dx,depthField){
- const centers=[[.3,.35],[.7,.65]].map(([a,b])=>{
-  let best=Infinity,cell=0;
-  for(let i=0;i<nx*nz;i++)if(depthField[i]>0){const x=i%nx,z=Math.floor(i/nx),d=(x-a*nx)**2+(z-b*nz)**2;if(d<best){best=d;cell=i;}}
-  return [(cell%nx)*dx,Math.floor(cell/nx)*dx];
- });
- let sum=0,wetCount=0;
- for(let i=0;i<nx*nz;i++)if(depthField[i]>0){
-  const x=(i%nx)*dx-centers[0][0],z=Math.floor(i/nx)*dx-centers[0][1];
-  sum+=Math.exp(-.5*(x*x+z*z)/(1.1*1.1));wetCount++;
- }
- return {centers,mean:sum/Math.max(1,wetCount)};
-}
-export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,prelude,pressurePasses=4,excitation=0}){
- let degree=32;const maxDegree=80,module=device.createShaderModule({label:'finite depth on the wet-domain Neumann graph',code:prelude+`const EXCITATION_MODE:u32=${excitation}u;\n`+code});
+export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,prelude,pressurePasses=8}){
+ let degree=32;const maxDegree=80,module=device.createShaderModule({label:'finite depth on the wet-domain Neumann graph',code:prelude+code});
  for(const m of(await module.getCompilationInfo()).messages)if(m.type==='error')throw Error(`finite depth ${m.lineNum}: ${m.message}`);
  const storage=size=>device.createBuffer({size,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
  const potential=storage(count*4),rhs=storage(count*4),recurrence=[storage(count*8),storage(count*8)],mask=storage(count*4);
@@ -39,15 +25,13 @@ export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,pre
  const pipelineLayout=device.createPipelineLayout({bindGroupLayouts:[layout]});
  const pipelines=await Promise.all(['prepare','beginPolynomial','recur','finish','seedPressure','diffusePressure','initializeState'].map(entryPoint=>device.createComputePipelineAsync({layout:pipelineLayout,compute:{module,entryPoint}})));
  const groups=states.map((state,i)=>recurrence.map((r,j)=>device.createBindGroup({layout,entries:[
- {binding:0,resource:{buffer:params,size:832}},...[state,states[1-i],r,potential,rhs,r,recurrence[1-j],mask].map((buffer,k)=>({binding:k+1,resource:{buffer}})),{binding:9,resource:{buffer:controls,size:32}}
+ {binding:0,resource:{buffer:params,size:832}},...[state,states[1-i],r,potential,rhs,r,recurrence[1-j],mask].map((buffer,k)=>({binding:k+1,resource:{buffer}})),{binding:9,resource:{buffer:controls,size:16}}
  ]})));
- let fit=null,sourceCenters=[];
+ let fit=null;
  function reset(depth,depthField){
   degree=Math.max(12,Math.min(maxDegree,Math.ceil(32*depth/.42)));
   fit=dispersionPolynomial(depth,degree,dx);const bytes=new ArrayBuffer((degree+1)*256),f=new Float32Array(bytes),u=new Uint32Array(bytes);
-  const sources=pressureSourceLayout(nx,nz,dx,depthField);
-  sourceCenters=sources.centers;
-  for(let k=0;k<=degree;k++){f[k*64]=fit.coefficients[k];f[k*64+1]=fit.limit;u[k*64+2]=k;f[k*64+3]=sources.mean;f.set(sourceCenters.flat(),k*64+4);}
+  for(let k=0;k<=degree;k++){f[k*64]=fit.coefficients[k];f[k*64+1]=fit.limit;u[k*64+2]=k;}
   device.queue.writeBuffer(controls,0,bytes);
   const bits=new Uint32Array(count),off=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
   const wet=(x,y)=>x>=0&&y>=0&&x<nx&&y<nz&&depthField[y*nx+x]>0;
@@ -58,9 +42,8 @@ export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,pre
   const p=encoder.beginComputePass();p.setPipeline(pipelines[pipeline]);p.setBindGroup(0,groups[active][j],[slot*1024,k*256]);p.dispatchWorkgroups(Math.ceil(count/128));p.end();
  }
  function pressure(encoder,active,slot){
-  if(excitation>0&&excitation<4)return 0;
   dispatch(encoder,active,slot,4,0);let j=1;
-  // The default fine-wave bandwidth is a visual choice, not measured
+  // Opt-in previews broaden excitation for visual preference, not measured
   // environmental forcing. Gravity, capillarity and dissipation stay fixed.
   for(let i=0;i<pressurePasses;i++){dispatch(encoder,active,slot,5,j);j=1-j;}
   return j;
@@ -72,5 +55,5 @@ export async function createFiniteDepth(device,{params,states,count,nx,nz,dx,pre
   for(let k=degree-1;k>=1;k--){dispatch(encoder,active,slot,2,j,k);j=1-j;}
   dispatch(encoder,active,slot,3,j,0);
  }
- return {reset,initialize,step,get info(){return {method:'G(L)=sqrt(L)tanh(H sqrt(L)), Neumann wet-domain graph',...fit,uniformDepth:true,pressurePasses,excitation,sourceCenters,forcing:excitation===0?'homogeneous band-limited stochastic pressure':['','localized broad pressure pulses','localized broad and small pressure pulses','free release without background forcing','coherent advected pressure in small gust patches','coherent advected pressure in broad gust patches','heterogeneous wind patches with spatially varying bands','broad irregular wind bands with sparse fine patches'][excitation]}}};
+ return {reset,initialize,step,get info(){return {method:'G(L)=sqrt(L)tanh(H sqrt(L)), Neumann wet-domain graph',...fit,uniformDepth:true,pressurePasses,forcing:'homogeneous band-limited stochastic pressure'}}};
 }

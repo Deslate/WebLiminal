@@ -1,28 +1,11 @@
-// Fine waves are the shared default. The wider excitation bandwidth is an
-// intentional visual choice, not measured environmental forcing. Heights,
-// normals, refraction and photon caustics all use the same evolved surface.
+// Opt-in shared-renderer previews. Production is deliberately unchanged.
 export function waterPreview(name) {
   const previews = {
     fine: { pressurePasses: 4, detail: false },
-    // Authored patchy ambient pressure and compact per-contact body sources.
-    patches: { pressurePasses: 4, detail: false, excitation: 6, bodySource: 1 },
-    contacts: { pressurePasses: 4, detail: false, excitation: 6, bodySource: 3 },
-    bands: { pressurePasses: 4, detail: false, excitation: 7, bodySource: 2 },
-    // A's spatial bandwidth, driven by coherent advected pressure, not white noise.
-    wind: { pressurePasses: 4, detail: false, excitation: 4 },
-    gust: { pressurePasses: 4, detail: false, excitation: 5 },
-    // Authored physical source scenarios, not cosmetic surface layers.
-    swell: { pressurePasses: 4, detail: false, excitation: 1 },
-    mixed: { pressurePasses: 4, detail: false, excitation: 2 },
-    settle: { pressurePasses: 4, detail: false, excitation: 3 },
-    // Reduced short-wave excitation density: visual alternatives to fine.
-    moderate: { pressurePasses: 5, detail: false },
-    gentle: { pressurePasses: 6, detail: false },
-    calm: { pressurePasses: 8, detail: false },
     dense: { pressurePasses: 2, detail: false },
     detail: { pressurePasses: 8, detail: true },
   };
-  return Object.hasOwn(previews, name) ? previews[name] : previews.fine;
+  return Object.hasOwn(previews, name) ? previews[name] : { pressurePasses: 8, detail: false };
 }
 
 export function waterPreviewCamera(source, preview, conductorMaterials = []) {

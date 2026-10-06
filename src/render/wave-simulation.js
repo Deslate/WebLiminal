@@ -3,8 +3,8 @@ import code from './wave-simulation.wgsl?raw';
 import {createBodyWaves} from './body-waves.js';
 // The water grid covers the scene's water rectangle; `prelude` carries the
 // matching compile-time constants (see scene.js).
-export async function createWaveSimulation(device,{grid,prelude,pressurePasses=4,excitation=0,bodySource=0}){
- const bodyWaves=await createBodyWaves(device,prelude,bodySource);
+export async function createWaveSimulation(device,{grid,prelude,pressurePasses=8}){
+ const bodyWaves=await createBodyWaves(device,prelude);
  const {nx,nz,dx,dt,minX,minZ}=grid,count=nx*nz,size=count*8;
  const module=device.createShaderModule({label:'shared water initial state and reconstruction',code:prelude+code});
  const info=await module.getCompilationInfo();for(const m of info.messages)if(m.type==='error')throw Error(`wave simulation ${m.lineNum}: ${m.message}`);
@@ -14,7 +14,7 @@ export async function createWaveSimulation(device,{grid,prelude,pressurePasses=4
  const field=storage('shared physical water surface',count*16),depth=storage('water domain and local depth',count*4);
  const coefficients=storage('C1 bicubic water polynomials',count*64);
  const stride=1024,params=device.createBuffer({size:stride*32,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
- const finiteDepth=await createFiniteDepth(device,{params,states:state,count,nx,nz,dx,prelude,pressurePasses,excitation});
+ const finiteDepth=await createFiniteDepth(device,{params,states:state,count,nx,nz,dx,prelude,pressurePasses});
  const bind=(pipeline,entries,slot)=>device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:entries.map(([binding,buffer])=>({binding,resource:buffer===params?{buffer,offset:slot*stride,size:832}:{buffer}}))});
  const packs=state.map(s=>bind(pipelines[0],[[0,params],[1,s],[3,depth],[4,field],[12,bodyWaves.field]],31));
  const interpolation=bind(pipelines[1],[[5,field],[6,coefficients]],0);

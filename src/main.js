@@ -8,23 +8,6 @@ import { loadWindow, regionIndex, worldPosition } from "./world.js";
 import { createRenderer } from "./render/renderer.js";
 import { movePlayer, canStand } from "./collision.js";
 import { createSoundscape } from "./audio.js";
-import { playbackRate, playbackStep } from "./playback.js";
-const playbackQuery = new URLSearchParams(location.search);
-let previewRate = playbackRate(playbackQuery.get('playback'));
-const clockAudit = { wallSeconds: 0, cappedSeconds: 0, advancedSeconds: 0 };
-if (playbackQuery.has('playback')) {
-  const label = document.createElement('label');
-  label.className = 'playback-preview';
-  label.append('Diagnostic slow motion ');
-  const select = document.createElement('select');
-  select.setAttribute('aria-label', 'Diagnostic playback rate');
-  for (const [value, text] of [['1', '1×'], ['0.5', '0.5×'], ['0.33', '⅓×']]) {
-    select.add(new Option(text, value, false, playbackRate(value) === previewRate));
-  }
-  select.addEventListener('change', () => { previewRate = playbackRate(select.value); });
-  label.append(select);
-  document.body.append(label);
-}
 const canvas = document.createElement("canvas");
 document.querySelector("#experience").appendChild(canvas);
 const sound = createSoundscape(document.getElementById("audio-status"));
@@ -173,13 +156,8 @@ async function tick(now) {
   if (renderer.busy) { scheduleFrame(16); return; }
   tickRunning = true;
   try {
-    const wallDt = resumeFrame ? 0 : (now - previous) / 1000;
-    const dt = playbackStep(wallDt, previewRate);
-    // Scale locomotion too, keeping body-source velocity in simulation seconds.
-    const moveDt = resumeFrame ? 0 : playbackStep((now-lastSimulation)/1000, previewRate);
-    clockAudit.wallSeconds += wallDt;
-    clockAudit.cappedSeconds += playbackStep(wallDt);
-    clockAudit.advancedSeconds += holdTime ? 0 : dt;
+    const dt = resumeFrame ? 0 : Math.min((now - previous) / 1000, 0.05);
+    const moveDt = resumeFrame ? 0 : Math.min((now-lastSimulation)/1000,.05);
     resumeFrame = false;
     previous = lastSimulation = now;
     if (!holdTime) elapsed += dt;
@@ -334,8 +312,6 @@ Object.defineProperty(window, "__POOLROOMS_V1__", {
       view: { ...view },
       observer,
       elapsed,
-      playbackRate: previewRate,
-      clockAudit: { ...clockAudit },
       firstFrameMs: firstFrame,
       completedFrames: completed,
       frames: frameMs.slice(),

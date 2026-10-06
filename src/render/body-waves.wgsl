@@ -41,44 +41,36 @@ fn reverse(v:u32,bits:u32)->u32{return reverseBits(v)>>(32u-bits);}
  // Rendered normals remain derivatives of this shared physical height.
  let radius=.18;let gaussian=6.283185307*radius*radius/(.125*.125)*exp(-.5*radius*radius*km*km);
  let dipole=dot(k,direction)*.20;
- // Opt-in source calibration: reduced continuous displacement, compact
- // contact-gated fore/aft load. No V-shaped surface is prescribed.
- let amplitude=P.body.z*select(1.,.4,BODY_SOURCE_MODE>0u);
+ let amplitude=P.body.z;
  let dynamicGaussian=6.283185307*.16*.16/(.125*.125)*exp(-.5*.16*.16*km*km);
  // Broad, zero-integral fore/aft pressure from moving displaced water.
  // Separate it from the compact foot load: shortening a foot contact must
  // not remove the body's forward pressure. This forces the same wave ODE;
  // it is neither a prescribed surface ridge nor a shading-normal layer.
- let bowRadius=select(.23+max(.04,P.clock.z),select(.18,.22,BODY_SOURCE_MODE==2u),BODY_SOURCE_MODE>0u);
+ let bowRadius=.23+max(.04,P.clock.z);
  let bowGaussian=6.283185307*bowRadius*bowRadius/(.125*.125)*exp(-.5*bowRadius*bowRadius*km*km);
  // Soft-pressure calibration in units of velocity head. Fade the extra
  // long-wave load above normal wading speed: the linear solver otherwise
  // over-amplifies near-critical fast motion. Compact body/foot loads remain.
  let bowHead=(speed*speed/(2.*9.81))*3.*(1.-smoothstep(.8,1.2,speed));
  let bowPressure=bowGaussian*1.64872127*bowHead*dot(k,direction)*bowRadius*select(0.,1.,amplitude>0.);
- let footRadius=select(.14,select(.10,.12,BODY_SOURCE_MODE==2u),BODY_SOURCE_MODE>0u);
+ let footRadius=.14;
  let footprint=6.283185307*footRadius*footRadius/(.125*.125)*exp(-.5*footRadius*footRadius*km*km);
  let footPhase=-dot(k,P.contact.xy+vec2f(16.,32.));
- // Widths and gains are authored equivalent-pressure inputs, not measured
- // foot loads. The pulse still occurs only on collision-resolved foot contact.
-// The third source keeps the small footprint but raises the per-contact
- // directional load; it does not restore the continuous broad bow source.
- let footGain=select(1.,select(select(.35,.50,BODY_SOURCE_MODE==2u),.55,BODY_SOURCE_MODE==3u),BODY_SOURCE_MODE>0u);
- let resolved=select(1.,1.-smoothstep(18.,24.,km),BODY_SOURCE_MODE>0u);
- let footPressure=vec2f(cos(footPhase),sin(footPhase))*footprint*P.contact.w*footGain*resolved;
+ let footPressure=vec2f(cos(footPhase),sin(footPhase))*footprint*P.contact.w;
  for(var j=0u;j<substeps;j++){
   // Calibrated soft-pressure footprint leads the cylinder at its wet front.
   let position=P.body.xy+P.motion.xy*.225-P.motion.xy*(P.clock.y-(f32(j)+.5)*dt)+vec2f(16.,32.);
   let phase=-dot(k,position);let phaseRotation=vec2f(cos(phase),sin(phase));
-  let age=P.clock.x-P.clock.y+(f32(j)+.5)*dt-P.contact.z;
-  var contactPulse=0.;
-  if(age>=0. && age<.14 && P.contact.w>0.){let a=age/.14;contactPulse=16.*a*a*(1.-a)*(1.-a);}
-  let bowGain=select(1.,contactPulse*select(select(.10,.17,BODY_SOURCE_MODE==2u),.65,BODY_SOURCE_MODE==3u),BODY_SOURCE_MODE>0u);
-  let pressure=vec2f(gaussian*amplitude*.30,-dynamicGaussian*amplitude*.24*speed*speed*dipole-bowPressure*bowGain);
+  let pressure=vec2f(gaussian*amplitude*.30,-dynamicGaussian*amplitude*.24*speed*speed*dipole-bowPressure);
   var equilibrium=cmul(phaseRotation,pressure);
   // A collision-resolved foot contact loads and unloads a local pressure patch.
   // It travels through this real-time dispersive solver, not the slow ambient clock.
-  equilibrium+=footPressure*contactPulse;
+  let age=P.clock.x-P.clock.y+(f32(j)+.5)*dt-P.contact.z;
+  if(age>=0. && age<.14 && P.contact.w>0.){
+   let a=age/.14;let pulse=16.*a*a*(1.-a)*(1.-a);
+   equilibrium+=footPressure*pulse;
+  }
   if(P.clock.w>.5){h=equilibrium;v=vec2f(0.);}
   let c=cos(omega*dt);let s=sin(omega*dt);
   let nh=h*c+v*(s/omega)+equilibrium*(1.-c);
