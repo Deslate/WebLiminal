@@ -4,7 +4,7 @@ import {viewportSize} from "./viewport-size.js";
 import { createWaveSimulation } from "./wave-simulation.js";
 import { waterPreview, waterPreviewCamera } from "./water-preview.js";
 import commonSource from "./common.wgsl?raw";
-import { curvedShader } from "./curved-shapes.js";
+import { curvedShader, tileMaterial } from "./curved-shapes.js";
 import { conductorShader, conductorCommon } from "./conductor-shaders.js";
 import { airGrid, airBakeSource, airCamera } from "./atmosphere.js";
 import photons from "./photons.wgsl?raw";
@@ -51,7 +51,8 @@ export async function createRenderer(canvas, level, previewName = '') {
   // adapters which cannot bind it. Other windows keep their shader source.
   const air = device.limits.maxStorageBuffersPerShaderStage >= 9 ? airGrid(initialScene) : null;
   const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude, pressurePasses: preview.pressurePasses });
-  const { near: nearMaterial, photon: photonMaterial } = level.materials;
+  const nearMaterial = tileMaterial(level.materials.near, initialScene);
+  const photonMaterial = tileMaterial(level.materials.photon, initialScene);
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque" });

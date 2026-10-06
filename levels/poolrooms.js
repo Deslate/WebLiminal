@@ -4,7 +4,7 @@ import near from "../materials/porcelain.wgsl?raw";
 import photon from "../materials/photon-porcelain.wgsl?raw";
 import steel from "../materials/stainless-steel.wgsl?raw";
 import { buildPoolroomsScene } from "./poolrooms-scene.js";
-import { createPoolroomsWorld, thresholdTileSize } from "./poolrooms-regions.js";
+import { createPoolroomsWorld } from "./poolrooms-regions.js";
 
 // Only the new windows use the metal slot; the original shaders stay identical.
 const metal = 'if(h.material==3u){return stainlessSteel(h);}';
@@ -46,7 +46,7 @@ const thresholdCeramic=source=>cleanPorcelain(source)
   .replaceAll('chip*.35*detail','chip*.12*detail')
   .replaceAll('scaleDeposit*.22','scaleDeposit*.08');
 regionMaterials.threshold=tinted({near:thresholdCeramic(regionMaterials.near),
-  photon:thresholdCeramic(regionMaterials.photon).replace('var size=vec2f(.25)',`var size=vec2f(${thresholdTileSize})`)}, cleanWhite, [1.06, 1.13]);
+  photon:thresholdCeramic(regionMaterials.photon)}, cleanWhite, [1.06, 1.13]);
 
 export default {
   ...data,

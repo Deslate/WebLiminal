@@ -93,8 +93,8 @@ angular sampling tradeoff; the origin retains its historical 48/64 directions.
 The rotunda's water rectangle is 21 x 21 m, enclosing the complete flooded hall;
 dry entrance/deck space is omitted from finite-depth updates. Simulation spacing
 remains 1/32 m. The original window retains its historical rectangle.
-Column Reservoir and Still Rotunda use 2.4 mm grout, reduced ceramic color
-variation and a wider ceramic GGX lobe. Sun/sky radiance and, where set, the
+Column Reservoir and Still Rotunda use reduced ceramic color
+variation and a wider ceramic GGX lobe. Ceramic dimensions are listed below. Sun/sky radiance and, where set, the
 sun direction are calibrated per window through `illumination`; this changes
 transported light, not display masks or an ambient shading term. Sky strength
 (`skyScale`, multiplying the historical sky radiance) is set per window so the
@@ -136,7 +136,7 @@ see it; ceiling reflections are not openings.
   Free-standing stainless rails stand in the water on round posts; the left
   wall has a low dark opening at the waterline. The corridor ends at a narrow
   1.8 m doorway under a lintel, opening into a taller hall lit from its own
-  roof, with a square pillar, a short rail stub and a cross rail. Tiles use a 180 mm module
+  roof, with a square pillar, a short rail stub and a cross rail. Tiles use a 220 mm module
   and 2.4 mm grout on planar and curved faces, including the photon material's
   setting-out grid. Submerged ceramic uses darker green diffuse reflectance and
   matte glaze (perceptual roughness around 0.4–0.49, before footprint variance).
@@ -283,3 +283,40 @@ rebuild changes them.
   local window origin; the window's water rectangle must lie well inside it.
 - Shapes are a flat list tested one by one in every ray; there is no
   acceleration structure yet.
+
+### Ceramic construction parameters
+
+Tiles are procedural metric charts, not imported texture UVs. Planes use world
+coordinates; curved faces use arc length and height. `tilePhase` shifts the
+setting-out origin on cylinders and cylindrical cutouts, without resizing tiles.
+`tileSize` is the centre-to-centre module (including grout), and
+`groutHalfWidth` is half the flat joint opening. The visible joint also includes
+rounded ceramic shoulders. `tileBevelScale` scales shoulder width and corner
+radius, retaining bed depth, face height and tilt. Narrower shoulders increase
+the conservative relief-marching slope bound accordingly.
+
+| Location | Module | Full joint opening | Shoulder/corner scale |
+| --- | --- | --- | --- |
+| Original Poolrooms | 250 mm | 5.6 mm | 1 (unchanged) |
+| Column Reservoir | 187.5 mm | 2.0 mm | 0.5 |
+| Lightwell Threshold | 220 mm | 2.4 mm | 0.65 |
+| Ring Passage | 180 mm | 2.4 mm | 0.5 |
+| Still Rotunda | 300 mm; basin/deck slabs 450 mm | 3.0 mm | 0.65 |
+
+These are visual estimates from the four reference photographs, not surveyed
+measurements. Column and ring wall courses suggest smaller modules than the
+legacy 250 mm; the threshold rail and wall courses suggest roughly 200–250 mm.
+Rotunda opening courses suggest about 300 mm, while the ladder and foreground
+paving suggest 400–500 mm. Joint estimates include uncertainty from perspective,
+lighting and the photograph's resolution. View comparison, not these estimates,
+is the acceptance criterion. Column bay geometry is unchanged: its original
+6.75 m arc contains 36 new modules, retaining joints at both tangent seams.
+
+A non-arched shape may override `tileSize` for its entire surface; the rotunda's three
+floor slabs use this to separate paving from wall modules. Camera relief,
+joint-visibility early-out and photon material IDs use the same setting-out
+module on ordinary faces. The photon BRDF retains its historical coarse arch
+segmentation, an area-material approximation rather than resolved grout relief.
+No additional texture, buffer or sample count is introduced. Legacy
+scenes with no overrides retain their shader source. This does not fix the
+dome's compressed longitude chart or unresolved subpixel joint sampling.

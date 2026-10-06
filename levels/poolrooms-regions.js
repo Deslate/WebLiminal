@@ -1,7 +1,13 @@
 // Authored landmarks in one world. The resolver accepts spatial addresses;
 // bookmarks are navigation data, never a level registry or generator index.
 import { buildPoolroomsScene } from './poolrooms-scene.js';
-export const thresholdTileSize=.18;
+// Reference-fit ceramic modules in metres; these do not change room geometry.
+export const regionTiles = {
+  columns: {tileSize: .1875, groutHalfWidth: .001, tileBevelScale: .5},
+  threshold: {tileSize: .22, groutHalfWidth: .0012, tileBevelScale: .65},
+  rings: {tileSize: .18, groutHalfWidth: .0012, tileBevelScale: .5},
+  rotunda: {tileSize: .30, groutHalfWidth: .0015, tileBevelScale: .65},
+};
 
 export const bookmarks = [
   { name: 'No Deep Water Here', address: { x: 0, z: 0 } },
@@ -97,7 +103,7 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // so the concave arc stops exactly where the tangent nose and lobe take over.
     // The bay arc between them is a whole number of tiles, and each surface's
     // tile phase puts a grout joint on both shared tangent lines.
-    const tile = .25, lobeDeg = -45 + 27 * tile / bay.r / rad;
+    const tile = regionTiles.columns.tileSize, lobeDeg = -45 + 27 * .25 / bay.r / rad;
     const [lobeX, lobeZ] = onBay(lobeDeg, bay.r), [noseX, noseZ] = onBay(-45, bay.r);
     const lobe = onBay(lobeDeg, bay.r + .6), nose = onBay(-45, bay.r + .7);
     const phase = arc => -(arc - Math.floor(arc / tile) * tile);
@@ -169,6 +175,9 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // the drum's outer face, including the antechamber.
     curved([-W, base, minZ], [W, shallow, maxZ], { kind: 4, radius: pit, center: [0, 0] });
     curved([-W, shallow, minZ], [W, .6, maxZ], { kind: 4, radius: R + wall, center: [0, 0] });
+    // Larger paving on the three basin/deck slabs; wall and dome keep the
+    // region module. This is construction data, not a shading overlay.
+    for (const slab of [shapes[0], shapes.at(-2), shapes.at(-1)]) slab.tileSize = .45;
     // Walking stays in the antechamber.
     solids.push({ minX: -W, maxX: W, minZ: front - .5, maxZ });
     // The ladder stands on the shallow floor and reaches down into the pit.
@@ -238,7 +247,6 @@ export function buildRegion(kind, { apertureWidth = 4, apertureDepth = 4 } = {})
     // Scattering is bounded by the existing 0.004/m extinction.
     air: kind === 'rotunda' ? { scattering: .004, anisotropy: .6 } : undefined,
     reflectionSamples: kind === 'rotunda' ? {glaze:24,rough:32} : kind === 'threshold' ? {glaze:8,rough:16} : undefined,
-    groutHalfWidth: ['columns','rotunda','threshold'].includes(kind) ? .0012 : undefined,
-    tileSize: kind === 'threshold' ? thresholdTileSize : undefined,
+    ...regionTiles[kind],
     water: { ...waterBounds, cell: 1 / 32 }, aperture: a, floor: { shape: 0, face: 3 } };
 }

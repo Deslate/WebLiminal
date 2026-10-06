@@ -27,6 +27,7 @@ export function validateScene(scene) {
   if (scene.reflectionSamples && !['glaze','rough'].every(k=>Number.isInteger(scene.reflectionSamples[k])&&scene.reflectionSamples[k]>=8&&scene.reflectionSamples[k]<=128)) fail('invalid reflection quadrature');
   if (scene.conductorMaterials && (!Array.isArray(scene.conductorMaterials) || new Set(scene.conductorMaterials).size !== scene.conductorMaterials.length || scene.conductorMaterials.some(id=>!Number.isInteger(id)||id<0||RESERVED_MATERIALS.includes(id)))) fail('invalid conductor material slots');
   if (scene.groutHalfWidth !== undefined && !(Number.isFinite(scene.groutHalfWidth)&&scene.groutHalfWidth>0&&scene.groutHalfWidth<.01)) fail('invalid grout width');
+  if (scene.tileBevelScale !== undefined && !(Number.isFinite(scene.tileBevelScale)&&scene.tileBevelScale>0&&scene.tileBevelScale<=1)) fail('invalid tile bevel scale');
   if (scene.tileSize !== undefined && !(Number.isFinite(scene.tileSize)&&scene.tileSize>.04&&scene.tileSize<1)) fail('invalid tile module');
   if (scene.illumination && (!(Number.isFinite(scene.illumination.skyScale)&&scene.illumination.skyScale>0)||!Array.isArray(scene.illumination.sun)||scene.illumination.sun.length!==3||!scene.illumination.sun.every(v=>Number.isFinite(v)&&v>=0))) fail('invalid illumination');
   if (scene.illumination?.sunDirection && !(Array.isArray(scene.illumination.sunDirection)&&scene.illumination.sunDirection.length===3&&scene.illumination.sunDirection.every(Number.isFinite)&&scene.illumination.sunDirection[1]>.05)) fail('invalid sun direction');
@@ -54,6 +55,7 @@ export function validateScene(scene) {
     if (s.kind === 6 && !([0, 2].includes(s.axis) && s.radius > 0 && [0, 1, 2].filter(k=>k!==s.axis).every(k=>s.hi[k]-s.lo[k]>=2*s.radius-1e-9))) fail(`rail ${i} has invalid cylinder`);
     if (s.kind === 7 && !(s.radius > s.tubeRadius && s.tubeRadius > 0 && [0, 2].every(k=>s.hi[k]-s.lo[k]>=2*(s.radius+s.tubeRadius)-1e-9) && s.hi[1]-s.lo[1]>=2*s.tubeRadius-1e-9)) fail(`rail ${i} has invalid torus`);
     if ((s.kind === 6 || s.kind === 7) && !scene.conductorMaterials?.includes(s.material)) fail(`rail ${i} needs conductor transport`);
+    if (s.tileSize !== undefined && !(![1,10].includes(s.kind)&&Number.isFinite(s.tileSize)&&s.tileSize>.04&&s.tileSize<1)) fail(`shape ${i} has invalid tile module`);
     if (s.tilePhase !== undefined && !([2, 4].includes(s.kind) && Number.isFinite(s.tilePhase))) fail(`shape ${i} has an invalid tile phase`);
     if (s.kind === 3 && !(s.lo[1] === s.spring && s.hi[1] >= s.spring + s.radius)) fail(`dome ${i} must contain its upper hemisphere`);
     if (s.kind === 3 && s.center && !(s.center[1] + s.radius <= s.hi[2] + 1e-9)) fail(`dome ${i} may only be clipped on its near side`);

@@ -181,3 +181,15 @@ The player body is visible to the camera, refraction and reflection, and blocks 
 - Not full photorealism, and no guarantee for arbitrary devices or GPUs.
 - Finite sampling, bounce truncation and grid reconstruction mean energy agreement is a consistency check, not proof of exact conservation at every point.
 - Bright sun caustics are real focusing from the wave surface; they are not softened by extra scattering.
+
+### Ceramic joints and modules
+
+Per-window module/joint dimensions and optional per-shape modules are described
+in `LEVELS.md`. Reference fits change actual procedural tile construction,
+including shoulder width and corner radius via `tileBevelScale`; they do not
+paint lines over the BRDF. The flat bed remains 4 mm deep, opening-edge beds
+recede 1.8 mm per face, and their transition remains 5.2 mm. Bed depth, tile tilt,
+face height, material reflectance and lighting are not fitted in this change.
+A narrower shoulder requires a larger conservative slope bound in primary-ray
+relief marching, so performance is not guaranteed identical despite unchanged
+sample limits and memory. The original Poolrooms uses no specialization.

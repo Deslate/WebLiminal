@@ -2,12 +2,25 @@
 // historical shader text, including compiler arithmetic and sampling behavior.
 export function curvedShader(source, scene) {
   if (scene.groutHalfWidth !== undefined) source=source.replace('const GROUT_HALF_WIDTH:f32=.0028;', `const GROUT_HALF_WIDTH:f32=${scene.groutHalfWidth};`);
+  if (scene.tileBevelScale !== undefined) {
+    const scale=scene.tileBevelScale;
+    source=source.replace('let radius=.0012+.0012*id;',`let radius=(${scale})*(.0012+.0012*id);`)
+      .replace('let bevel=.0012+.0016*r.y;',`let bevel=(${scale})*(.0012+.0016*r.y);`)
+      .replace('10.*length(uvRay)', `(${10/scale})*length(uvRay)`);
+  }
   if (scene.tileSize !== undefined) {
     const size=String(scene.tileSize);
     const start=source.indexOf('fn archCourse('),end=source.indexOf('fn tileMode(');
     source=source.slice(0,start)+source.slice(start,end).replaceAll('.25',size)+source.slice(end);
     source=source.replace('var size=vec2f(.25);',`var size=vec2f(${size});`)
       .replace('min(fract(uv/.25),1.-fract(uv/.25))*.25',`min(fract(uv/${size}),1.-fract(uv/${size}))*${size}`);
+  }
+  if (scene.shapes.some(s => s.tileSize !== undefined)) {
+    const cases=scene.shapes.flatMap((s,i)=>s.tileSize===undefined?[]:[`case ${i}u: {return ${s.tileSize};}`]).join('');
+    source=`fn tileModule(sid:u32)->f32 {switch(sid/9u){${cases}default:{return ${scene.tileSize ?? .25};}}}\n`+source;
+    source=source.replace(`var size=vec2f(${scene.tileSize ?? '.25'});`, 'var size=vec2f(tileModule(sid));')
+      .replace(`var border=min(fract(uv/${scene.tileSize ?? '.25'}),1.-fract(uv/${scene.tileSize ?? '.25'}))*${scene.tileSize ?? '.25'};`,
+        'let spacing=tileModule(h.sid);var border=min(fract(uv/spacing),1.-fract(uv/spacing))*spacing;');
   }
   if (scene.illumination) {
     source=source.replace('vec3f(19.8,18.4,15.5)*U.settings.z', `vec3f(${scene.illumination.sun.map(v=>Number.isInteger(v)?`${v}.`:v).join(',')})*U.settings.z`)
@@ -309,4 +322,14 @@ fn traceCurved(ro:vec3f,rd:vec3f,maxT:f32,s:Shape)->CurveHit {
  return hit;
 }
 `;
+}
+
+// Match the photon material's setting-out grid to the camera profile. No
+// specialization is applied to legacy scenes without authored tile modules.
+export function tileMaterial(source, scene) {
+  if (scene.shapes.some(s => s.tileSize !== undefined))
+    return source.replace('var size=vec2f(.25);', 'var size=vec2f(tileModule(h.sid));');
+  if (scene.tileSize !== undefined)
+    return source.replace('var size=vec2f(.25);', `var size=vec2f(${scene.tileSize});`);
+  return source;
 }
