@@ -27,6 +27,7 @@ export function validateScene(scene) {
   if (scene.reflectionSamples && !['glaze','rough'].every(k=>Number.isInteger(scene.reflectionSamples[k])&&scene.reflectionSamples[k]>=8&&scene.reflectionSamples[k]<=128)) fail('invalid reflection quadrature');
   if (scene.conductorMaterials && (!Array.isArray(scene.conductorMaterials) || new Set(scene.conductorMaterials).size !== scene.conductorMaterials.length || scene.conductorMaterials.some(id=>!Number.isInteger(id)||id<0||RESERVED_MATERIALS.includes(id)))) fail('invalid conductor material slots');
   if (scene.groutHalfWidth !== undefined && !(Number.isFinite(scene.groutHalfWidth)&&scene.groutHalfWidth>0&&scene.groutHalfWidth<.01)) fail('invalid grout width');
+  if (scene.tileSampling !== undefined && !['legacy','integrated'].includes(scene.tileSampling)) fail('invalid tile sampling');
   if (scene.tileBevelScale !== undefined && !(Number.isFinite(scene.tileBevelScale)&&scene.tileBevelScale>0&&scene.tileBevelScale<=1)) fail('invalid tile bevel scale');
   if (scene.tileSize !== undefined && !(Number.isFinite(scene.tileSize)&&scene.tileSize>.04&&scene.tileSize<1)) fail('invalid tile module');
   if (scene.illumination && (!(Number.isFinite(scene.illumination.skyScale)&&scene.illumination.skyScale>0)||!Array.isArray(scene.illumination.sun)||scene.illumination.sun.length!==3||!scene.illumination.sun.every(v=>Number.isFinite(v)&&v>=0))) fail('invalid illumination');

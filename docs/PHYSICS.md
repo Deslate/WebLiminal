@@ -18,9 +18,16 @@ coverage excludes the spherical void. Water depth uses circular column
 footprints. Circular deck edges use a cylindrical cutout in one slab. Arcade
 opening reveals share one chart, unfolded across each opening and stacked by
 depth so no two openings share a cell; ring charts run around the ring's
-horizontal axis. Chart cells outside the clipping box are not receivers. The hemisphere's
-longitude tile chart compresses courses toward the pole; it is an approximate
-tile layout rather than a construction-grade spherical tiling.
+horizontal axis. Chart cells outside the clipping box are not receivers. The hemisphere's ceramic chart is separate from that receiver chart: meridian
+arc length sets rows and each row closes with an integer tile count near the
+requested module. The longitudinal chart remains continuous; its per-row metric
+converts joint widths, slopes and footprint variance to physical surface units.
+A circular polar tile (radius one module) uses a fixed-axis azimuthal equidistant
+chart with a finite tangent limit at the pole. It is normally removed by the
+rotunda's oculus. T-joints between courses are real setting-out joints. The
+receiver atlas itself still has longitude-dependent irradiance at the pole;
+closing the oculus exposes pre-existing radial lighting bands even with a
+constant diffuse material. The ceramic chart does not repair that cache.
 
 ## Water
 
@@ -193,3 +200,24 @@ face height, material reflectance and lighting are not fitted in this change.
 A narrower shoulder requires a larger conservative slope bound in primary-ray
 relief marching, so performance is not guaranteed identical despite unchanged
 sample limits and memory. The original Poolrooms uses no specialization.
+
+### Ceramic slope quadrature
+
+New locations opt into `tileSampling: 'integrated'`. Instead of four fixed nodes
+that can miss or over-weight a narrow bevel, each footprint axis splits at the
+joint bed and the conservative rounded-shoulder band. Four-point Gaussian
+quadrature integrates the existing `glazeSlopeAt` within each segment. Tile
+interiors retain two nodes per axis; crossing joints can require up to 24 per
+axis. This integrates first and second moments before the existing BRDF moment
+matching; it is not image blur, a normal overlay or a change to joint relief.
+Actual chart-gradient lengths also weight roughness variance on spherical tiles.
+The joint visibility marcher and primary-ray sample counts remain unchanged.
+
+Approximation: footprints are axis-aligned chart rectangles. Footprints wider
+than a tile use one complete period instead of enumerating arbitrarily many
+tiles. Gaussian integration of rounded corners and procedural microstructure
+is finite, so it does not guarantee zero aliasing at every view or resolution.
+`tileSampling: 'legacy'` retains the cheaper four-node path. Original Poolrooms
+has no opt-in and retains its historical source and appearance. The new path
+allocates no extra textures or persistent GPU buffers, but has more per-invocation
+arithmetic and temporary quadrature storage; measure completed frame cost.

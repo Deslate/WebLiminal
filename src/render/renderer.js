@@ -4,6 +4,8 @@ import {viewportSize} from "./viewport-size.js";
 import { createWaveSimulation } from "./wave-simulation.js";
 import { waterPreview, waterPreviewCamera } from "./water-preview.js";
 import commonSource from "./common.wgsl?raw";
+import { domeTiles } from "./dome-tiles.js";
+import { integratedTiles } from "./tile-integration.js";
 import { curvedShader, tileMaterial } from "./curved-shapes.js";
 import { conductorShader, conductorCommon } from "./conductor-shaders.js";
 import { airGrid, airBakeSource, airCamera } from "./atmosphere.js";
@@ -45,13 +47,13 @@ export async function createRenderer(canvas, level, previewName = '') {
   // Water rectangle, aperture plane and floor receiver are fixed per level and
   // compiled into every shader; the aperture rectangle stays a uniform.
   const initialScene = level.scene(level.optics);
-  const common = conductorCommon(curvedShader(commonSource, initialScene), initialScene);
+  const common = conductorCommon(domeTiles(curvedShader(commonSource, initialScene), initialScene), initialScene);
   const prelude = sceneShaderPrelude(initialScene);
   // Scattering adds one camera storage buffer; keep the legacy path on
   // adapters which cannot bind it. Other windows keep their shader source.
   const air = device.limits.maxStorageBuffersPerShaderStage >= 9 ? airGrid(initialScene) : null;
   const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude, pressurePasses: preview.pressurePasses });
-  const nearMaterial = tileMaterial(level.materials.near, initialScene);
+  const nearMaterial = integratedTiles(tileMaterial(level.materials.near, initialScene), initialScene);
   const photonMaterial = tileMaterial(level.materials.photon, initialScene);
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();

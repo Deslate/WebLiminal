@@ -3,10 +3,10 @@
 import { buildPoolroomsScene } from './poolrooms-scene.js';
 // Reference-fit ceramic modules in metres; these do not change room geometry.
 export const regionTiles = {
-  columns: {tileSize: .1875, groutHalfWidth: .001, tileBevelScale: .5},
-  threshold: {tileSize: .22, groutHalfWidth: .0012, tileBevelScale: .65},
-  rings: {tileSize: .18, groutHalfWidth: .0012, tileBevelScale: .5},
-  rotunda: {tileSize: .30, groutHalfWidth: .0015, tileBevelScale: .65},
+  columns: {tileSize: .1875, groutHalfWidth: .001, tileBevelScale: .5, tileSampling: 'integrated'},
+  threshold: {tileSize: .22, groutHalfWidth: .0012, tileBevelScale: .65, tileSampling: 'integrated'},
+  rings: {tileSize: .18, groutHalfWidth: .0012, tileBevelScale: .5, tileSampling: 'integrated'},
+  rotunda: {tileSize: .30, groutHalfWidth: .0015, tileBevelScale: .65, tileSampling: 'integrated'},
 };
 
 export const bookmarks = [

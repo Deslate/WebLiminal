@@ -317,6 +317,9 @@ floor slabs use this to separate paving from wall modules. Camera relief,
 joint-visibility early-out and photon material IDs use the same setting-out
 module on ordinary faces. The photon BRDF retains its historical coarse arch
 segmentation, an area-material approximation rather than resolved grout relief.
-No additional texture, buffer or sample count is introduced. Legacy
-scenes with no overrides retain their shader source. This does not fix the
-dome's compressed longitude chart or unresolved subpixel joint sampling.
+No additional texture or persistent GPU buffer is introduced. Slope sampling
+cost is described below. Legacy
+scenes with no overrides retain their shader source. Spherical ceramic uses meridian arc courses and a finite polar cap chart;
+see `PHYSICS.md`. The four new windows opt into `tileSampling: 'integrated'`
+for piecewise footprint integration of the actual glaze/relief slopes; `'legacy'`
+is the lower-cost four-node alternative. Original Poolrooms stays on legacy.

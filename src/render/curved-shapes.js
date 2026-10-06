@@ -328,8 +328,10 @@ fn traceCurved(ro:vec3f,rd:vec3f,maxT:f32,s:Shape)->CurveHit {
 // specialization is applied to legacy scenes without authored tile modules.
 export function tileMaterial(source, scene) {
   if (scene.shapes.some(s => s.tileSize !== undefined))
-    return source.replace('var size=vec2f(.25);', 'var size=vec2f(tileModule(h.sid));');
-  if (scene.tileSize !== undefined)
-    return source.replace('var size=vec2f(.25);', `var size=vec2f(${scene.tileSize});`);
+    source=source.replace('var size=vec2f(.25);', 'var size=vec2f(tileModule(h.sid));');
+  else if (scene.tileSize !== undefined)
+    source=source.replace('var size=vec2f(.25);', `var size=vec2f(${scene.tileSize});`);
+  if(scene.shapes.some(s=>s.kind===3))source=source.replace('let id=hash2(floor(uv/size)',
+    'if(mode==5u){size=domeTileSize(uv,h.sid,size.x);}let cell=select(floor(uv/size),vec2f(0),mode==6u);let id=hash2(cell');
   return source;
 }
