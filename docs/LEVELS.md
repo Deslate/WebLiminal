@@ -323,3 +323,10 @@ scenes with no overrides retain their shader source. Spherical ceramic retains c
 see `PHYSICS.md`. The four new windows opt into `tileSampling: 'integrated'`
 for piecewise footprint integration of the actual glaze/relief slopes; `'legacy'`
 is the lower-cost four-node alternative. Original Poolrooms stays on legacy.
+
+Ceramic shader specialization checks the required source hooks and rejects missing
+or duplicated matches at renderer construction. Arch module literals, profile
+widths, bevels, marching bounds, joint early-outs and photon IDs are checked;
+near materials read the shared profile directly. Integrated sampling likewise
+requires its function boundaries and moment-compensation hook. These checks do
+not alter successful generated shader text or per-frame work.

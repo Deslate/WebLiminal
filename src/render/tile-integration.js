@@ -1,3 +1,5 @@
+import { replaceShaderHook } from './shader-hooks.js';
+
 // Four-point Gauss-Legendre integrates a straight smoothstep shoulder's
 // squared slope (quartic) exactly within each correctly split interval.
 export const TILE_GAUSS_NODES = [-.861136312,-.339981044,.339981044,.861136312];
@@ -8,7 +10,7 @@ export function integratedTiles(source, scene) {
   if (scene.tileSampling !== 'integrated') return source;
   const module = scene.shapes.some(s=>s.tileSize!==undefined) ? 'tileModule(h.sid)' : String(scene.tileSize ?? .25);
   const start=source.indexOf('fn glazeMoments('),end=source.indexOf('fn surfaceMaterial(',start);
-  if(start<0||end<0)return source;
+  if(start<0||end<=start)throw Error('Missing ceramic integration boundaries');
   return source.slice(0,start)+`
 struct TileAxis { samples:array<vec2f,24>, count:u32 };
 // Split at the actual joint bed and the conservative shoulder/corner band.
@@ -43,5 +45,5 @@ fn glazeMoments(h:Hit)->vec4f {
  }}
  return vec4f(mean,max(second-mean*mean,vec2f(0)));
 }
-`+source.slice(end).replace('moments.z+moments.w', 'moments.z*dot(f[0],f[0])+moments.w*dot(f[1],f[1])');
+`+replaceShaderHook(source.slice(end),'moments.z+moments.w', 'moments.z*dot(f[0],f[0])+moments.w*dot(f[1],f[1])');
 }

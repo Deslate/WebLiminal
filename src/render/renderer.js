@@ -52,7 +52,7 @@ export async function createRenderer(canvas, level, previewName = '') {
   // adapters which cannot bind it. Other windows keep their shader source.
   const air = device.limits.maxStorageBuffersPerShaderStage >= 9 ? airGrid(initialScene) : null;
   const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude, pressurePasses: preview.pressurePasses });
-  const nearMaterial = integratedTiles(tileMaterial(level.materials.near, initialScene), initialScene);
+  const nearMaterial = integratedTiles(level.materials.near, initialScene);
   const photonMaterial = tileMaterial(level.materials.photon, initialScene);
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();

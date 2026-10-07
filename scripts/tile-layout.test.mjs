@@ -30,3 +30,34 @@ test('region modules match photon IDs and narrower shoulders retain conservative
   assert(source.includes(`(${10/scene.tileBevelScale})*length(uvRay)`));
  }
 });
+
+test('authored ceramic values reach camera construction and photon material',()=>{
+ for(const kind of ['columns','threshold','rings','rotunda']){
+  const scene=buildRegion(kind),source=curvedShader(common,scene),scale=scene.tileBevelScale;
+  assert(source.includes(`const GROUT_HALF_WIDTH:f32=${scene.groutHalfWidth};`));
+  assert(source.includes(`let radius=(${scale})*(.0012+.0012*id);`));
+  assert(source.includes(`let bevel=(${scale})*(.0012+.0016*r.y);`));
+  const course=source.slice(source.indexOf('fn archCourse('),source.indexOf('fn tileMode('));
+  assert(!course.includes('.25'));assert.equal(course.split(String(scene.tileSize)).length-1,8);
+  if(kind==='rotunda')for(const [i,shape] of scene.shapes.entries()){
+   if(shape.tileSize!==undefined)assert(source.includes(`case ${i}u: {return ${shape.tileSize};}`));
+  }
+ }
+});
+
+test('ceramic source refactors fail loudly instead of dropping authored values',()=>{
+ const scene=buildRegion('rotunda');
+ for(const hook of ['const GROUT_HALF_WIDTH:f32=.0028;','let radius=.0012+.0012*id;',
+  'let bevel=.0012+.0016*r.y;','10.*length(uvRay)','fn archCourse(', 'fn tileMode(',
+  'var size=vec2f(.25);','min(fract(uv/.25),1.-fract(uv/.25))*.25']){
+  assert(common.includes(hook),hook);
+  assert.throws(()=>curvedShader(common.replace(hook,'BROKEN_HOOK'),scene),/hook|boundaries/i,hook);
+ }
+ assert.throws(()=>curvedShader(common.replace('var width=.25;','var width=0.25;'),scene),/hook/i);
+ assert.throws(()=>curvedShader(common+'\nconst GROUT_HALF_WIDTH:f32=.0028;',scene),/found 2/);
+ assert.throws(()=>tileMaterial(photon.replace('var size=vec2f(.25);','BROKEN_HOOK'),scene),/hook/i);
+ // Exercise per-shape hooks even when no scene-wide tile module is authored.
+ const local={...scene,tileSize:undefined};
+ assert.throws(()=>curvedShader(common.replace('var size=vec2f(.25);','BROKEN_HOOK'),local),/hook/i);
+ assert.throws(()=>curvedShader(common.replace('var border=min','var altered=min'),local),/hook/i);
+});

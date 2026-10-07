@@ -10,7 +10,7 @@ const read=p=>readFileSync(new URL(p,import.meta.url),'utf8');
 const common=read('../src/render/common.wgsl'),near=read('../materials/porcelain.wgsl'),photon=read('../materials/photon-porcelain.wgsl');
 test('legacy window preserves all ceramic shader paths exactly',()=>{
  const s=poolroomsScene();assert.equal(curvedShader(common,s),common);
- assert.equal(integratedTiles(tileMaterial(near,s),s),near);assert.equal(tileMaterial(photon,s),photon);
+ assert.equal(integratedTiles(near,s),near);assert.equal(tileMaterial(photon,s),photon);
 });
 test('integration is independently selectable without changing ceramic construction',()=>{
  const s=buildRegion('rotunda');validateScene(s);
@@ -29,7 +29,7 @@ test('regular dome coordinates remain independent of high-quality joint integrat
  for(const region of ['columns','threshold','rings','rotunda']){
   const scene=buildRegion(region);
   assert.equal(scene.tileSampling,'integrated');
-  assert(integratedTiles(tileMaterial(near,scene),scene).includes('struct TileAxis'));
+  assert(integratedTiles(near,scene).includes('struct TileAxis'));
  }
 });
 
@@ -40,4 +40,12 @@ test('piecewise quadrature conserves constants and integrates shoulder slope mom
   assert(Math.abs(got-expected)<2e-9,`degree ${degree}`);
  }
  assert(TILE_GAUSS_WEIGHTS.every(w=>w>0));
+});
+
+test('integrated sampling rejects missing boundaries and moment wiring',()=>{
+ const scene=buildRegion('rotunda');
+ for(const hook of ['fn glazeMoments(','fn surfaceMaterial(','moments.z+moments.w']){
+  assert(near.includes(hook));
+  assert.throws(()=>integratedTiles(near.replace(hook,'BROKEN_HOOK'),scene),/hook|boundaries/i);
+ }
 });
