@@ -5,12 +5,6 @@ export const TILE_GAUSS_WEIGHTS = [.347854845,.652145155,.652145155,.347854845];
 // Optional construction-aware quadrature. Unauthored legacy material source
 // remains byte-identical; dimensions come from the resident scene, not a level.
 export function integratedTiles(source, scene) {
-  // A quality fallback must still use the spherical chart Jacobian. This
-  // changes no legacy scene, and precedes either quadrature implementation.
-  if(scene.shapes.some(s=>s.kind===3))source=source
-    .replace('sqrt(1.+pow(dot(v,f[0])','sqrt(dot(f[0],f[0])+pow(dot(v,f[0])')
-    .replace('sqrt(1.+pow(dot(v,f[1])','sqrt(dot(f[1],f[1])+pow(dot(v,f[1])')
-    .replace('moments.z+moments.w','moments.z*dot(f[0],f[0])+moments.w*dot(f[1],f[1])');
   if (scene.tileSampling !== 'integrated') return source;
   const module = scene.shapes.some(s=>s.tileSize!==undefined) ? 'tileModule(h.sid)' : String(scene.tileSize ?? .25);
   const start=source.indexOf('fn glazeMoments('),end=source.indexOf('fn surfaceMaterial(',start);
@@ -40,7 +34,6 @@ fn glazeMoments(h:Hit)->vec4f {
  let nv=max(abs(dot(v,h.n)),.1);
  let width=max(vec2f(.000001),halfPixel*vec2f(sqrt(dot(f[0],f[0])+pow(dot(v,f[0])/nv,2.)),sqrt(dot(f[1],f[1])+pow(dot(v,f[1])/nv,2.))));
  let uv=tileUV(h);var spacing=vec2f(${module});var metric=vec2f(1);
- ${scene.shapes.some(s=>s.kind===3)?'if(tileMode(h)==5u){metric.x=domeCourseRadius(uv.y,shapes[h.sid/9u],spacing.x)/shapes[h.sid/9u].params.x;spacing=domeTileSize(uv,h.sid,spacing.x);}':''}
  let x=tileAxis(uv.x,width.x,spacing.x,metric.x);let y=tileAxis(uv.y,width.y,spacing.y,metric.y);
  var mean=vec2f(0);var second=vec2f(0);
  for(var i=0u;i<x.count;i++){for(var j=0u;j<y.count;j++){

@@ -319,7 +319,7 @@ module on ordinary faces. The photon BRDF retains its historical coarse arch
 segmentation, an area-material approximation rather than resolved grout relief.
 No additional texture or persistent GPU buffer is introduced. Slope sampling
 cost is described below. Legacy
-scenes with no overrides retain their shader source. Spherical ceramic uses meridian arc courses and a finite polar cap chart;
+scenes with no overrides retain their shader source. Spherical ceramic retains continuous longitude/height courses with crown compression;
 see `PHYSICS.md`. The four new windows opt into `tileSampling: 'integrated'`
 for piecewise footprint integration of the actual glaze/relief slopes; `'legacy'`
 is the lower-cost four-node alternative. Original Poolrooms stays on legacy.

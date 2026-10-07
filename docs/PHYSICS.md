@@ -18,14 +18,13 @@ coverage excludes the spherical void. Water depth uses circular column
 footprints. Circular deck edges use a cylindrical cutout in one slab. Arcade
 opening reveals share one chart, unfolded across each opening and stacked by
 depth so no two openings share a cell; ring charts run around the ring's
-horizontal axis. Chart cells outside the clipping box are not receivers. The hemisphere's ceramic chart is separate from that receiver chart: meridian
-arc length sets rows and each row closes with an integer tile count near the
-requested module. The longitudinal chart remains continuous; its per-row metric
-converts joint widths, slopes and footprint variance to physical surface units.
-A circular polar tile (radius one module) uses a fixed-axis azimuthal equidistant
-chart with a finite tangent limit at the pole. It is normally removed by the
-rotunda's oculus. T-joints between courses are real setting-out joints. The
-receiver atlas itself still has longitude-dependent irradiance at the pole;
+horizontal axis. Chart cells outside the clipping box are not receivers.
+The hemisphere's ceramic chart is separate from that receiver chart: longitude
+multiplied by the sphere radius sets columns, and world height sets rows.
+Continuous column joints keep the setting-out regular, but modules compress
+near the crown. The tangent frame is orthonormal, not an exact chart Jacobian;
+this is a retained material approximation. The oculus removes the chart pole.
+The receiver atlas itself still has longitude-dependent irradiance at the pole;
 closing the oculus exposes pre-existing radial lighting bands even with a
 constant diffuse material. The ceramic chart does not repair that cache.
 
@@ -210,7 +209,6 @@ quadrature integrates the existing `glazeSlopeAt` within each segment. Tile
 interiors retain two nodes per axis; crossing joints can require up to 24 per
 axis. This integrates first and second moments before the existing BRDF moment
 matching; it is not image blur, a normal overlay or a change to joint relief.
-Actual chart-gradient lengths also weight roughness variance on spherical tiles.
 The joint visibility marcher and primary-ray sample counts remain unchanged.
 
 Approximation: footprints are axis-aligned chart rectangles. Footprints wider
