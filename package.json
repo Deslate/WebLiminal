@@ -1,7 +1,7 @@
 {
-  "name": "webliminal",
+  "name": "poolrooms-v1",
   "private": true,
-  "version": "2.0.0",
+  "version": "0.1.16",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -9,7 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "validate": "node scripts/validate-content.mjs",
     "test": "node --test scripts/*.test.mjs",
-    "capture": "node scripts/capture.mjs"
+    "benchmark": "node scripts/benchmark-v149.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.55.1",

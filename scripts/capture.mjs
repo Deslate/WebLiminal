@@ -5,12 +5,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
-const url = process.env.VERIFY_URL || "http://127.0.0.1:4173/";
+const url = process.env.VERIFY_URL || "http://127.0.0.1:4173/v2.html";
 const outDir = process.env.EVIDENCE_DIR || "/tmp/webliminal-captures";
 const targetSpp = Number(process.env.SPP || 40);
 const width = Number(process.env.WIDTH || 960);
 const height = Number(process.env.HEIGHT || 540);
-const levels = (process.env.LEVELS || "poolrooms,level0,level1").split(",").map((s) => s.trim()).filter(Boolean);
+const levels = (process.env.LEVELS || "level0,level1,poolrooms-v2").split(",").map((s) => s.trim()).filter(Boolean);
 
 mkdirSync(outDir, { recursive: true });
 

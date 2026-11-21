@@ -1,0 +1,32 @@
+{
+  "id": "poolrooms-v1",
+  "bounds": {
+    "minX": -7,
+    "maxX": 7,
+    "minZ": -17,
+    "maxZ": 10
+  },
+  "ceiling": 5.8,
+  "spawn": {
+    "x": -3.6,
+    "y": 1.62,
+    "z": 8,
+    "yaw": -0.29,
+    "pitch": -0.32
+  },
+  "optics": {
+    "waterLevel": 0.42,
+    "waveAmplitude": 0.018,
+    "waveSpeed": 1.0,
+    "bodyWakeBoost": 0.6,
+    "apertureWidth": 4.8,
+    "apertureDepth": 5.8,
+    "exposure": 0.85,
+    "focalLength": 24
+  },
+  "moment": {
+    "start": 34.6,
+    "duration": 8.4
+  },
+  "material": "porcelain"
+}

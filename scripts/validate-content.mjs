@@ -1,89 +1,33 @@
-// Repository & content invariant validator.
-// Enforces: zero bitmap assets, strict engine/level isolation, and valid map compilation.
-
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import assert from "node:assert/strict";
-import { LEVEL_LIST } from "../levels/index.js";
-import { createMap } from "../src/engine/map-builder.js";
-import { canStand, sampleFloorHeight } from "../src/engine/collision.js";
-
-const root = fileURLToPath(new URL("../", import.meta.url));
-
-// 1. Forbid any bitmap texture/image assets inside the source tree.
-const forbidden = /\.(png|jpe?g|webp|avif|gif|bmp|hdr|exr|ktx2?|dds|tiff?|ico)$/i;
-const bitmapHits = [];
-function scanDir(dir) {
-  for (const item of readdirSync(dir, { withFileTypes: true })) {
-    if (["node_modules", ".git", ".runtime", ".flops", "dist"].includes(item.name)) continue;
-    const p = join(dir, item.name);
-    if (item.isDirectory()) scanDir(p);
-    else if (forbidden.test(item.name)) bitmapHits.push(p);
-  }
+import {readFileSync,readdirSync,existsSync} from 'node:fs';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import assert from 'node:assert/strict';
+import {buildPoolroomsScene} from '../levels/poolrooms-scene.js';
+import {validateScene} from '../src/render/scene.js';
+import {createPoolroomsWorld,bookmarks} from '../levels/poolrooms-regions.js';
+import {canStand} from '../src/collision.js';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const level=JSON.parse(readFileSync(join(root,'levels/poolrooms.json')));
+assert.equal(level.id,'poolrooms-v1');
+const scene=validateScene(buildPoolroomsScene(level,level.optics));
+const world=createPoolroomsWorld(level,{});
+for(const bookmark of bookmarks){
+ const region=world.generate(bookmark.address),local=validateScene(region.scene(region.optics));
+ assert(canStand(region.spawn.x,region.spawn.z,local.bounds,local.solids),`${bookmark.name}: blocked spawn`);
+ assert(local.shapes.length<=80,`${bookmark.name}: resident shape budget exceeded`);
 }
-scanDir(root);
-assert.deepEqual(bitmapHits, [], `Bitmap assets are forbidden in the repository: ${bitmapHits.join(", ")}`);
-
-// 2. Enforce engine/level decoupling: src/engine/ must never import from levels/.
-function checkEngineIsolation(dir) {
-  for (const item of readdirSync(dir, { withFileTypes: true })) {
-    const p = join(dir, item.name);
-    if (item.isDirectory()) checkEngineIsolation(p);
-    else if (item.name.endsWith(".js")) {
-      const src = readFileSync(p, "utf8");
-      assert(
-        !/from\s*["'][^"']*levels\//.test(src),
-        `Engine file ${p} must not import from levels/.`,
-      );
-    }
-  }
-}
-checkEngineIsolation(join(root, "src/engine"));
-
-// 3. Compile and validate every registered level.
-assert(LEVEL_LIST.length >= 3, "Expected at least 3 registered levels.");
-for (const lvl of LEVEL_LIST) {
-  const m = createMap({ atlasSize: 1024 });
-  lvl.build(m);
-  const compiled = m.compile({ atlasSize: 1024 });
-
-  assert(compiled.vertexCount > 0 && compiled.triCount > 0, `${lvl.id}: empty mesh`);
-  assert(compiled.bvh.nodeCount > 0, `${lvl.id}: empty BVH`);
-  assert(compiled.lightCount > 0 || lvl.atmosphere?.sun, `${lvl.id}: no light sources`);
-  assert(compiled.atlas.utilization > 0 && compiled.atlas.utilization <= 1.0, `${lvl.id}: invalid atlas utilization`);
-
-  // Verify spawn and every bookmark are standing in valid unobstructed space.
-  const spawnFloor = sampleFloorHeight(lvl.spawn.x, lvl.spawn.z, compiled.collision);
-  assert(
-    canStand(lvl.spawn.x, lvl.spawn.z, compiled.collision, spawnFloor),
-    `${lvl.id}: spawn (${lvl.spawn.x}, ${lvl.spawn.z}) is obstructed or out of bounds`,
-  );
-  for (const bm of compiled.bookmarks) {
-    const bmFloor = sampleFloorHeight(bm.spawn.x, bm.spawn.z, compiled.collision);
-    assert(
-      canStand(bm.spawn.x, bm.spawn.z, compiled.collision, bmFloor),
-      `${lvl.id}: bookmark "${bm.name}" is obstructed`,
-    );
-  }
-
-  // Verify no NaNs in packed vertex buffer.
-  const vf = new Float32Array(compiled.vertexData);
-  for (let i = 0; i < compiled.vertexCount; i++) {
-    const o = i * 16;
-    for (const k of [0, 1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15]) {
-      assert(Number.isFinite(vf[o + k]), `${lvl.id}: non-finite vertex attribute at v=${i} k=${k}`);
-    }
-    assert(vf[o + 14] >= 0 && vf[o + 14] <= 1, `${lvl.id}: uv2.u out of range`);
-    assert(vf[o + 15] >= 0 && vf[o + 15] <= 1, `${lvl.id}: uv2.v out of range`);
-  }
-
-  console.log(
-    `  [OK] ${lvl.id}: ${compiled.stats.triangles} tris, ${compiled.stats.bvhNodes} BVH nodes, ` +
-      `${compiled.stats.materials} mats, ${compiled.stats.lights} lights, ` +
-      `atlas ${compiled.stats.atlasSize}² (${compiled.stats.texelsPerMeter} tx/m, ${compiled.stats.atlasUtilization}%), ` +
-      `water=${compiled.stats.hasWater}`,
-  );
-}
-
-console.log("WebLiminal content valid: zero bitmaps, strict engine isolation, all levels compiled & verified.");
+assert(level.spawn.x>scene.bounds.minX&&level.spawn.x<scene.bounds.maxX);
+assert(level.spawn.z>scene.bounds.minZ&&level.spawn.z<scene.bounds.maxZ);
+assert(level.spawn.y<scene.bounds.ceiling);
+assert(level.optics.waterLevel>level.optics.waveAmplitude*1.07);
+assert(level.optics.waterLevel+level.optics.waveAmplitude*1.07<level.spawn.y);
+assert(level.optics.apertureWidth>0&&level.optics.apertureWidth<9);
+assert(existsSync(join(root,`materials/${level.material}.wgsl`)));
+const forbidden=/\.(png|jpe?g|webp|avif|gif|bmp|hdr|exr|ktx2?|dds|tiff?|ico)$/i;
+const found=[];
+function scan(dir){for(const item of readdirSync(dir,{withFileTypes:true})){if(['node_modules','.git','.runtime','.flops','dist'].includes(item.name))continue;const p=join(dir,item.name);if(item.isDirectory())scan(p);else if(forbidden.test(item.name))found.push(p);}}
+scan(root);assert.deepEqual(found,[],'v1 forbids bitmap resource files in the source tree. Write evidence outside the repository.');
+for(const name of ['common.wgsl','photons.wgsl','camera.wgsl','water-caustics.wgsl','diffuse-transfer.wgsl','compose-light.wgsl','reflection-filter.wgsl'])assert(!/textureSample|textureLoad/.test(readFileSync(join(root,'src/render',name),'utf8')),'Transport must not sample image assets.');
+// The engine consumes a level module it is given; it never imports one.
+for(const name of readdirSync(join(root,'src/render')))assert(!/from\s*["'][^"']*(levels|materials)\//.test(readFileSync(join(root,'src/render',name),'utf8')),`src/render/${name} imports level or material content directly.`);
+console.log('v1 content valid: scene description, spawn, water envelope, aperture, material slot; renderer imports no level; zero bitmap resources.');

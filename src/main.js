@@ -1,395 +1,449 @@
-// WebLiminal Application Shell.
-// Connects lightweight declarative levels to the unified WebGPU engine,
-// FPS/drag camera controls, collision, procedural audio, and developer inspector.
-
-import { LEVEL_LIST, selectLevel } from "../levels/index.js";
-import { createMap } from "./engine/map-builder.js";
-import { createRenderer } from "./engine/renderer.js";
-import { movePlayer, sampleFloorHeight, PLAYER_EYE_HEIGHT } from "./engine/collision.js";
-import { createAudioEngine } from "./engine/audio.js";
-
-const viewport = document.getElementById("viewport");
+import {LAB_DEFAULTS,normalizeLab,readLab,saveLab} from "./lab-settings.js";
+import {createLabMenu} from "./lab-menu.js";
+let previewPanel=null;
+let labPanel=null,labState={...LAB_DEFAULTS},labApplying=false,labPauseAfter=false;
+import {createWakeTrail} from "./wake-trail.js";
+const wakeTrail=createWakeTrail();
+import { selectLevel } from "../levels/index.js";
+import { loadWindow, regionIndex, worldPosition } from "./world.js";
+import { createRenderer } from "./render/renderer.js";
+import { initialRenderScale } from "./render/viewport-size.js";
+import { movePlayer, canStand } from "./collision.js";
+import { createSoundscape } from "./audio.js";
 const canvas = document.createElement("canvas");
-viewport.appendChild(canvas);
-
-const hudTitle = document.getElementById("hud-title");
-const hudSubtitle = document.getElementById("hud-subtitle");
-const hudBake = document.getElementById("hud-bake");
-const hudFps = document.getElementById("hud-fps");
-const audioStatus = document.getElementById("audio-status");
-const fatalEl = document.getElementById("fatal-error");
-
-const inspector = document.getElementById("inspector");
-const btnInspector = document.getElementById("btn-inspector");
-const btnCloseInsp = document.getElementById("btn-close-insp");
-const levelButtonsEl = document.getElementById("level-buttons");
-const bookmarkButtonsEl = document.getElementById("bookmark-buttons");
-const selDebug = document.getElementById("sel-debug");
-const rngExposure = document.getElementById("rng-exposure");
-const outExposure = document.getElementById("out-exposure");
-const chkVhs = document.getElementById("chk-vhs");
-const chkSsr = document.getElementById("chk-ssr");
-const chkVol = document.getElementById("chk-vol");
-const chkBloom = document.getElementById("chk-bloom");
-const statsEl = document.getElementById("scene-stats");
-
-const params = new URLSearchParams(location.search);
-if (params.get("capture") === "1") document.body.classList.add("capture");
-
-const audio = createAudioEngine(audioStatus);
-
-let renderer;
+document.querySelector("#experience").appendChild(canvas);
+const sound = createSoundscape(document.getElementById("audio-status"));
+let level;
 try {
-  renderer = await createRenderer(canvas, {
-    texSize: params.has("texSize") ? Number(params.get("texSize")) : undefined,
-    atlasSize: params.has("atlasSize") ? Number(params.get("atlasSize")) : undefined,
-    targetSpp: params.has("spp") ? Number(params.get("spp")) : undefined,
-  });
-} catch (err) {
-  fatalEl.hidden = false;
-  fatalEl.textContent = `WebLiminal failed to initialize: ${err.message}`;
-  throw err;
+  level = selectLevel(new URLSearchParams(location.search).get("level"));
+} catch (e) {
+  document.getElementById("audio-status").textContent = e.message;
+  throw e;
 }
-
-let activeLevel = null;
-let compiledScene = null;
-let activeBookmark = 0;
-let loadingLevel = false;
-let paused = false;
-
-const pose = { x: 0, y: PLAYER_EYE_HEIGHT, z: 0, yaw: 0, pitch: 0, footY: 0 };
-let walkBobPhase = 0;
-let wakeDistAccum = 0;
-let wakeSide = 1;
-
-function syncResize() {
-  const rect = viewport.getBoundingClientRect();
-  const dprCap = renderer.isSoftware ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
-  renderer.resize(rect.width || 960, rect.height || 540, dprCap);
-}
-syncResize();
-addEventListener("resize", syncResize);
-new ResizeObserver(syncResize).observe(viewport);
-
-function renderStats(stats, bake) {
-  const rows = [
-    ["Triangles", stats.triangles.toLocaleString()],
-    ["BVH Nodes", stats.bvhNodes.toLocaleString()],
-    ["Materials Baked", `${stats.materials} (${renderer.settings.texSize}px)`],
-    ["Area Lights", String(stats.lights)],
-    ["Lightmap Atlas", `${stats.atlasSize}² (${stats.texelsPerMeter} tx/m, ${stats.atlasUtilization}%)`],
-    ["Water Sim", stats.hasWater ? "Active" : "Disabled (0 ms)"],
-    ["Tex Bake Time", `${bake.textureMs} ms`],
-    ["Init GI Bake", `${bake.initBakeMs} ms`],
-  ];
-  statsEl.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
-}
-
-function renderBookmarkButtons() {
-  const bms = compiledScene?.bookmarks ?? [];
-  bookmarkButtonsEl.innerHTML = "";
-  bms.forEach((bm, idx) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = bm.name;
-    b.classList.toggle("active", idx === activeBookmark);
-    b.addEventListener("click", () => jumpToBookmark(idx));
-    bookmarkButtonsEl.appendChild(b);
-  });
-}
-
-function renderLevelButtons() {
-  levelButtonsEl.innerHTML = "";
-  LEVEL_LIST.forEach((lvl, idx) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = `${idx + 1}. ${lvl.id}`;
-    b.classList.toggle("active", activeLevel?.id === lvl.id);
-    b.addEventListener("click", () => loadLevel(lvl.id));
-    levelButtonsEl.appendChild(b);
-  });
-}
-
-function setPose(spawn) {
-  pose.x = spawn.x;
-  pose.z = spawn.z;
-  pose.yaw = spawn.yaw ?? 0;
-  pose.pitch = spawn.pitch ?? 0;
-  const floorY = compiledScene ? sampleFloorHeight(pose.x, pose.z, compiledScene.collision) : 0;
-  pose.footY = floorY;
-  pose.y = spawn.y ?? floorY + PLAYER_EYE_HEIGHT;
-}
-
-function jumpToBookmark(index) {
-  const bms = compiledScene?.bookmarks ?? [];
-  if (!bms[index]) return;
-  activeBookmark = index;
-  setPose(bms[index].spawn);
-  renderBookmarkButtons();
-}
-
-async function loadLevel(levelId) {
-  if (loadingLevel) return;
-  loadingLevel = true;
-  const lvl = selectLevel(levelId);
-  hudTitle.textContent = lvl.title;
-  hudSubtitle.textContent = lvl.subtitle;
-  hudBake.classList.remove("converged");
-  hudBake.textContent = "Synthesizing PBR Textures & Baking GI…";
-
-  try {
-    const seed = params.has("seed") ? Number(params.get("seed")) : undefined;
-    const builder = createMap({ atlasSize: renderer.settings.atlasSize });
-    lvl.build(builder, { seed });
-    const compiled = builder.compile({ atlasSize: renderer.settings.atlasSize });
-
-    const { stats, bake } = await renderer.loadScene(compiled, lvl.atmosphere);
-    activeLevel = lvl;
-    compiledScene = compiled;
-    activeBookmark = 0;
-    setPose(lvl.spawn);
-
-    audio.setProfile(lvl.audio);
-    rngExposure.value = String(renderer.settings.exposure);
-    outExposure.textContent = renderer.settings.exposure.toFixed(2);
-    renderLevelButtons();
-    renderBookmarkButtons();
-    renderStats(stats, bake);
-
-    // Sync URL query param without reloading
-    const u = new URL(location.href);
-    u.searchParams.set("level", lvl.id);
-    history.replaceState(null, "", u);
-  } finally {
-    loadingLevel = false;
-  }
-}
-
-// --- Input Controls ---
+const bookmarks = level.world?.bookmarks ?? [{ name: level.id, address: { x: 0, z: 0 } }];
+let activeRegion = 0, regionChanging = false;
+let windowLevel = loadWindow(level, bookmarks[0].address);
+const view = { ...windowLevel.spawn };
+let observer=null,bodyEnabled=true;
+function cameraPose(){return observer||view;}
 const keys = new Set();
-let dragging = false;
-
+let dragging = false,
+  elapsed = 0,
+  previous = performance.now(),
+  ready = false,
+  frameMs = [],
+  completed = 0,
+  firstFrame = null,
+  scale = initialRenderScale(canvas.clientWidth, canvas.clientHeight),
+  paused = false,
+  holdTime = false,
+  targetSamples = 0;
+const runId = crypto.randomUUID();
+let waterPreviewName = new URLSearchParams(location.search).get('waterPreview') || '';
+let renderer = await createRenderer(canvas, windowLevel, waterPreviewName).catch((e) => {
+  document.getElementById("audio-status").textContent = e.message;
+  console.error(e);
+  throw e;
+});
+let ROOM = renderer.bounds;
+let resizePending = false, resizeRefreshing = false;
+function applyViewportSize() {
+  const bounds = canvas.getBoundingClientRect();
+  if(labState.resolution==="auto")scale=Math.min(scale,initialRenderScale(bounds.width,bounds.height));
+  renderer.resize(bounds.width, bounds.height, scale);
+  resizePending = false;
+}
+async function refreshPausedViewport() {
+  if(resizeRefreshing)return;
+  resizeRefreshing=true;
+  try {
+    while(resizePending && paused){
+      while(renderer.busy || tickRunning || labApplying || regionChanging)await new Promise(r=>setTimeout(r,5));
+      if(!paused || !resizePending)break;
+      applyViewportSize();
+      await renderer.render(cameraPose(),elapsed,false,1);
+    }
+  } finally {resizeRefreshing=false;if(!paused)scheduleFrame();}
+}
+function resize() {
+  resizePending=true;
+  if(paused)refreshPausedViewport().catch(console.error);
+}
+resize();
+addEventListener("resize", resize);
+new ResizeObserver(resize).observe(canvas.parentElement);
+let pixelRatioQuery, observedPixelRatio=devicePixelRatio;
+function watchPixelRatio() {
+  pixelRatioQuery=matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+  pixelRatioQuery.addEventListener('change',()=>{
+    observedPixelRatio=devicePixelRatio;resize();watchPixelRatio();
+  },{once:true});
+}
+watchPixelRatio();
+// DPR-only transitions can omit resize/media-query events (including Chrome
+// device emulation). This cheap fallback also updates a paused presentation.
+setInterval(()=>{
+  if(!document.hidden && observedPixelRatio!==devicePixelRatio){
+    observedPixelRatio=devicePixelRatio;resize();
+  }
+},500);
 addEventListener("keydown", (e) => {
-  if (e.target.closest?.("input, select, textarea")) return;
-  if (e.code === "KeyG" && !e.repeat) {
-    inspector.hidden = !inspector.hidden;
+  if (e.target.closest?.('input, select, textarea, [contenteditable="true"]')) return;
+  const destination = regionIndex(e.code, activeRegion, bookmarks.length);
+  if (destination !== null && !labPanel?.isOpen) {
     e.preventDefault();
+    if (!e.repeat && !regionChanging) teleport(destination).catch(console.error);
     return;
   }
-  if (e.code === "Escape" && !inspector.hidden) {
-    inspector.hidden = true;
-    return;
-  }
-  if (e.code === "Tab" && !e.repeat) {
+  if (regionChanging) return;
+  if(e.code==="KeyG"){e.preventDefault();if(!e.repeat){keys.clear();dragging=false;labPanel?.toggle();labPanel?.update({paused,frames:frameMs,internal:renderer.resolution});}return;}
+  if(e.code==="Escape"&&labPanel?.isOpen){e.preventDefault();labPanel.close();return;}
+  if (e.code === "Tab") {
     e.preventDefault();
-    paused = !paused;
-    audio.setPaused(paused);
+    if (!e.repeat) {if(labApplying)labPauseAfter=!labPauseAfter;else setPaused(!paused);}
     return;
   }
-  if (e.code === "KeyM" && !e.repeat) {
-    audio.toggle();
-    return;
-  }
-  if (e.code === "KeyV" && !e.repeat) {
-    renderer.setSettings({ vhsMode: !renderer.settings.vhsMode });
-    chkVhs.checked = renderer.settings.vhsMode;
-    return;
-  }
-  if (e.code === "KeyB" && !e.repeat) {
-    const len = compiledScene?.bookmarks?.length ?? 0;
-    if (len > 1) jumpToBookmark((activeBookmark + 1) % len);
-    return;
-  }
-  if (!e.repeat && ["Digit1", "Digit2", "Digit3"].includes(e.code)) {
-    const idx = Number(e.code.slice(-1)) - 1;
-    if (LEVEL_LIST[idx]) loadLevel(LEVEL_LIST[idx].id);
-    return;
-  }
-
-  audio.unlock();
+  if (paused || labPanel?.isOpen) return;
   if (
-    ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight"].includes(
-      e.code,
-    )
+    [
+      "KeyW",
+      "KeyA",
+      "KeyS",
+      "KeyD",
+      "ArrowUp",
+      "ArrowDown",
+      "ShiftLeft",
+    ].includes(e.code)
   ) {
     keys.add(e.code);
     e.preventDefault();
   }
+  if(e.code==="KeyV"&&!e.repeat){
+    if(observer)observer=null;
+    else {
+      const x=Math.max(ROOM.minX+.6,Math.min(ROOM.maxX-.6,view.x+(view.x>3?-2.8:2.8)));
+      const z=Math.max(ROOM.minZ+.6,Math.min(ROOM.maxZ-.6,view.z+(view.z>5?-3.6:3.6)));
+      observer={x,y:4.7,z,yaw:Math.atan2(x-view.x,z-view.z),pitch:Math.atan2(windowLevel.optics.waterLevel-4.7,Math.hypot(x-view.x,z-view.z))};
+    }
+  }
+  if (e.code === "KeyM" && !e.repeat) sound.toggle();
+  else sound.unlock();
 });
-
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => {
   keys.clear();
   dragging = false;
 });
-
 canvas.addEventListener("pointerdown", (e) => {
-  audio.unlock();
-  if (document.pointerLockElement === canvas) return;
+  if (paused) return;
   dragging = true;
   canvas.setPointerCapture(e.pointerId);
+  sound.unlock();
 });
-canvas.addEventListener("pointerup", () => {
-  dragging = false;
-});
-canvas.addEventListener("pointercancel", () => {
-  dragging = false;
-});
-canvas.addEventListener("dblclick", () => {
-  canvas.requestPointerLock?.();
-});
-addEventListener("pointermove", (e) => {
-  if (dragging || document.pointerLockElement === canvas) {
-    pose.yaw -= e.movementX * 0.0024;
-    pose.pitch = Math.max(-1.42, Math.min(1.25, pose.pitch - e.movementY * 0.0024));
+canvas.addEventListener("pointerup", () => (dragging = false));
+canvas.addEventListener("pointercancel", () => (dragging = false));
+canvas.addEventListener("pointermove", (e) => {
+  if (dragging) {
+    view.yaw -= e.movementX * 0.002;
+    view.pitch = Math.max(
+      -1.45,
+      Math.min(0.9, view.pitch - e.movementY * 0.002),
+    );
   }
 });
-
-// Inspector UI hooks
-btnInspector.addEventListener("click", () => {
-  inspector.hidden = !inspector.hidden;
+addEventListener("visibilitychange", () => {
+  resetClock();
+  if (document.hidden) cancelFrame();
+  else scheduleFrame();
 });
-btnCloseInsp.addEventListener("click", () => {
-  inspector.hidden = true;
-});
-selDebug.addEventListener("change", () => {
-  renderer.setSettings({ debugView: Number(selDebug.value) });
-});
-rngExposure.addEventListener("input", () => {
-  const v = Number(rngExposure.value);
-  outExposure.textContent = v.toFixed(2);
-  renderer.setSettings({ exposure: v });
-});
-chkVhs.addEventListener("change", () => renderer.setSettings({ vhsMode: chkVhs.checked }));
-chkSsr.addEventListener("change", () => renderer.setSettings({ ssrEnabled: chkSsr.checked }));
-chkVol.addEventListener("change", () => renderer.setSettings({ volumetricEnabled: chkVol.checked }));
-chkBloom.addEventListener("change", () => renderer.setSettings({ bloomEnabled: chkBloom.checked }));
-
-// Boot default or URL-requested level
-await loadLevel(params.get("level") || undefined);
-
-// --- Main Real-Time Loop ---
-let prevTime = performance.now();
-let elapsed = 0;
-let fpsFrames = 0;
-let fpsLast = performance.now();
-let currentFps = 0;
-
-function tick(now) {
-  requestAnimationFrame(tick);
-  const dt = Math.min(0.05, Math.max(0.001, (now - prevTime) / 1000));
-  prevTime = now;
-
-  if (paused || loadingLevel || !compiledScene) return;
-  elapsed += dt;
-
-  // Player movement + stair elevation + live water wake impulses
-  let forward = Number(keys.has("KeyW") || keys.has("ArrowUp")) - Number(keys.has("KeyS") || keys.has("ArrowDown"));
-  let strafe = Number(keys.has("KeyD") || keys.has("ArrowRight")) - Number(keys.has("KeyA") || keys.has("ArrowLeft"));
-  const len = Math.hypot(forward, strafe);
-  const water = compiledScene.water;
-  const inWater = Boolean(water && pose.footY < water.level - 0.05);
-  const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
-  const speed = inWater ? (sprint ? 2.4 : 1.45) : sprint ? 4.4 : 2.55;
-
-  const beforeX = pose.x;
-  const beforeZ = pose.z;
-  if (len > 0) {
-    forward /= len;
-    strafe /= len;
-    const dx = (-Math.sin(pose.yaw) * forward + Math.cos(pose.yaw) * strafe) * speed * dt;
-    const dz = (-Math.cos(pose.yaw) * forward - Math.sin(pose.yaw) * strafe) * speed * dt;
-    movePlayer(pose, dx, dz, compiledScene.collision, dt);
-    walkBobPhase += dt * (inWater ? 6.2 : sprint ? 11.5 : 8.2);
-  }
-
-  const moved = Math.hypot(pose.x - beforeX, pose.z - beforeZ);
-  if (inWater && moved > 1e-4) {
-    wakeDistAccum += moved;
-    if (wakeDistAccum >= 0.22) {
-      wakeDistAccum = 0;
-      wakeSide = -wakeSide;
-      const sideX = Math.cos(pose.yaw) * 0.14 * wakeSide;
-      const sideZ = -Math.sin(pose.yaw) * 0.14 * wakeSide;
-      renderer.addWake(pose.x + sideX, pose.z + sideZ, 0.36, -0.22);
-    }
-  }
-
-  audio.update(elapsed, len > 0, inWater);
-
-  // Subtle vertical walking head-bob (zero when standing still)
-  const bob = len > 0 ? Math.sin(walkBobPhase) * 0.022 : 0;
-  const renderPose = { ...pose, y: pose.y + bob };
-  renderer.render(renderPose, elapsed, dt);
-
-  // Update bake progress & FPS HUD
-  const bk = renderer.getBakeState();
-  if (bk.bakedSpp < bk.targetSpp) {
-    hudBake.classList.remove("converged");
-    hudBake.textContent = `BAKING GI · ${bk.bakedSpp}/${bk.targetSpp} SPP`;
-  } else if (!hudBake.classList.contains("converged")) {
-    hudBake.classList.add("converged");
-    hudBake.textContent = `GI READY · ${bk.bakedSpp} SPP · ${bk.textureMs + bk.initBakeMs} ms boot`;
-  }
-
-  fpsFrames++;
-  if (now - fpsLast >= 400) {
-    currentFps = Math.round((fpsFrames * 1000) / (now - fpsLast));
-    hudFps.textContent = `${currentFps} FPS`;
-    fpsFrames = 0;
-    fpsLast = now;
-  }
+let lastCompleted = performance.now(),
+  lastView = "",
+  lastResize = 0,
+  lastSimulation = performance.now();
+let frameTimer = null, tickRunning = false, resumeFrame = false;
+function resetClock() {
+  previous = lastSimulation = performance.now();
+  lastCompleted = null;
+  resumeFrame = true;
 }
-requestAnimationFrame(tick);
-
-// Public automation & debugging handle for capture scripts and testing.
-window.__WEBLIMINAL__ = {
-  levels: () => LEVEL_LIST.map((l) => l.id),
-  loadLevel,
-  jumpToBookmark,
-  setPose(p) {
-    setPose({ ...pose, ...p });
-  },
-  setSettings(patch) {
-    renderer.setSettings(patch);
-    if (patch.exposure !== undefined) {
-      rngExposure.value = String(patch.exposure);
-      outExposure.textContent = Number(patch.exposure).toFixed(2);
+function cancelFrame() {
+  if (frameTimer !== null) clearTimeout(frameTimer);
+  frameTimer = null;
+}
+function setPaused(value) {
+  if (paused === value) return;
+  paused = value;
+  keys.clear();
+  dragging = false;
+  sound.setPaused(value);
+  document.body.classList.toggle("paused", value);
+  labPanel?.update({paused,frames:frameMs,internal:renderer.resolution});
+  if (value) cancelFrame();
+  else { resetClock(); scheduleFrame(); }
+}
+function scheduleFrame(delay=0) {
+  if (regionChanging || labApplying || paused || document.hidden || tickRunning || frameTimer !== null ||
+      (targetSamples && renderer.samples >= targetSamples)) return;
+  frameTimer = setTimeout(() => { frameTimer = null; tick(performance.now()); }, delay);
+}
+async function tick(now) {
+  if (regionChanging || labApplying || paused || document.hidden || tickRunning) return;
+  if (renderer.busy) { scheduleFrame(16); return; }
+  tickRunning = true;
+  try {
+    const dt = resumeFrame ? 0 : Math.min((now - previous) / 1000, 0.05);
+    const moveDt = resumeFrame ? 0 : Math.min((now-lastSimulation)/1000,.05);
+    resumeFrame = false;
+    previous = lastSimulation = now;
+    if (!holdTime) elapsed += dt;
+    if (resizePending) applyViewportSize();
+    let f =
+      Number(keys.has("KeyW") || keys.has("ArrowUp")) -
+      Number(keys.has("KeyS") || keys.has("ArrowDown"));
+    let s =
+      Number(keys.has("KeyD")) -
+      Number(keys.has("KeyA"));
+    const norm = Math.hypot(f, s);
+    // Wading drag caps locomotion below this height-field model's critical wave speed.
+    const immersed=renderer.config.waterLevel>view.y-1.62+.04;
+    const speed = immersed ? (keys.has("ShiftLeft") ? 1.6 : .8) : (keys.has("ShiftLeft") ? 2.4 : 1.6);
+    const beforeMove={x:view.x,z:view.z};
+    if (norm) {
+      f /= norm;
+      s /= norm;
+      movePlayer(
+        view,
+        (-Math.sin(view.yaw) * f + Math.cos(view.yaw) * s) * moveDt * speed,
+        (-Math.cos(view.yaw) * f - Math.sin(view.yaw) * s) * moveDt * speed,
+        ROOM,
+        renderer.solids,
+      );
     }
-    if (patch.debugView !== undefined) selDebug.value = String(patch.debugView);
-    if (patch.vhsMode !== undefined) chkVhs.checked = Boolean(patch.vhsMode);
-  },
-  async renderFrame(targetSpp = null) {
-    paused = true;
-    if (targetSpp) await renderer.bakeTo(targetSpp);
-    if (compiledScene?.water) {
-      renderer.addWake(pose.x - Math.sin(pose.yaw) * 2.2, pose.z - Math.cos(pose.yaw) * 2.2, 0.45, -0.26);
-      for (let i = 0; i < 4; i++) {
-        await new Promise((r) => requestAnimationFrame(r));
-        renderer.render(pose, elapsed + i * 0.05, 0.05);
-        await renderer.waitIdle();
+    const contact=wakeTrail.advance(beforeMove,view,elapsed,renderer.config.waterLevel);
+    if(contact)renderer.addWake(contact);
+    const sig = [view.x, view.z, view.yaw, view.pitch].join(",");
+    const moving = sig !== lastView;
+    lastView = sig;
+    let anomaly = 0;
+    if (!holdTime && elapsed > 34.6 && elapsed < 43) {
+      anomaly = Math.min(1, (elapsed - 34.6) / 1.4, (43 - elapsed) / 2.4);
+    }
+    sound.update(elapsed, norm > 0, anomaly);
+    renderer.setBody(bodyEnabled?view:null);
+    const did = await renderer.render(cameraPose(), elapsed, moving, 1 - anomaly * 0.94);
+    if (did) {
+      const done = performance.now();
+      if (ready && lastCompleted !== null) {
+        frameMs.push({ t: elapsed, ms: done - lastCompleted });
+        if (frameMs.length > 12000) frameMs.shift();
+      }
+      lastCompleted = done;
+      completed++;
+      if (!ready) {
+        ready = true;
+        firstFrame = done;
+        canvas.style.visibility = "visible";
+        document.getElementById("experience").style.visibility = "visible";
+      }
+      if (completed % 15 === 0)
+        document.getElementById("timecode").textContent =
+          `00:${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(Math.floor(elapsed) % 60).padStart(2, "0")}`;
+      labPanel?.update({paused,frames:frameMs,internal:renderer.resolution});
+      if (labState.resolution==="auto" && !paused && !holdTime && frameMs.length > 12 && done - lastResize > 300) {
+        const samples = frameMs
+          .slice(-12)
+          .map((f) => f.ms)
+          .sort((a, b) => a - b);
+        if (samples[6] > 31.5 && scale > 0.36) {
+          scale = Math.max(0.36, scale * Math.min(.93, Math.sqrt(28.5 / samples[6])));
+          resize();
+          lastResize = done;
+        } else if(samples[6] < 28 && done-lastResize>1200 && scale < initialRenderScale(canvas.clientWidth,canvas.clientHeight)) {
+          // Recover detail after leaving a costly inspection view. Hysteresis
+          // avoids chasing individual frame spikes or oscillating every frame.
+          scale=Math.min(initialRenderScale(canvas.clientWidth,canvas.clientHeight),scale+.025);
+          resize();lastResize=done;
+        }
       }
     }
-    await new Promise((r) => requestAnimationFrame(r));
-    renderer.render(pose, elapsed + 1.2, 0.016);
-    await renderer.waitIdle();
-    return {
-      level: activeLevel?.id,
-      fps: currentFps,
-      resolution: renderer.getResolution(),
-      stats: compiledScene?.stats,
-      bake: renderer.getBakeState(),
-      errors: renderer.getErrors(),
-    };
+  } finally { tickRunning = false; }
+  // Do not wait an extra refresh after a 17–25 ms GPU task. Submit the next
+  // actual render when its predecessor is complete, capped at 60 submissions/s.
+  scheduleFrame(Math.max(0,1000/60-(performance.now()-now)));
+}
+// Rebuilds already pause the simulation. Keep the last displayed frame in the
+// UI until the replacement is GPU-complete; do not blend it into rendered light.
+async function holdPresentedFrame() {
+  if (!ready) return () => {};
+  const frame = document.createElement('canvas');
+  frame.className = 'rebuild-frame';
+  frame.setAttribute('aria-hidden', 'true');
+  frame.width = canvas.width; frame.height = canvas.height;
+  await renderer.copyDisplayTo(frame);
+  canvas.parentElement.append(frame);
+  return () => frame.remove();
+}
+async function applyLab(value,persist=true){
+  if (regionChanging) throw Error('A region is loading');
+  const next=normalizeLab(value);
+  if(JSON.stringify(next)!==JSON.stringify(labState)){
+    if(labApplying)throw Error("A settings change is already in progress");
+    labApplying=true;labPauseAfter=paused;setPaused(true);
+    let releaseFrame = () => {};
+    try{
+      while(renderer.busy||tickRunning)await new Promise(r=>setTimeout(r,5));
+      releaseFrame = await holdPresentedFrame();
+      await renderer.setLab(next);labState=next;
+      scale=next.resolution==="auto"?initialRenderScale(canvas.clientWidth,canvas.clientHeight):next.resolution;
+      applyViewportSize();
+      elapsed=0;wakeTrail.reset();frameMs=[];lastCompleted=null;resetClock();
+      // Explicit edits refresh one paused frame; Tab during rebuild records intent.
+      renderer.setBody(bodyEnabled?view:null);await renderer.render(cameraPose(),elapsed,false,1);
+    }finally{releaseFrame();labApplying=false;if(!labPauseAfter)setPaused(false);}
+  }
+  labPanel?.sync();return persist?saveLab(localStorage,labState):true;
+}
+async function teleport(index, previewName = waterPreviewName) {
+  if (!Number.isInteger(index) || !bookmarks[index]) throw Error('Unknown location');
+  if (regionChanging || labApplying) throw Error('A region or settings change is in progress');
+  const changingWater = previewName !== waterPreviewName;
+  if (index === activeRegion && !changingWater) return;
+  const savedView = changingWater ? {...view} : null;
+  const savedObserver = changingWater ? observer : null;
+  const next = loadWindow(level, bookmarks[index].address);
+  const wasPaused = paused;
+  regionChanging = true;
+  previewPanel?.sync();
+  setPaused(true);
+  const status = document.getElementById('audio-status');
+  status.textContent = `Loading ${bookmarks[index].name}...`;
+  let releaseFrame = () => {};
+  try {
+    while (tickRunning || renderer.busy) await new Promise(r => setTimeout(r, 5));
+    releaseFrame = await holdPresentedFrame();
+    await renderer.destroy();
+    // One resident window bounds GPU memory. Rebase the player to local metres.
+    renderer = await createRenderer(canvas, next, previewName);
+    await renderer.setLab(labState);
+    windowLevel = next;
+    activeRegion = index;
+    waterPreviewName = previewName;
+    ROOM = renderer.bounds;
+    Object.assign(view, savedView || next.spawn);
+    observer = savedObserver;
+    elapsed = 0; targetSamples = 0; holdTime = false;
+    wakeTrail.reset(); frameMs = []; lastView = ''; lastCompleted = null;
+    applyViewportSize();
+    renderer.setBody(bodyEnabled ? view : null);
+    await renderer.render(cameraPose(), 0, false, 1);
+    document.querySelector('.caption h1').textContent = bookmarks[index].name;
+    document.querySelector('.caption .index').textContent = `POOLROOMS / LOCATION ${index + 1} OF ${bookmarks.length}`;
+    document.querySelector('.coordinates').textContent = `DEPTH ${next.optics.waterLevel.toFixed(2)} M / OCCUPANCY 01`;
+    status.textContent = '';
+  } catch (error) {
+    status.textContent = `Location loading failed: ${error.message}. Reload to recover.`;
+    throw error;
+  } finally {
+    releaseFrame();
+    regionChanging = false;
+    previewPanel?.sync();
+    if (renderer && activeRegion === index && !wasPaused) setPaused(false);
+    resetClock();
+  }
+}
+labPanel=createLabMenu({apply:applyLab,getState:()=>({...labState})});
+await applyLab(readLab(localStorage),false);
+if (import.meta.env.DEV || import.meta.env.MODE === 'preview') {
+  const {createPreviewMenu, previewUrl} = await import('./preview-menu.js');
+  previewPanel = createPreviewMenu({
+    bookmarks,
+    getState: () => ({water: waterPreviewName, region: activeRegion, busy: regionChanging || labApplying}),
+    releaseInput: () => {keys.clear(); dragging = false;},
+    teleport,
+    applyWater: async name => {
+      await teleport(activeRegion, name);
+      history.replaceState(null, '', previewUrl(location.href, name));
+    },
+  });
+}
+scheduleFrame();
+Object.defineProperty(window, "__POOLROOMS_V1__", {
+  value: {
+    snapshot: () => ({
+      runId,
+      level: level.id,
+      region: activeRegion,
+      regionChanging,
+      address: { ...windowLevel.address },
+      worldView: worldPosition(windowLevel.address, view),
+      paused,
+      frameScheduled: frameTimer !== null,
+      rendering: tickRunning || renderer.busy,
+      view: { ...view },
+      observer,
+      elapsed,
+      firstFrameMs: firstFrame,
+      completedFrames: completed,
+      frames: frameMs.slice(),
+      internal: renderer.resolution,
+      samples: renderer.samples,
+      config: renderer.config,
+      lab: {...labState},
+      labMenuOpen:labPanel.isOpen,
+      labApplying,
+      staticExposure: renderer.autoStatic,
+      lightingBatches: renderer.lightingBatches,
+      cameraHistory: false,
+      cameraSamplesPerPixel: {opaque:2,water:4,edges:8},
+      dynamics: renderer.dynamics,
+      wakes:renderer.wakes,
+      errors: renderer.errors,
+      audio: sound.inspect(),
+      validPosition: canStand(view.x, view.z, ROOM, renderer.solids),
+    }),
+    async configure(parameters) {
+      if(parameters.lab)await applyLab(parameters.lab,false);
+      setPaused(true);
+      while (renderer.busy) await new Promise((r) => setTimeout(r, 5));
+      if (parameters.view) Object.assign(view, parameters.view);
+      if (parameters.scale) {
+        scale = parameters.scale;
+        applyViewportSize();
+      }
+      targetSamples = parameters.targetSamples || 0;
+      holdTime = parameters.freeze ?? holdTime;
+      if (holdTime) elapsed = 12;
+      wakeTrail.reset();
+      renderer.configure(parameters);
+      bodyEnabled=parameters.body!==false;renderer.setBody(bodyEnabled?view:null);
+      frameMs = [];
+      lastCompleted = null;
+      setPaused(parameters.pause ?? false);
+    },
+    // Capture the exact production renderer at consecutive specified times.
+    // This pauses scheduling, NOT wave evolution: the supplied time advances it.
+    async renderEvidence(time, pose, moving=true, capture=true) {
+      setPaused(true);
+      while(renderer.busy)await new Promise(r=>setTimeout(r,1));
+      Object.assign(view,pose);
+      await renderer.render(view,time,moving,1);
+      return {png:capture?canvas.toDataURL('image/png'):null,dynamics:renderer.dynamics,view:{...view}};
+    },
+    // Diagnostic replay injects physical sources, never a rendered ring.
+    injectWaveSource(source) { renderer.addWake(source); },
+    async pause() { setPaused(true);while(renderer.busy)await new Promise(r=>setTimeout(r,1)); },
+    // Evidence automation changes the actual camera, without rebuilding light.
+    setView(patch) { Object.assign(view, patch); },
+    setObserver(pose){observer=pose?{...pose}:null;},
+    async renderActorEvidence(time,actor,camera,capture=true){
+      setPaused(true);while(renderer.busy)await new Promise(r=>setTimeout(r,1));
+      const before={...view};Object.assign(view,actor);
+      const contact=wakeTrail.advance(before,view,time,renderer.config.waterLevel);if(contact)renderer.addWake(contact);
+      renderer.setBody(view);await renderer.render(camera,time,true,1);
+      return {png:capture?canvas.toDataURL():null,view:{...view},dynamics:renderer.dynamics};
+    },
+    setLab: (value)=>applyLab(value,false),
+    teleport,
+    audit: (options) => renderer.audit(options),
   },
-  snapshot: () => ({
-    level: activeLevel?.id,
-    pose: { ...pose },
-    fps: currentFps,
-    resolution: renderer.getResolution(),
-    stats: compiledScene?.stats,
-    bake: renderer.getBakeState(),
-    errors: renderer.getErrors(),
-    isSoftware: renderer.isSoftware,
-  }),
-};
+});

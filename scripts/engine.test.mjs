@@ -4,7 +4,7 @@ import { createMap } from "../src/engine/map-builder.js";
 import { intersectBVH } from "../src/engine/bvh.js";
 import { canStand, movePlayer, sampleFloorHeight, PLAYER_EYE_HEIGHT } from "../src/engine/collision.js";
 import { MATERIAL_PRESETS } from "../src/engine/materials.js";
-import { LEVEL_LIST } from "../levels/index.js";
+import { LEVEL_LIST } from "../levels/v2/index.js";
 
 test("MapBuilder compiles room, arch, cylinder, stairs, and area lights into clean mesh + BVH", () => {
   const m = createMap({ atlasSize: 512 });
@@ -20,15 +20,12 @@ test("MapBuilder compiles room, arch, cylinder, stairs, and area lights into cle
   assert.equal(c.lightCount, 1);
   assert.equal(c.water, null);
 
-  // Shoot ray downward from center toward floor at y=0 -> should hit at t=2.0
   const hitDown = intersectBVH(c.bvh, [0, 2, 2], [0, -1, 0]);
   assert(hitDown && Math.abs(hitDown.t - 2.0) < 1e-3, `Expected floor hit at t=2.0, got ${hitDown?.t}`);
 
-  // Shoot ray through the center of the arch opening (x=0, y=1.5, z=3 -> -Z) -> should pass arch and hit back wall at z=-5 (t=8)
   const hitArchOpen = intersectBVH(c.bvh, [0, 1.5, 3], [0, 0, -1]);
   assert(hitArchOpen && Math.abs(hitArchOpen.t - 8.0) < 1e-3, `Expected ray through arch to hit z=-5 (t=8), got ${hitArchOpen?.t}`);
 
-  // Shoot ray at the solid arch pier (x=-3.5, y=1.5, z=3 -> -Z) -> should hit pier at z=0.5 (t=2.5)
   const hitPier = intersectBVH(c.bvh, [-3.5, 1.5, 3], [0, 0, -1]);
   assert(hitPier && Math.abs(hitPier.t - 2.5) < 1e-3, `Expected ray to hit arch pier at t=2.5, got ${hitPier?.t}`);
 });
@@ -65,7 +62,6 @@ test("Collision blocks walls & columns while smoothly climbing stairs", () => {
   assert.equal(canStand(0, 0, c.collision), false);
   assert.equal(canStand(0, 2.0, c.collision), true);
 
-  // Walk smoothly up the staircase along -Z
   const pose = { x: 3.5, y: PLAYER_EYE_HEIGHT, z: 3.4, footY: 0 };
   for (let i = 0; i < 40; i++) {
     movePlayer(pose, 0, -0.1, c.collision, 0.03);
@@ -75,7 +71,7 @@ test("Collision blocks walls & columns while smoothly climbing stairs", () => {
   assert(pose.footY > 0.85, `Expected smooth step-up height near 1.0, got ${pose.footY}`);
 });
 
-test("Material presets pack cleanly and dry levels incur zero water allocation", () => {
+test("Material presets pack cleanly and dry v2 levels incur zero water allocation", () => {
   assert(Object.keys(MATERIAL_PRESETS).length >= 16);
   const byId = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
 
@@ -91,7 +87,7 @@ test("Material presets pack cleanly and dry levels incur zero water allocation",
   assert.equal(c1.water, null);
 
   const mp = createMap();
-  byId.poolrooms.build(mp);
+  byId["poolrooms-v2"].build(mp);
   const cp = mp.compile();
   assert(cp.water !== null && cp.water.level > 0.2);
 });
