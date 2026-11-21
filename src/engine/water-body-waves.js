@@ -70,6 +70,8 @@ export async function createBodyWaveSolver(device) {
   let anchorMinZ = -BODY_DOMAIN_SIZE * 0.5;
   let lastTime = null;
   let prevBody = null;
+  let smoothVx = 0;
+  let smoothVz = 0;
   let contact = null;
   let impacts = [];
   let activeTimer = 0; // seconds remaining before solver can sleep cleanly when totally calm
@@ -79,6 +81,8 @@ export async function createBodyWaveSolver(device) {
     anchorMinZ = Math.round(centerZ) - BODY_DOMAIN_SIZE * 0.5;
     lastTime = null;
     prevBody = null;
+    smoothVx = 0;
+    smoothVz = 0;
     contact = null;
     impacts = [];
     activeTimer = 0;
@@ -105,7 +109,7 @@ export async function createBodyWaveSolver(device) {
     if (!body) return;
     const cx = anchorMinX + BODY_DOMAIN_SIZE * 0.5;
     const cz = anchorMinZ + BODY_DOMAIN_SIZE * 0.5;
-    if (Math.hypot(body.x - cx, body.z - cz) > 6.5) {
+    if (Math.hypot(body.x - cx, body.z - cz) > 8.2) {
       reset(body.x, body.z);
     }
   }
@@ -113,22 +117,38 @@ export async function createBodyWaveSolver(device) {
   function encodeAdvance(encoder, time, depth, body) {
     recenterIfNeeded(body);
 
+    if (lastTime !== null && time <= lastTime + 1e-6) {
+      return false;
+    }
+
     const initializing = lastTime === null;
     const start = lastTime ?? time;
-    const delta = lastTime === null ? 0.016 : Math.min(0.05, Math.max(0, time - lastTime));
+    const delta = lastTime === null ? 0.016 : Math.min(0.05, Math.max(0.001, time - lastTime));
     lastTime = time;
 
-    let vx = 0;
-    let vz = 0;
-    if (body && prevBody && delta > 1e-4) {
-      vx = (body.x - prevBody.x) / delta;
-      vz = (body.z - prevBody.z) / delta;
-      // Ignore teleports (> 2.6 m/s) as body wake impulses.
-      if (Math.hypot(vx, vz) > 2.6) {
-        vx = 0;
-        vz = 0;
+    let rawVx = 0;
+    let rawVz = 0;
+    if (body && prevBody && delta > 1e-3) {
+      rawVx = (body.x - prevBody.x) / delta;
+      rawVz = (body.z - prevBody.z) / delta;
+      const rawSpeed = Math.hypot(rawVx, rawVz);
+      // Ignore teleports (> 2.4 m/s) and clamp to physical shallow-water wading cap (1.65 m/s).
+      if (rawSpeed > 2.4) {
+        rawVx = 0;
+        rawVz = 0;
+        smoothVx = 0;
+        smoothVz = 0;
+      } else if (rawSpeed > 1.65) {
+        const s = 1.65 / rawSpeed;
+        rawVx *= s;
+        rawVz *= s;
       }
     }
+    const vAlpha = 1 - Math.exp(-delta / 0.06);
+    smoothVx += (rawVx - smoothVx) * vAlpha;
+    smoothVz += (rawVz - smoothVz) * vAlpha;
+    const vx = smoothVx;
+    const vz = smoothVz;
     prevBody = body ? { x: body.x, z: body.z } : null;
 
     const speed = Math.hypot(vx, vz);

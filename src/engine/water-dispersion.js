@@ -40,3 +40,57 @@ export function dispersionPolynomial(depth, degree = 20, dx = 0.0625) {
   }
   return { limit, coefficients: A.map((r) => r[n]), degree, depth, dx };
 }
+
+// Pure local simulation window planner (unit-tested to guarantee zero spurious resets near map edges).
+// Compares player movement delta for teleports and desired clamped window origin vs current origin
+// for smooth walking shifts — never compares player position against a clamped window center!
+export function computeWaterWindowUpdate({
+  focusX,
+  focusZ,
+  lastFocusX,
+  lastFocusZ,
+  winMinX,
+  winMinZ,
+  winSizeX,
+  winSizeZ,
+  mapMinX,
+  mapMinZ,
+  mapSizeX,
+  mapSizeZ,
+  dx,
+  windowReady,
+}) {
+  const clampMin = (targetMin, mMin, mSize, wSize) => {
+    if (wSize >= mSize) return mMin;
+    return Math.max(mMin, Math.min(mMin + mSize - wSize, targetMin));
+  };
+  const snap = (cx, cz) => {
+    const rawX = clampMin(cx - winSizeX * 0.5, mapMinX, mapSizeX, winSizeX);
+    const rawZ = clampMin(cz - winSizeZ * 0.5, mapMinZ, mapSizeZ, winSizeZ);
+    return [
+      mapMinX + Math.round((rawX - mapMinX) / dx) * dx,
+      mapMinZ + Math.round((rawZ - mapMinZ) / dx) * dx,
+    ];
+  };
+
+  const [newMinX, newMinZ] = snap(focusX, focusZ);
+  if (!windowReady) {
+    return { action: "init", minX: newMinX, minZ: newMinZ, shiftX: 0, shiftZ: 0 };
+  }
+
+  const jumpDist = Math.hypot(focusX - lastFocusX, focusZ - lastFocusZ);
+  if (jumpDist > 5.0) {
+    // True teleport / bookmark switch across chambers.
+    return { action: "init", minX: newMinX, minZ: newMinZ, shiftX: 0, shiftZ: 0 };
+  }
+
+  const winDelta = Math.hypot(newMinX - winMinX, newMinZ - winMinZ);
+  if (winDelta >= 2.5) {
+    const shiftX = Math.round((newMinX - winMinX) / dx);
+    const shiftZ = Math.round((newMinZ - winMinZ) / dx);
+    if (shiftX !== 0 || shiftZ !== 0) {
+      return { action: "shift", minX: newMinX, minZ: newMinZ, shiftX, shiftZ };
+    }
+  }
+  return { action: "keep", minX: winMinX, minZ: winMinZ, shiftX: 0, shiftZ: 0 };
+}

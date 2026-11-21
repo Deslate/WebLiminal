@@ -245,7 +245,7 @@ export async function createRenderer(canvas, options = {}) {
       fragment: {
         module: pbrMod,
         entryPoint: "fsSky",
-        targets: [{ format: "rgba16float" }, { format: "rgba16float" }, { format: "rgba8unorm" }],
+        targets: [{ format: "rgba16float" }, { format: "rgba16float" }, { format: "rgba8unorm" }, { format: "rgba16float" }],
       },
       depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" },
       primitive: { topology: "triangle-list" },
@@ -257,7 +257,7 @@ export async function createRenderer(canvas, options = {}) {
       fragment: {
         module: pbrMod,
         entryPoint: "fsMain",
-        targets: [{ format: "rgba16float" }, { format: "rgba16float" }, { format: "rgba8unorm" }],
+        targets: [{ format: "rgba16float" }, { format: "rgba16float" }, { format: "rgba8unorm" }, { format: "rgba16float" }],
       },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
       primitive: { topology: "triangle-list", frontFace: "ccw", cullMode: "back" },
@@ -303,7 +303,7 @@ export async function createRenderer(canvas, options = {}) {
     size: 112,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  const denoiseParamBufs = [1, 2, 4].map((step) => {
+  const denoiseParamBufs = [1, 2, 4, 8].map((step) => {
     const b = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     return { step, buf: b };
   });
@@ -331,9 +331,9 @@ export async function createRenderer(canvas, options = {}) {
     ssrEnabled: true,
     volumetricEnabled: true,
     bloomEnabled: true,
-    targetSpp: options.targetSpp ?? (isSoftware ? 32 : 192),
+    targetSpp: options.targetSpp ?? (isSoftware ? 32 : 96),
     texSize: options.texSize ?? (isSoftware ? 256 : 512),
-    atlasSize: options.atlasSize ?? (isSoftware ? 384 : 1024),
+    atlasSize: options.atlasSize ?? (isSoftware ? 384 : 768),
   };
 
   let width = 960;
@@ -351,6 +351,7 @@ export async function createRenderer(canvas, options = {}) {
       "hdrWaterSrc",
       "gNormalRough",
       "gAlbedoMetal",
+      "sunDirect",
       "depth",
       "ssr",
       "volA",
@@ -443,6 +444,7 @@ export async function createRenderer(canvas, options = {}) {
     rt.ssrCompGroup0 = device.createBindGroup({
       layout: ssrCompPipe.getBindGroupLayout(0),
       entries: [
+        { binding: 0, resource: { buffer: frameUniformBuf } },
         { binding: 1, resource: rt.hdrRawView },
         { binding: 2, resource: rt.gNormalRoughView },
         { binding: 3, resource: rt.gAlbedoMetalView },
@@ -454,6 +456,7 @@ export async function createRenderer(canvas, options = {}) {
       entries: [
         { binding: 0, resource: rt.ssrView },
         { binding: 1, resource: rt.hdrCompositeView },
+        { binding: 2, resource: rt.sunDirectView },
       ],
     });
 
@@ -537,9 +540,10 @@ export async function createRenderer(canvas, options = {}) {
     const hdrWaterSrc = mkTex("hdrWaterSrc", w, h, "rgba16float", GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST);
     const gNormalRough = mkTex("gNormalRough", w, h, "rgba16float", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
     const gAlbedoMetal = mkTex("gAlbedoMetal", w, h, "rgba8unorm", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
+    const sunDirect = mkTex("sunDirect", w, h, "rgba16float", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
     const depth = mkTex("depth", w, h, "depth32float", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
-    const ssrW = isSoftware ? halfW : w;
-    const ssrH = isSoftware ? halfH : h;
+    const ssrW = halfW;
+    const ssrH = halfH;
     const ssr = mkTex("ssr", ssrW, ssrH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const volA = mkTex("volA", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const volB = mkTex("volB", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
@@ -558,6 +562,7 @@ export async function createRenderer(canvas, options = {}) {
       hdrWaterSrc, hdrWaterSrcView: hdrWaterSrc.createView(),
       gNormalRough, gNormalRoughView: gNormalRough.createView(),
       gAlbedoMetal, gAlbedoMetalView: gAlbedoMetal.createView(),
+      sunDirect, sunDirectView: sunDirect.createView(),
       depth, depthView: depth.createView(),
       ssr, ssrView: ssr.createView(),
       volA, volAView: volA.createView(),
@@ -603,14 +608,14 @@ export async function createRenderer(canvas, options = {}) {
 
   function runDenoiseAndDilate(encoder) {
     const wg = Math.ceil(sceneRes.atlasSize / 8);
-    // 1. Resolve accumulated buffers -> A
+    // 1. Resolve accumulated buffers -> B
     let p = encoder.beginComputePass({ label: "lm-resolve" });
     p.setPipeline(resolveLmPipe);
     p.setBindGroup(0, sceneRes.lmResolveGroup);
     p.dispatchWorkgroups(wg, wg);
     p.end();
 
-    // 2. Bilateral pass step 1: A -> B
+    // 2. Bilateral pass step 1: B -> A
     p = encoder.beginComputePass({ label: "lm-bilateral-1" });
     p.setPipeline(bilateralLmPipe);
     p.setBindGroup(0, sceneRes.lmBilateral1Group0);
@@ -618,7 +623,7 @@ export async function createRenderer(canvas, options = {}) {
     p.dispatchWorkgroups(wg, wg);
     p.end();
 
-    // 3. Bilateral pass step 2: B -> A
+    // 3. Bilateral pass step 2: A -> B
     p = encoder.beginComputePass({ label: "lm-bilateral-2" });
     p.setPipeline(bilateralLmPipe);
     p.setBindGroup(0, sceneRes.lmBilateral2Group0);
@@ -626,7 +631,7 @@ export async function createRenderer(canvas, options = {}) {
     p.dispatchWorkgroups(wg, wg);
     p.end();
 
-    // 4. Bilateral pass step 4: A -> B (eliminates low-frequency GI mottling!)
+    // 4. Bilateral pass step 4: B -> A
     p = encoder.beginComputePass({ label: "lm-bilateral-3" });
     p.setPipeline(bilateralLmPipe);
     p.setBindGroup(0, sceneRes.lmBilateral3Group0);
@@ -634,7 +639,15 @@ export async function createRenderer(canvas, options = {}) {
     p.dispatchWorkgroups(wg, wg);
     p.end();
 
-    // 5. Final gutter dilation: B -> A (final sampled lightmap!)
+    // 5. Bilateral pass step 8: A -> B (plane-aware broad smoothing eliminates all shadow mottle!)
+    p = encoder.beginComputePass({ label: "lm-bilateral-4" });
+    p.setPipeline(bilateralLmPipe);
+    p.setBindGroup(0, sceneRes.lmBilateral4Group0);
+    p.setBindGroup(1, sceneRes.lmBilateral4Group1);
+    p.dispatchWorkgroups(wg, wg);
+    p.end();
+
+    // 6. Final gutter dilation: B -> A (final sampled lightmap!)
     p = encoder.beginComputePass({ label: "lm-dilate" });
     p.setPipeline(dilateLmPipe);
     p.setBindGroup(0, sceneRes.lmDilateGroup0);
@@ -843,6 +856,7 @@ export async function createRenderer(canvas, options = {}) {
     device.queue.writeBuffer(denoiseParamBufs[0].buf, 0, new Uint32Array([atlasSize, 1, 0, 0]));
     device.queue.writeBuffer(denoiseParamBufs[1].buf, 0, new Uint32Array([atlasSize, 2, 0, 0]));
     device.queue.writeBuffer(denoiseParamBufs[2].buf, 0, new Uint32Array([atlasSize, 4, 0, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[3].buf, 0, new Uint32Array([atlasSize, 8, 0, 0]));
 
     const lmBakeGroup = device.createBindGroup({
       layout: bakeLmPipe.getBindGroupLayout(0),
@@ -858,6 +872,7 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 8, resource: { buffer: accumDirBuf } },
       ],
     });
+    // Resolve writes B -> bilateral1 (B->A) -> bilateral2 (A->B) -> bilateral3 (B->A) -> bilateral4 (A->B) -> dilate (B->A)
     const lmResolveGroup = device.createBindGroup({
       layout: resolveLmPipe.getBindGroupLayout(0),
       entries: [
@@ -865,8 +880,8 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 1, resource: { buffer: lmPosBuf } },
         { binding: 3, resource: { buffer: accumIrradBuf } },
         { binding: 4, resource: { buffer: accumDirBuf } },
-        { binding: 5, resource: lmIrradAView },
-        { binding: 6, resource: lmDirAView },
+        { binding: 5, resource: lmIrradBView },
+        { binding: 6, resource: lmDirBView },
       ],
     });
     const lmBilateral1Group0 = device.createBindGroup({
@@ -875,15 +890,15 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 0, resource: { buffer: denoiseParamBufs[0].buf } },
         { binding: 1, resource: { buffer: lmPosBuf } },
         { binding: 2, resource: { buffer: lmNormBuf } },
-        { binding: 5, resource: lmIrradBView },
-        { binding: 6, resource: lmDirBView },
+        { binding: 5, resource: lmIrradAView },
+        { binding: 6, resource: lmDirAView },
       ],
     });
     const lmBilateral1Group1 = device.createBindGroup({
       layout: bilateralLmPipe.getBindGroupLayout(1),
       entries: [
-        { binding: 0, resource: lmIrradAView },
-        { binding: 1, resource: lmDirAView },
+        { binding: 0, resource: lmIrradBView },
+        { binding: 1, resource: lmDirBView },
       ],
     });
     const lmBilateral2Group0 = device.createBindGroup({
@@ -892,15 +907,15 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 0, resource: { buffer: denoiseParamBufs[1].buf } },
         { binding: 1, resource: { buffer: lmPosBuf } },
         { binding: 2, resource: { buffer: lmNormBuf } },
-        { binding: 5, resource: lmIrradAView },
-        { binding: 6, resource: lmDirAView },
+        { binding: 5, resource: lmIrradBView },
+        { binding: 6, resource: lmDirBView },
       ],
     });
     const lmBilateral2Group1 = device.createBindGroup({
       layout: bilateralLmPipe.getBindGroupLayout(1),
       entries: [
-        { binding: 0, resource: lmIrradBView },
-        { binding: 1, resource: lmDirBView },
+        { binding: 0, resource: lmIrradAView },
+        { binding: 1, resource: lmDirAView },
       ],
     });
     const lmBilateral3Group0 = device.createBindGroup({
@@ -909,11 +924,28 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 0, resource: { buffer: denoiseParamBufs[2].buf } },
         { binding: 1, resource: { buffer: lmPosBuf } },
         { binding: 2, resource: { buffer: lmNormBuf } },
+        { binding: 5, resource: lmIrradAView },
+        { binding: 6, resource: lmDirAView },
+      ],
+    });
+    const lmBilateral3Group1 = device.createBindGroup({
+      layout: bilateralLmPipe.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: lmIrradBView },
+        { binding: 1, resource: lmDirBView },
+      ],
+    });
+    const lmBilateral4Group0 = device.createBindGroup({
+      layout: bilateralLmPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: denoiseParamBufs[3].buf } },
+        { binding: 1, resource: { buffer: lmPosBuf } },
+        { binding: 2, resource: { buffer: lmNormBuf } },
         { binding: 5, resource: lmIrradBView },
         { binding: 6, resource: lmDirBView },
       ],
     });
-    const lmBilateral3Group1 = device.createBindGroup({
+    const lmBilateral4Group1 = device.createBindGroup({
       layout: bilateralLmPipe.getBindGroupLayout(1),
       entries: [
         { binding: 0, resource: lmIrradAView },
@@ -980,6 +1012,7 @@ export async function createRenderer(canvas, options = {}) {
       lmBilateral1Group0, lmBilateral1Group1,
       lmBilateral2Group0, lmBilateral2Group1,
       lmBilateral3Group0, lmBilateral3Group1,
+      lmBilateral4Group0, lmBilateral4Group1,
       lmDilateGroup0, lmDilateGroup1,
       water,
       stats: compiled.stats,
@@ -993,8 +1026,8 @@ export async function createRenderer(canvas, options = {}) {
       initBakeMs: 0,
     };
 
-    // 3. Initial Fast Lightmap Bake so the very first frame already has full multi-bounce GI!
-    const initSpp = isSoftware ? 4 : 24;
+    // 3. Initial Fast Lightmap Bake so the very first frame already has clean multi-bounce GI!
+    const initSpp = isSoftware ? 4 : 32;
     dispatchBakeBatch(initSpp, true);
     await device.queue.onSubmittedWorkDone();
     bakeState.initBakeMs = Number((performance.now() - tBakeStart).toFixed(1));
@@ -1022,11 +1055,11 @@ export async function createRenderer(canvas, options = {}) {
     if (!rt || !sceneRes) return;
     frameCounter++;
 
-    // Background progressive GI refinement (silently converges to offline quality while playing!)
-    if (bakeState.bakedSpp < bakeState.targetSpp) {
-      const batchSpp = isSoftware ? 4 : 8;
+    // Background progressive GI refinement throttled to every 2nd frame so frame pacing stays silky!
+    if (bakeState.bakedSpp < bakeState.targetSpp && (isSoftware || (frameCounter & 1) === 0)) {
+      const batchSpp = 4;
       const willFinish = bakeState.bakedSpp + batchSpp >= bakeState.targetSpp;
-      const doResolve = willFinish || bakeState.batchIndex % 2 === 0;
+      const doResolve = willFinish || bakeState.batchIndex % 4 === 0;
       dispatchBakeBatch(batchSpp, doResolve);
     }
 
@@ -1038,6 +1071,7 @@ export async function createRenderer(canvas, options = {}) {
     const sunDir = sun ? normalize3(sun.direction) : [0, 1, 0];
     const sunCol = sun ? sun.color : [0, 0, 0];
     const sunInt = sun ? sun.intensity : 0;
+    const flags = (settings.vhsMode ? 1 : 0) | (settings.ssrEnabled ? 0 : 2);
 
     const fBuf = new Float32Array(68);
     fBuf.set(vp, 0);
@@ -1059,7 +1093,7 @@ export async function createRenderer(canvas, options = {}) {
       sceneRes.water ? sceneRes.water.level : -100,
       sceneRes.water ? 1 : 0,
       settings.debugView,
-      settings.vhsMode ? 1 : 0,
+      flags,
     ], 64);
     device.queue.writeBuffer(frameUniformBuf, 0, fBuf);
 
@@ -1075,7 +1109,7 @@ export async function createRenderer(canvas, options = {}) {
       sceneRes.water.advance(enc, dt, elapsed);
     }
 
-    // Pass 1: Sky Backdrop + Opaque Hardware-Rasterized PBR Scene
+    // Pass 1: Sky Backdrop + Opaque Hardware-Rasterized PBR Scene (+ 1-ray Bayer direct sun visibility)
     {
       const rpass = enc.beginRenderPass({
         label: "gbuffer-pbr",
@@ -1083,6 +1117,7 @@ export async function createRenderer(canvas, options = {}) {
           { view: rt.hdrRawView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" },
           { view: rt.gNormalRoughView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" },
           { view: rt.gAlbedoMetalView, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "store" },
+          { view: rt.sunDirectView, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "store" },
         ],
         depthStencilAttachment: {
           view: rt.depthView,
@@ -1103,15 +1138,17 @@ export async function createRenderer(canvas, options = {}) {
       rpass.end();
     }
 
-    // Pass 2: Full-Scene BVH Ray-Traced Glossy Reflections + Bilateral Composite -> hdrComposite
-    if (settings.ssrEnabled && settings.debugView === 0) {
-      let cpass = enc.beginComputePass({ label: "bvh-refl-trace" });
-      cpass.setPipeline(ssrTracePipe);
-      cpass.setBindGroup(0, rt.ssrTraceGroup);
-      cpass.dispatchWorkgroups(Math.ceil(rt.ssrW / 8), Math.ceil(rt.ssrH / 8));
-      cpass.end();
+    // Pass 2: Half-Res 2-Ray BVH Glossy Reflections + Full-Res Bilateral Soft Sun Shadow & Reflection Composite
+    if (settings.debugView === 0) {
+      if (settings.ssrEnabled) {
+        const cpass = enc.beginComputePass({ label: "bvh-refl-trace" });
+        cpass.setPipeline(ssrTracePipe);
+        cpass.setBindGroup(0, rt.ssrTraceGroup);
+        cpass.dispatchWorkgroups(Math.ceil(rt.ssrW / 8), Math.ceil(rt.ssrH / 8));
+        cpass.end();
+      }
 
-      cpass = enc.beginComputePass({ label: "bvh-refl-composite" });
+      const cpass = enc.beginComputePass({ label: "bvh-refl-shadow-composite" });
       cpass.setPipeline(ssrCompPipe);
       cpass.setBindGroup(0, rt.ssrCompGroup0);
       cpass.setBindGroup(1, rt.ssrCompGroup1);
@@ -1121,7 +1158,7 @@ export async function createRenderer(canvas, options = {}) {
       enc.copyTextureToTexture({ texture: rt.hdrRaw }, { texture: rt.hdrComposite }, [width, height, 1]);
     }
 
-    // Pass 3: Optional Physical BVH Water (Snell Refraction, Live Photon Caustics & BVH Mirror Reflections)
+    // Pass 3: Optional Physical BVH Water (Early-Z, Snell Refraction, Live Photon Caustics & BVH Mirror Reflections)
     if (sceneRes.water && settings.debugView === 0) {
       sceneRes.water.render(enc, rt.hdrCompositeView);
     }
@@ -1200,6 +1237,7 @@ export async function createRenderer(canvas, options = {}) {
     const sunDir = sun ? normalize3(sun.direction) : [0, 1, 0];
     const sunCol = sun ? sun.color : [0, 0, 0];
     const sunInt = sun ? sun.intensity : 0;
+    const flags = (settings.vhsMode ? 1 : 0) | (settings.ssrEnabled ? 0 : 2);
     const fBuf = new Float32Array(68);
     fBuf.set(vp, 0);
     fBuf.set(invVp, 16);
@@ -1211,7 +1249,7 @@ export async function createRenderer(canvas, options = {}) {
     fBuf.set([atm.skyHorizon[0], atm.skyHorizon[1], atm.skyHorizon[2], sceneRes.lightCount], 52);
     fBuf.set([atm.fogColor[0], atm.fogColor[1], atm.fogColor[2], atm.fogDensity], 56);
     fBuf.set([atm.heightFogFalloff, settings.volumetricEnabled ? atm.volumetricStrength : 0, settings.bloomEnabled ? atm.bloomStrength : 0, atm.ambientFloor], 60);
-    fBuf.set([sceneRes.water.level, 1, settings.debugView, settings.vhsMode ? 1 : 0], 64);
+    fBuf.set([sceneRes.water.level, 1, settings.debugView, flags], 64);
     device.queue.writeBuffer(frameUniformBuf, 0, fBuf);
     sceneRes.water.prepare(view);
     const enc = device.createCommandEncoder({ label: "water-step-only" });

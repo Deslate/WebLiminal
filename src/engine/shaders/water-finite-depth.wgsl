@@ -157,8 +157,8 @@ fn finish(@builtin(global_invocation_id) id: vec3u) {
     next[i] = vec2f(0.0);
     return;
   }
-  let acceleration = -(shiftedLaplacian(i) - previous[i].y + C.coefficient * rhs[i]) - 0.00009 * lapState(i).y;
-  let v = (state[i].y + P.clock.y * acceleration) * exp(-P.clock.y * 0.055);
+  let acceleration = -(shiftedLaplacian(i) - previous[i].y + C.coefficient * rhs[i]) - 0.00022 * lapState(i).y;
+  let v = (state[i].y + P.clock.y * acceleration) * exp(-P.clock.y * 0.065);
   next[i] = vec2f(state[i].x + P.clock.y * v, v);
 }
 
@@ -211,10 +211,11 @@ fn shiftState(@builtin(global_invocation_id) id: vec3u) {
   let sx = x + i32(round(P.gridF.z));
   let sz = z + i32(round(P.gridF.w));
   if (sx >= 0 && sx < nx && sz >= 0 && sz < nz) {
-    next[i] = state[u32(sz * nx + sx)];
+    // Taper smoothly near the seam so newly uncovered edges never introduce a sharp height cliff.
+    let edgeDist = min(min(sx, nx - 1 - sx), min(sz, nz - 1 - sz));
+    let fade = clamp(f32(edgeDist) / 4.0, 0.0, 1.0);
+    next[i] = state[u32(sz * nx + sx)] * fade;
   } else {
-    let invDx2 = max(P.gridF.y, 1.0);
-    let q = (lapNoise(i) / invDx2) * (0.008 * P.settings.x / 0.018);
-    next[i] = vec2f(q.x, 10.0 * q.y);
+    next[i] = vec2f(0.0);
   }
 }

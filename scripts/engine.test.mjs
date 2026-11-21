@@ -113,28 +113,91 @@ test("MapBuilder ringWall, spiralStairs, pillWindowBay, curvedTube, and handrail
   assert(hitPier && Math.abs(hitPier.t - 2.7) < 0.05, `Expected ray to hit ring pier at t=2.7, got t=${hitPier?.t}`);
 });
 
-import { dispersionPolynomial } from "../src/engine/water-dispersion.js";
+import { dispersionPolynomial, computeWaterWindowUpdate } from "../src/engine/water-dispersion.js";
 import { createWakeTrail, kickImpacts } from "../src/engine/wake-trail.js";
 
 test("v2 finite-depth Chebyshev polynomial fits sqrt(s)*tanh(H*sqrt(s)) accurately across wavenumbers", () => {
   const H = 0.52;
-  const dx = 0.0625;
-  const fit = dispersionPolynomial(H, 24, dx);
-  assert.equal(fit.coefficients.length, 25);
-  for (const s of [0.5, 4, 25, 100, 400, 1100]) {
-    const x = (2 * s) / fit.limit - 1;
-    let t0 = 1, t1 = x;
-    let approx = fit.coefficients[0] * t0 + fit.coefficients[1] * t1;
-    for (let k = 2; k <= fit.degree; k++) {
-      const tk = 2 * x * t1 - t0;
-      approx += fit.coefficients[k] * tk;
-      t0 = t1;
-      t1 = tk;
+  for (const [dx, deg] of [[0.0625, 24], [0.08, 22]]) {
+    const fit = dispersionPolynomial(H, deg, dx);
+    assert.equal(fit.coefficients.length, deg + 1);
+    for (const s of [0.5, 4, 25, 100, 400, Math.min(800, fit.limit * 0.9)]) {
+      const x = (2 * s) / fit.limit - 1;
+      let t0 = 1, t1 = x;
+      let approx = fit.coefficients[0] * t0 + fit.coefficients[1] * t1;
+      for (let k = 2; k <= fit.degree; k++) {
+        const tk = 2 * x * t1 - t0;
+        approx += fit.coefficients[k] * tk;
+        t0 = t1;
+        t1 = tk;
+      }
+      const exact = Math.tanh(H * Math.sqrt(s)) / Math.sqrt(s);
+      assert(approx > 0, `Operator must stay positive at dx=${dx}, s=${s}`);
+      const freqErr = Math.abs(Math.sqrt(approx / exact) - 1);
+      assert(freqErr < 0.025, `Frequency error ${freqErr} too high at dx=${dx}, s=${s}`);
     }
-    const exact = Math.tanh(H * Math.sqrt(s)) / Math.sqrt(s);
-    assert(approx > 0, `Operator must stay positive at s=${s}`);
-    const freqErr = Math.abs(Math.sqrt(approx / exact) - 1);
-    assert(freqErr < 0.025, `Frequency error ${freqErr} too high at s=${s}`);
+  }
+});
+
+test("v2 water window planner never spams resets near map edges, shifts smoothly inland, and only inits on teleport", () => {
+  // Exact Poolrooms v2 water domain: x in [-19.6, 21.8] (41.4 m), z in [-16.2, 12.6] (28.8 m), window = 20.48 m
+  const base = {
+    winSizeX: 20.48,
+    winSizeZ: 20.48,
+    mapMinX: -19.6,
+    mapMinZ: -16.2,
+    mapSizeX: 41.4,
+    mapSizeZ: 28.8,
+    dx: 0.08,
+  };
+
+  // 1. Standing and walking in Spiral Column corner (near z=+11.3 edge, x=+6.8) must NEVER re-initialize!
+  let state = computeWaterWindowUpdate({ ...base, focusX: 6.8, focusZ: 11.3, lastFocusX: 6.8, lastFocusZ: 11.3, winMinX: -19.6, winMinZ: -16.2, windowReady: false });
+  assert.equal(state.action, "init");
+  let winMinX = state.minX, winMinZ = state.minZ;
+  let px = 6.8, pz = 11.3;
+  for (let step = 0; step < 60; step++) {
+    const nx = px - 0.04;
+    const nz = pz - 0.02;
+    const upd = computeWaterWindowUpdate({ ...base, focusX: nx, focusZ: nz, lastFocusX: px, lastFocusZ: pz, winMinX, winMinZ, windowReady: true });
+    assert.notEqual(upd.action, "init", `Unexpected water reset near map edge at step ${step}`);
+    winMinX = upd.minX;
+    winMinZ = upd.minZ;
+    px = nx;
+    pz = nz;
+  }
+
+  // 2. Walking 6 m smoothly across the interior toward Slide & Portholes (west edge x=-16) should emit 'shift' (never 'init')!
+  let shifts = 0;
+  for (let step = 0; step < 220; step++) {
+    const nx = Math.max(-16.0, px - 0.10);
+    const nz = pz;
+    const upd = computeWaterWindowUpdate({ ...base, focusX: nx, focusZ: nz, lastFocusX: px, lastFocusZ: pz, winMinX, winMinZ, windowReady: true });
+    assert.notEqual(upd.action, "init", `Walking smoothly must never reset water (step ${step})`);
+    if (upd.action === "shift") shifts++;
+    winMinX = upd.minX;
+    winMinZ = upd.minZ;
+    px = nx;
+    pz = nz;
+  }
+  assert(shifts >= 3, `Expected smooth window shifts across 20m walk, got ${shifts}`);
+
+  // 3. Standing and jittering at the far west edge (Slide & Portholes x=-16) must stay 'keep'!
+  for (let step = 0; step < 30; step++) {
+    const nx = -16.0 + Math.sin(step * 0.3) * 0.25;
+    const nz = -12.0 + Math.cos(step * 0.3) * 0.25;
+    if (step === 0) {
+      // Teleport to far SW corner first
+      const tp = computeWaterWindowUpdate({ ...base, focusX: nx, focusZ: nz, lastFocusX: px, lastFocusZ: pz, winMinX, winMinZ, windowReady: true });
+      assert.equal(tp.action, "init", "Teleport >5m should re-initialize water window cleanly");
+      winMinX = tp.minX;
+      winMinZ = tp.minZ;
+    } else {
+      const upd = computeWaterWindowUpdate({ ...base, focusX: nx, focusZ: nz, lastFocusX: px, lastFocusZ: pz, winMinX, winMinZ, windowReady: true });
+      assert.equal(upd.action, "keep", `Edge jitter at Slide & Portholes must keep window stable, got ${upd.action}`);
+    }
+    px = nx;
+    pz = nz;
   }
 });
 

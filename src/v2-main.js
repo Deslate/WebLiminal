@@ -64,8 +64,14 @@ let walkBobPhase = 0;
 
 function syncResize() {
   const rect = viewport.getBoundingClientRect();
-  const dprCap = renderer.isSoftware ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
-  renderer.resize(rect.width || 960, rect.height || 540, dprCap);
+  const cssW = Math.max(64, rect.width || 960);
+  const cssH = Math.max(64, rect.height || 540);
+  let dprCap = 1;
+  if (!renderer.isSoftware) {
+    const maxScale = Math.min(1920 / cssW, 1080 / cssH);
+    dprCap = Math.max(0.65, Math.min(window.devicePixelRatio || 1, 1.25, maxScale));
+  }
+  renderer.resize(cssW, cssH, dprCap);
 }
 syncResize();
 addEventListener("resize", syncResize);

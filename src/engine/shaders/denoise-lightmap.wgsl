@@ -70,8 +70,9 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
       let nq = normalize(lmNorm[qIdx].xyz);
       if (dot(n0, nq) < 0.90) { continue; }
       let dp = pq.xyz - p0.xyz;
+      if (abs(dot(dp, n0)) > 0.045) { continue; }
       let dist2 = dot(dp, dp);
-      if (dist2 > 0.36) { continue; }
+      if (dist2 > 0.72) { continue; }
 
       let qI = textureLoad(srcIrrad, q, 0);
       let qD = textureLoad(srcDir, q, 0);
@@ -79,8 +80,8 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
       let lumaDiff = abs(qLuma - cLuma) / max(0.55, cLuma + qLuma);
 
       let kw = kernel[abs(dx)] * kernel[abs(dy)];
-      let pw = exp(-dist2 * 3.8);
-      let lw = exp(-lumaDiff * 1.15);
+      let pw = exp(-dist2 * 2.4);
+      let lw = exp(-lumaDiff * 0.95);
       let w = kw * pw * lw;
 
       sumI += qI.rgb * w;

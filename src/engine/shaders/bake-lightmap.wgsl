@@ -38,10 +38,10 @@ fn traceClosest(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
         let invDet = 1.0 / det;
         let tvec = ro - tri.v0;
         let u = dot(tvec, pvec) * invDet;
-        if (u < 0.0 || u > 1.0) { continue; }
+        if (u < -1e-5 || u > 1.00001) { continue; }
         let qvec = cross(tvec, tri.e1);
         let v = dot(rd, qvec) * invDet;
-        if (v < 0.0 || u + v > 1.0) { continue; }
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-4 && t < res.t) {
           res.t = t;
@@ -100,10 +100,10 @@ fn traceShadow(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         let invDet = 1.0 / det;
         let tvec = ro - tri.v0;
         let u = dot(tvec, pvec) * invDet;
-        if (u < 0.0 || u > 1.0) { continue; }
+        if (u < -1e-5 || u > 1.00001) { continue; }
         let qvec = cross(tvec, tri.e1);
         let v = dot(rd, qvec) * invDet;
-        if (v < 0.0 || u + v > 1.0) { continue; }
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-4 && t < maxT) {
           return true;

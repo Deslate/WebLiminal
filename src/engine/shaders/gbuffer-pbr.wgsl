@@ -14,7 +14,7 @@ struct FrameUniform {
   skyHorizon: vec4f,   // rgb = sky horizon, w = lightCount
   fogColorDens: vec4f, // rgb = fog color, w = fog density
   fogParams: vec4f,    // x = heightFalloff, y = volumetricStrength, z = bloomStrength, w = ambientFloor
-  waterInfo: vec4f,    // x = waterLevel, y = hasWater, z = debugView, w = vhsMode
+  waterInfo: vec4f,    // x = waterLevel, y = hasWater, z = debugView, w = flags (bit0=vhsMode, bit1=ssrDisabled)
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniform;
@@ -50,10 +50,10 @@ fn traceShadowPBR(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         let invDet = 1.0 / det;
         let tvec = ro - tri.v0;
         let u = dot(tvec, pvec) * invDet;
-        if (u < 0.0 || u > 1.0) { continue; }
+        if (u < -1e-5 || u > 1.00001) { continue; }
         let qvec = cross(tvec, tri.e1);
         let v = dot(rd, qvec) * invDet;
-        if (v < 0.0 || u + v > 1.0) { continue; }
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-3 && t < maxT) {
           return true;
@@ -89,24 +89,28 @@ fn ignPBR(p: vec2f) -> f32 {
   return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715))));
 }
 
-// 6-sample Vogel-disk soft shadow over finite solar disc for crisp shadow lines + smooth penumbra.
-fn evalSunVisibility(p: vec3f, nGeom: vec3f, pixelCoord: vec2f) -> f32 {
+// 1-sample strictly periodic 4x4 Bayer-stratified Vogel-disk soft solar visibility ray.
+// Removing per-block random rotation guarantees every 4x4 window spans all 16 disk strata with
+// zero block-to-block variance, so the 5x5 bilateral filter resolves a grain-free penumbra.
+fn evalSunVisibility1(p: vec3f, nGeom: vec3f, pixelCoord: vec2f) -> f32 {
   let sunDir = frame.sunDirRad.xyz;
   if (dot(nGeom, sunDir) <= 0.0) { return 0.0; }
   let origin = p + nGeom * 0.015;
-  let angR = clamp(frame.sunDirRad.w, 0.004, 0.016);
+  let angR = clamp(frame.sunDirRad.w, 0.004, 0.011);
   let basis = orthoBasis(sunDir);
-  let rot = ignPBR(pixelCoord) * 2.0 * PI;
-  var vis = 0.0;
-  for (var s = 0; s < 6; s++) {
-    let r = angR * sqrt((f32(s) + 0.5) / 6.0);
-    let theta = f32(s) * 2.3999632 + rot;
-    let d = normalize(basis * vec3f(r * cos(theta), r * sin(theta), 1.0));
-    if (!traceShadowPBR(origin, d, 160.0)) {
-      vis += 1.0 / 6.0;
-    }
-  }
-  return vis;
+  let bayer = array<u32, 16>(
+    0u, 8u, 2u, 10u,
+    12u, 4u, 14u, 6u,
+    3u, 11u, 1u, 9u,
+    15u, 7u, 13u, 5u,
+  );
+  let pxU = vec2u(pixelCoord);
+  let cell = (pxU.x & 3u) | ((pxU.y & 3u) << 2u);
+  let stratum = bayer[cell];
+  let r = angR * sqrt((f32(stratum) + 0.5) / 16.0);
+  let theta = f32(stratum) * 2.3999632;
+  let d = normalize(basis * vec3f(r * cos(theta), r * sin(theta), 1.0));
+  return select(0.0, 1.0, !traceShadowPBR(origin, d, 160.0));
 }
 
 // --- Sky Backdrop Pass ---
@@ -128,6 +132,7 @@ struct GBufferOut {
   @location(0) hdrColor: vec4f,
   @location(1) gNormalRough: vec4f,
   @location(2) gAlbedoMetal: vec4f,
+  @location(3) sunDirect: vec4f,
 };
 
 @fragment
@@ -144,6 +149,7 @@ fn fsSky(i: SkyVSOut) -> GBufferOut {
   o.hdrColor = vec4f(col, 1.0);
   o.gNormalRough = vec4f(0.0, 0.0, 0.0, 1.0);
   o.gAlbedoMetal = vec4f(0.0);
+  o.sunDirect = vec4f(0.0);
   return o;
 }
 
@@ -338,18 +344,19 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let specRough = clamp(mix(rough, max(rough, 0.24), 1.0 - dirStrength * 0.65), 0.06, 0.96);
   var specular = evalGGXSpec(N, V, domDir, specRough, f0) * irrad * dirStrength * ao * 0.75;
 
-  // 2. Per-Pixel Razor-Sharp Direct Sunlight with 6-Sample Soft BVH Shadows!
+  // 2. Per-Pixel Direct Sunlight (1-ray 4x4 Bayer-stratified visibility -> 5x5 bilateral filter in compositeSSR)
+  var sunDirectRGB = vec3f(0.0);
+  var sunVis = 0.0;
   if (frame.sunColorInt.w > 0.5) {
     let sunDir = frame.sunDirRad.xyz;
     let ndlSun = max(dot(N, sunDir), 0.0);
     if (ndlSun > 0.0 && dot(Ngeom, sunDir) > 0.0) {
-      let sunVis = evalSunVisibility(i.worldPos, Ngeom, i.clipPos.xy);
-      if (sunVis > 0.0) {
-        let sunRad = frame.sunColorInt.rgb * sunVis;
-        let fIn = fresnelSchlick(ndlSun, f0);
-        diffuse += kD * (vec3f(1.0) - fIn) * albedo * sunRad * ndlSun * INV_PI * mix(0.74, 1.0, texAO);
-        specular += evalGGXSpec(N, V, sunDir, max(rough, 0.065), f0) * sunRad;
-      }
+      let sunRad = frame.sunColorInt.rgb;
+      let fIn = fresnelSchlick(ndlSun, f0);
+      let sunDiff = kD * (vec3f(1.0) - fIn) * albedo * sunRad * ndlSun * INV_PI * mix(0.74, 1.0, texAO);
+      let sunSpec = evalGGXSpec(N, V, sunDir, max(rough, 0.065), f0) * sunRad;
+      sunDirectRGB = sunDiff + sunSpec;
+      sunVis = evalSunVisibility1(i.worldPos, Ngeom, i.clipPos.xy);
     }
   }
 
@@ -361,7 +368,7 @@ fn fsMain(i: VSOut) -> GBufferOut {
     let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
     let toL = lCenter - i.worldPos;
     let dist2 = dot(toL, toL);
-    if (dist2 > 360.0 || dist2 < 0.04) { continue; }
+    if (dist2 > 220.0 || dist2 < 0.04) { continue; }
     let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
     let dist = sqrt(dist2);
     let dirL = toL / dist;
@@ -370,7 +377,7 @@ fn fsMain(i: VSOut) -> GBufferOut {
     let atten = (cosL * l.originArea.w) / max(dist2, 0.35);
     let areaSpecRough = clamp(rough + sqrt(l.originArea.w) * 0.075 / max(dist, 0.5), 0.065, 0.92);
     let cand = evalGGXSpec(N, V, dirL, areaSpecRough, f0) * l.radianceCdf.rgb * atten * 0.45;
-    if (dot(cand, vec3f(0.2126, 0.7152, 0.0722)) < 0.016) { continue; }
+    if (dot(cand, vec3f(0.2126, 0.7152, 0.0722)) < 0.028) { continue; }
     if (!traceShadowPBR(shadowOrigin, dirL, max(0.02, dist - 0.08))) {
       specular += cand;
     }
@@ -398,7 +405,7 @@ fn fsMain(i: VSOut) -> GBufferOut {
   }
 
   // Encode reflection tint (white for dielectric glaze, albedo for stainless steel/metal)
-  // and reflection mask for the Multi-Ray BVH GGX Reflection pass.
+  // and reflection mask for the Half-Res BVH GGX Reflection pass.
   let reflTint = mix(vec3f(1.0), albedo, metallic);
   let reflStrength = clamp(max(metallic, coat * (1.0 - cer.inGrout)), 0.0, 1.0);
 
@@ -406,5 +413,6 @@ fn fsMain(i: VSOut) -> GBufferOut {
   o.hdrColor = vec4f(color, 1.0);
   o.gNormalRough = vec4f(N, rough);
   o.gAlbedoMetal = vec4f(reflTint, reflStrength * select(1.0, 0.0, dbg != 0u));
+  o.sunDirect = select(vec4f(sunDirectRGB, sunVis), vec4f(0.0), dbg != 0u);
   return o;
 }

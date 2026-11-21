@@ -43,10 +43,10 @@ fn traceShadowVol(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         let invDet = 1.0 / det;
         let tvec = ro - tri.v0;
         let u = dot(tvec, pvec) * invDet;
-        if (u < 0.0 || u > 1.0) { continue; }
+        if (u < -1e-5 || u > 1.00001) { continue; }
         let qvec = cross(tvec, tri.e1);
         let v = dot(rd, qvec) * invDet;
-        if (v < 0.0 || u + v > 1.0) { continue; }
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-3 && t < maxT) { return true; }
       }
@@ -108,7 +108,7 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
   let maxDist = min(length(toTarget), 34.0);
   let rd = toTarget / max(length(toTarget), 1e-4);
 
-  let steps = 20;
+  let steps = 12;
   let dt = maxDist / f32(steps);
   let jitter = ign(vec2f(gid.xy));
 
@@ -132,10 +132,19 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
       }
     }
 
-    // 2. Stochastic 1-light-per-step BVH-occluded humid mist around bright skylights & windows!
-    // Combined across 16 steps x 3x3 blur = 144 samples, giving silky mist at 1/10th the ray cost.
+    // 2. Power-weighted CDF importance-sampled BVH-occluded humid mist around skylights & windows.
+    // Eliminates variance spikes from uniform picking while cutting raymarch steps by 40%!
     if (lightCount > 0u) {
-      let pickIdx = u32(floor(fract(jitter + f32(s) * 0.61803399) * f32(lightCount))) % lightCount;
+      let xi = fract(jitter + f32(s) * 0.61803399);
+      var pickIdx = lightCount - 1u;
+      for (var k = 0u; k < lightCount; k++) {
+        if (xi <= lights[k].radianceCdf.w) {
+          pickIdx = k;
+          break;
+        }
+      }
+      let prevCdf = select(0.0, lights[pickIdx - 1u].radianceCdf.w, pickIdx > 0u);
+      let pdf = max(0.015, lights[pickIdx].radianceCdf.w - prevCdf);
       let l = lights[pickIdx];
       let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
       let toL = lCenter - p;
@@ -150,7 +159,7 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
         if (cone > 0.04 && !traceShadowVol(p, dirL, max(0.02, dist - 0.12))) {
           let phase = mix(0.28, hgPhase(dot(rd, dirL), 0.52), 0.58);
           let gain = select(0.095, 0.28, isSkylight);
-          inLight += l.radianceCdf.rgb * (l.originArea.w * cone * phase / (dist2 + 1.3)) * gain * f32(lightCount);
+          inLight += l.radianceCdf.rgb * (l.originArea.w * cone * phase / (dist2 + 1.3)) * (gain / pdf);
         }
       }
     }
@@ -163,7 +172,7 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
   textureStore(outVol, vec2i(gid.xy), vec4f(min(scatter, vec3f(5.5)), 1.0));
 }
 
-// 3x3 smooth blur removes interleaved-gradient noise from half-res volumetrics.
+// 5x5 Gaussian blur removes interleaved-gradient noise cleanly from half-res volumetrics.
 @group(1) @binding(0) var srcVol: texture_2d<f32>;
 
 @compute @workgroup_size(8, 8)
@@ -172,11 +181,13 @@ fn blurVolumetric(@builtin(global_invocation_id) gid: vec3u) {
   if (gid.x >= dims.x || gid.y >= dims.y) { return; }
   let c = vec2i(gid.xy);
   let maxC = vec2i(dims) - vec2i(1);
+  let k = array<f32, 3>(6.0, 4.0, 1.0);
   var sum = vec3f(0.0);
   var wSum = 0.0;
-  for (var dy = -1; dy <= 1; dy++) {
-    for (var dx = -1; dx <= 1; dx++) {
-      let w = select(select(1.0, 2.0, dx == 0 || dy == 0), 4.0, dx == 0 && dy == 0);
+  for (var dy = -2; dy <= 2; dy++) {
+    let wy = k[abs(dy)];
+    for (var dx = -2; dx <= 2; dx++) {
+      let w = wy * k[abs(dx)];
       let q = clamp(c + vec2i(dx, dy), vec2i(0), maxC);
       sum += textureLoad(srcVol, q, 0).rgb * w;
       wSum += w;

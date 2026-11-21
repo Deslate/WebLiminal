@@ -58,10 +58,10 @@ fn traceClosestRefl(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
         let invDet = 1.0 / det;
         let tvec = ro - tri.v0;
         let u = dot(tvec, pvec) * invDet;
-        if (u < 0.0 || u > 1.0) { continue; }
+        if (u < -1e-5 || u > 1.00001) { continue; }
         let qvec = cross(tvec, tri.e1);
         let v = dot(rd, qvec) * invDet;
-        if (v < 0.0 || u + v > 1.0) { continue; }
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-3 && t < res.t) {
           res.t = t;
@@ -118,10 +118,10 @@ fn traceShadowRefl(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         let invDet = 1.0 / det;
         let tvec = ro - tri.v0;
         let u = dot(tvec, pvec) * invDet;
-        if (u < 0.0 || u > 1.0) { continue; }
+        if (u < -1e-5 || u > 1.00001) { continue; }
         let qvec = cross(tvec, tri.e1);
         let v = dot(rd, qvec) * invDet;
-        if (v < 0.0 || u + v > 1.0) { continue; }
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-3 && t < maxT) { return true; }
       }
@@ -160,8 +160,13 @@ fn sampleGGXHalf(n: vec3f, rough: f32, u1: f32, u2: f32) -> vec3f {
   return normalize(orthoBasis(n) * hLocal);
 }
 
+fn ignSSR(p: vec2f) -> f32 {
+  return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715))));
+}
+
 fn r2Noise(p: vec2f) -> vec2f {
-  return fract(vec2f(0.7548776662, 0.5698402910) * (p.x + p.y * 19.37) + p * vec2f(0.137, 0.291));
+  // Blue-noise-like Interleaved Gradient Noise eliminates low-frequency diagonal clumping on glossy walls.
+  return vec2f(ignSSR(p), ignSSR(p + vec2f(17.0, 41.0)));
 }
 
 fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
@@ -204,6 +209,13 @@ fn smithG1Refl(nv: f32, a: f32) -> f32 {
 fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
   let dims = textureDimensions(outSSR);
   if (gid.x >= dims.x || gid.y >= dims.y) { return; }
+
+  let flags = u32(frame.waterInfo.w + 0.5);
+  if ((flags & 2u) != 0u) {
+    textureStore(outSSR, vec2i(gid.xy), vec4f(0.0));
+    return;
+  }
+
   let uv = (vec2f(gid.xy) + 0.5) / vec2f(dims);
   let fullDims = vec2i(textureDimensions(hdrIn));
   let px = clamp(vec2i(uv * vec2f(fullDims)), vec2i(0), fullDims - vec2i(1));
@@ -237,15 +249,15 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
   let ro = wp + N * 0.026;
   let baseXi = r2Noise(vec2f(gid.xy));
 
-  // 4-ray deterministic Fibonacci-stratified GGX quadrature:
-  // Eliminates 1-ray confetti sparkles on rough glazed walls while keeping crisp per-tile reflections.
-  let rays = 4u;
+  // 2-ray antithetic stratified deterministic GGX quadrature at half-resolution (8x fewer BVH rays
+  // than full-res 4-ray), reconstructed cleanly by the full-res bilateral edge-stopping composite.
+  let rays = 2u;
   var accumCol = vec3f(0.0);
   var accumW = 0.0;
 
   for (var ri = 0u; ri < rays; ri++) {
-    let u = fract((f32(ri) + 0.5) / f32(rays) + baseXi.x * 0.25) * 0.86;
-    let phi = 2.0 * PI * fract(baseXi.y + f32(ri) * 0.61803398875);
+    let u = ((f32(ri) + baseXi.x) / f32(rays)) * 0.84;
+    let phi = 2.0 * PI * fract(baseXi.y + f32(ri) * 0.5 + 0.25);
     let rad = alpha * sqrt(u / max(1.0 - u, 0.04));
     let H = normalize(frameN * vec3f(rad * cos(phi), rad * sin(phi), 1.0));
     let vh = max(dot(V, H), 0.0);
@@ -287,66 +299,113 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
   textureStore(outSSR, vec2i(gid.xy), vec4f(reflRad, valid * reflMask * roughFade));
 }
 
-// Normal- & depth-guided bilateral filter composite:
-// Smooths 4-ray GGX glossy lobes cleanly WITHOUT bleeding across architectural edges or tile joints.
+fn linearDepthSSR(d: f32) -> f32 {
+  // Exact inverse of buildViewProj (near = 0.06, far = 140.0)
+  return (0.06 * 140.0) / max(140.0 - d * (140.0 - 0.06), 1e-4);
+}
+
+// Combined Full-Resolution Bilateral Composite:
+//   1) 5x5 normal- & linear-depth-guided bilateral filter on 1-ray Bayer-stratified direct sun
+//      visibility (produces silky, grain-free soft penumbras with razor-sharp corner stops!)
+//   2) Normal-, roughness- & linear-depth-guided bilateral upsampling of half-res 2-ray BVH
+//      glossy reflections (preserves architectural corners and tile joints without bleeding).
 @group(1) @binding(0) var ssrTex: texture_2d<f32>;
 @group(1) @binding(1) var outHdr: texture_storage_2d<rgba16float, write>;
+@group(1) @binding(2) var sunDirectTex: texture_2d<f32>;
 
 @compute @workgroup_size(8, 8)
 fn compositeSSR(@builtin(global_invocation_id) gid: vec3u) {
   let dims = textureDimensions(outHdr);
   if (gid.x >= dims.x || gid.y >= dims.y) { return; }
   let px = vec2i(gid.xy);
-  let base = textureLoad(hdrIn, px, 0).rgb;
-  let nr = textureLoad(normalRoughTex, px, 0);
-  let ar = textureLoad(albedoReflTex, px, 0);
-  let rough = nr.w;
+  let fullMax = vec2i(dims) - vec2i(1);
 
-  if (ar.a < 0.08 || rough > 0.54) {
-    textureStore(outHdr, px, vec4f(base, 1.0));
+  var finalCol = textureLoad(hdrIn, px, 0).rgb;
+  let cD = textureLoad(depthTex, px, 0);
+  if (cD >= 0.9999) {
+    textureStore(outHdr, px, vec4f(finalCol, 1.0));
     return;
   }
 
-  let ssrDims = vec2i(textureDimensions(ssrTex));
-  let uv = (vec2f(gid.xy) + 0.5) / vec2f(dims);
-  let centerC = clamp(vec2i(uv * vec2f(ssrDims)), vec2i(0), ssrDims - vec2i(1));
+  let nr = textureLoad(normalRoughTex, px, 0);
+  let ar = textureLoad(albedoReflTex, px, 0);
+  let sunD = textureLoad(sunDirectTex, px, 0);
   let cN = normalize(nr.xyz);
-  let cD = textureLoad(depthTex, px, 0);
+  let cLinD = linearDepthSSR(cD);
+  let rough = nr.w;
 
-  let radius = select(1, 2, rough > 0.09);
-  let stride = select(1, 2, rough > 0.22);
-  let fullMax = vec2i(dims) - vec2i(1);
-  let ssrMax = ssrDims - vec2i(1);
-
-  var colSum = vec3f(0.0);
-  var wSum = 0.0;
-
-  for (var dy = -radius; dy <= radius; dy++) {
-    for (var dx = -radius; dx <= radius; dx++) {
-      let sc = clamp(centerC + vec2i(dx, dy) * stride, vec2i(0), ssrMax);
-      let sUv = (vec2f(sc) + 0.5) / vec2f(ssrDims);
-      let fpx = clamp(vec2i(sUv * vec2f(dims)), vec2i(0), fullMax);
-
-      let sNR = textureLoad(normalRoughTex, fpx, 0);
-      let sD = textureLoad(depthTex, fpx, 0);
-      let sN = normalize(sNR.xyz);
-
-      // Edge-stopping weights preserve tile joints & architectural corners cleanly.
-      let wNorm = pow(max(dot(cN, sN), 0.0), 48.0);
-      let wDepth = exp(-abs(sD - cD) * 900.0);
-      let wRough = exp(-abs(sNR.w - rough) * 14.0);
-      let wSpatial = exp(-f32(dx * dx + dy * dy) / max(1.0, 1.8 + rough * 8.0));
-      let w = wNorm * wDepth * wRough * wSpatial;
-
-      let samp = textureLoad(ssrTex, sc, 0);
-      colSum += samp.rgb * w;
-      wSum += w;
+  // 1. 5x5 Normal- & Linear-Depth-Guided Bilateral Soft Sun Shadow Filter
+  if (max(sunD.r, max(sunD.g, sunD.b)) > 1e-4) {
+    let invDepthScale = 1.0 / max(cLinD * 0.035, 0.045);
+    var visSum = 0.0;
+    var visWSum = 0.0;
+    for (var dy = -2; dy <= 2; dy++) {
+      for (var dx = -2; dx <= 2; dx++) {
+        let spx = clamp(px + vec2i(dx, dy), vec2i(0), fullMax);
+        let sD = textureLoad(depthTex, spx, 0);
+        if (sD >= 0.9999) { continue; }
+        let sNR = textureLoad(normalRoughTex, spx, 0);
+        let sN = normalize(sNR.xyz);
+        let sLinD = linearDepthSSR(sD);
+        let relD = abs(sLinD - cLinD) * invDepthScale;
+        let wNorm = pow(max(dot(cN, sN), 0.0), 32.0);
+        let wDepth = exp(-relD * relD * 2.5);
+        let wSpatial = exp(-f32(dx * dx + dy * dy) * 0.14);
+        let w = wNorm * wDepth * wSpatial;
+        let sVis = textureLoad(sunDirectTex, spx, 0).a;
+        visSum += sVis * w;
+        visWSum += w;
+      }
     }
+    let smoothVis = select(sunD.a, visSum / visWSum, visWSum > 1e-4);
+    finalCol += sunD.rgb * smoothVis;
   }
 
-  let refl = select(vec3f(0.0), colSum / max(wSum, 1e-4), wSum > 1e-4);
+  // 2. Bilateral Upsample of Half-Res 2-Ray BVH Glossy Reflections
+  let flags = u32(frame.waterInfo.w + 0.5);
+  let ssrDisabled = (flags & 2u) != 0u;
+  if (!ssrDisabled && ar.a >= 0.08 && rough <= 0.54) {
+    let ssrDims = vec2i(textureDimensions(ssrTex));
+    let uv = (vec2f(gid.xy) + 0.5) / vec2f(dims);
+    let centerC = clamp(vec2i(uv * vec2f(ssrDims)), vec2i(0), ssrDims - vec2i(1));
 
-  // Energy-conserving glaze/metal reflection addition (diffuse already scaled by 1 - Fv in gbuffer-pbr).
-  let finalCol = base + refl * ar.rgb;
+    let radius = select(1, 2, rough > 0.09);
+    let ssrMax = ssrDims - vec2i(1);
+    let invDepthScale = 1.0 / max(cLinD * 0.04, 0.05);
+
+    var colSum = vec3f(0.0);
+    var wSum = 0.0;
+
+    for (var dy = -radius; dy <= radius; dy++) {
+      for (var dx = -radius; dx <= radius; dx++) {
+        let sc = clamp(centerC + vec2i(dx, dy), vec2i(0), ssrMax);
+        let sUv = (vec2f(sc) + 0.5) / vec2f(ssrDims);
+        let fpx = clamp(vec2i(sUv * vec2f(dims)), vec2i(0), fullMax);
+
+        let sD = textureLoad(depthTex, fpx, 0);
+        if (sD >= 0.9999) { continue; }
+        let sNR = textureLoad(normalRoughTex, fpx, 0);
+        let sN = normalize(sNR.xyz);
+        let sLinD = linearDepthSSR(sD);
+        let relD = abs(sLinD - cLinD) * invDepthScale;
+
+        // Edge-stopping weights preserve tile joints & architectural corners cleanly.
+        let wNorm = pow(max(dot(cN, sN), 0.0), 36.0);
+        let wDepth = exp(-relD * relD * 3.0);
+        let wRough = exp(-abs(sNR.w - rough) * 14.0);
+        let wSpatial = exp(-f32(dx * dx + dy * dy) / max(1.0, 1.6 + rough * 6.5));
+        let w = wNorm * wDepth * wRough * wSpatial;
+
+        let samp = textureLoad(ssrTex, sc, 0);
+        colSum += samp.rgb * w;
+        wSum += w;
+      }
+    }
+
+    let refl = select(vec3f(0.0), colSum / max(wSum, 1e-4), wSum > 1e-4);
+    // Energy-conserving glaze/metal reflection addition (diffuse already scaled by 1 - Fv in gbuffer-pbr).
+    finalCol += refl * ar.rgb;
+  }
+
   textureStore(outHdr, px, vec4f(finalCol, 1.0));
 }

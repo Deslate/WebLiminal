@@ -34,7 +34,6 @@ struct WaterRenderUniform {
 @group(0) @binding(0) var<uniform> frame: FrameUniform;
 @group(0) @binding(1) var<uniform> water: WaterRenderUniform;
 @group(0) @binding(2) var<storage, read> waveState: array<vec2f>;
-@group(0) @binding(3) var sceneDepthTex: texture_depth_2d;
 @group(0) @binding(4) var linSampler: sampler;
 @group(0) @binding(5) var<storage, read> bvhNodes: array<BVHNode>;
 @group(0) @binding(6) var<storage, read> bvhTris: array<BVHTri>;
@@ -166,10 +165,10 @@ fn traceClosestWater(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
         let invDet = 1.0 / det;
         let tvec = ro - tri.v0;
         let u = dot(tvec, pvec) * invDet;
-        if (u < 0.0 || u > 1.0) { continue; }
+        if (u < -1e-5 || u > 1.00001) { continue; }
         let qvec = cross(tvec, tri.e1);
         let v = dot(rd, qvec) * invDet;
-        if (v < 0.0 || u + v > 1.0) { continue; }
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-3 && t < res.t) {
           res.t = t;
@@ -226,10 +225,10 @@ fn traceShadowWater(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         let invDet = 1.0 / det;
         let tvec = ro - tri.v0;
         let u = dot(tvec, pvec) * invDet;
-        if (u < 0.0 || u > 1.0) { continue; }
+        if (u < -1e-5 || u > 1.00001) { continue; }
         let qvec = cross(tvec, tri.e1);
         let v = dot(rd, qvec) * invDet;
-        if (v < 0.0 || u + v > 1.0) { continue; }
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-3 && t < maxT) { return true; }
       }
@@ -330,13 +329,6 @@ fn shadeSurfaceHit(hit: RayHit, hitPos: vec3f, rayDir: vec3f, rayDist: f32, isSu
 
 @fragment
 fn fsWater(i: VSOut) -> @location(0) vec4f {
-  let fullDims = vec2i(textureDimensions(sceneDepthTex));
-  let px = clamp(vec2i(i.clipPos.xy), vec2i(0), fullDims - vec2i(1));
-
-  let sceneDepth = textureLoad(sceneDepthTex, px, 0);
-  // Discard where opaque dry geometry (pillars, decks, walls) is closer than water surface.
-  if (i.clipPos.z >= sceneDepth) { discard; }
-
   let baseP = i.worldPos;
   let toCam0 = frame.cameraPos.xyz - baseP;
   let camDist0 = length(toCam0);
