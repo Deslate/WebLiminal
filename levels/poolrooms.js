@@ -1,57 +1,116 @@
-// Poolrooms level module: data, scene builder and material sources.
-import data from "./poolrooms.json";
-import near from "../materials/porcelain.wgsl?raw";
-import photon from "../materials/photon-porcelain.wgsl?raw";
-import steel from "../materials/stainless-steel.wgsl?raw";
-import { buildPoolroomsScene } from "./poolrooms-scene.js";
-import { createPoolroomsWorld } from "./poolrooms-regions.js";
-
-// Only the new windows use the metal slot; the original shaders stay identical.
-const metal = 'if(h.material==3u){return stainlessSteel(h);}';
-const regionMaterials = {
-  near: steel + near.replace('fn filteredMaterial(h:Hit)->Material {', 'fn filteredMaterial(h:Hit)->Material {' + metal)
-    .replace('fn surfaceBaseMaterial(h:Hit)->Material {', 'fn surfaceBaseMaterial(h:Hit)->Material {' + metal)
-    .replace('fn surfaceMaterial(h:Hit)->Material {', 'fn surfaceMaterial(h:Hit)->Material {' + metal),
-  photon: steel + photon.replace('fn surfaceMaterial(h:Hit)->Material {', 'fn surfaceMaterial(h:Hit)->Material {' + metal),
-};
-// Smaller tonal variation and wider GGX lobes on clean glazed ceramic. The
-// original material source is retained verbatim by the origin window.
-const cleanPorcelain = source => source
-  .replaceAll('.57,.59,.49', '.69,.71,.62')
-  .replaceAll('.80,.78,.66', '.77,.78,.70')
-  .replaceAll('.128,.14,.113', '.23,.25,.20')
-  .replaceAll('.15,.165,.133', '.23,.25,.20')
-  .replaceAll('.17+.10*t.id', '.25+.04*t.id')
-  .replaceAll('.10+.13*t.id', '.22+.06*t.id')
-  .replaceAll('.17+.08*id', '.25+.04*id');
-const refinedMaterials = {near:cleanPorcelain(regionMaterials.near),photon:cleanPorcelain(regionMaterials.photon)};
-// Hue of the white glaze, matched per window to its reference view. The
-// endpoints keep their luminance, so only colour changes, not reflectance.
-const glazeTint = (source, endpoints, [r, b]) => endpoints.reduce((text, e) => {
-  const c = e.split(',').map(Number), t = [c[0] * r, c[1], c[2] * b];
-  const k = (.2126 * c[0] + .7152 * c[1] + .0722 * c[2]) / (.2126 * t[0] + .7152 * t[1] + .0722 * t[2]);
-  return text.replaceAll(e, t.map(v => (v * k).toFixed(3).replace(/^0/, '')).join(','));
-}, source);
-const tinted = (materials, endpoints, tint) => ({ near: glazeTint(materials.near, endpoints, tint), photon: glazeTint(materials.photon, endpoints, tint) });
-const cleanWhite = ['.69,.71,.62', '.77,.78,.70'];
-regionMaterials.columns=tinted(refinedMaterials, cleanWhite, [1.19, .80]);
-regionMaterials.rotunda=refinedMaterials;
-regionMaterials.rings=tinted(regionMaterials, ['.57,.59,.49', '.80,.78,.66'], [1.09, 1.05]);
-const thresholdCeramic=source=>cleanPorcelain(source)
-  .replaceAll('.37,.55,.47','.16,.36,.24')
-  .replaceAll('.52,.65,.57','.26,.44,.31')
-  .replaceAll('.25+.04','.45+.04')
-  .replaceAll('.22+.06','.40+.06')
-  .replaceAll('mineral*.13-streak*.065-waterline*.20','mineral*.05-streak*.02-waterline*.12')
-  .replaceAll('chip*.35*detail','chip*.12*detail')
-  .replaceAll('scaleDeposit*.22','scaleDeposit*.08');
-regionMaterials.threshold=tinted({near:thresholdCeramic(regionMaterials.near),
-  photon:thresholdCeramic(regionMaterials.photon)}, cleanWhite, [1.06, 1.13]);
+// Level 37 · The Poolrooms.
+// Declarative map (~105 lines) automatically receiving baked PBR ceramic tiles,
+// multi-bounce BVH global illumination, volumetric sunbeams, SSR, and interactive caustic water.
 
 export default {
-  ...data,
-  materials: { near, photon },
-  world: createPoolroomsWorld(data, regionMaterials),
-  limits: { apertureWidth: [0.5, 7.8], apertureDepth: [0.5, 9] },
-  scene: (options) => buildPoolroomsScene(data, options),
+  id: "poolrooms",
+  title: "Level 37 · The Poolrooms",
+  subtitle: "SUNLIT COLONNADE",
+  audio: "poolrooms",
+  spawn: { x: 1.6, y: 1.65, z: 9.8, yaw: 0.14, pitch: -0.05 },
+  atmosphere: {
+    fogColor: [0.22, 0.34, 0.34],
+    fogDensity: 0.009,
+    heightFogFalloff: 0.25,
+    skyTop: [0.16, 0.42, 0.78],
+    skyHorizon: [0.72, 0.86, 0.92],
+    sun: {
+      direction: [-0.50, 0.74, 0.44],
+      color: [1.0, 0.94, 0.80],
+      intensity: 16.0,
+      angularRadius: 0.028,
+    },
+    exposure: 0.88,
+    bloomStrength: 0.16,
+    volumetricStrength: 0.48,
+    ambientFloor: 0.008,
+    bounceBoost: 1.25,
+    aoRadius: 1.8,
+  },
+
+  build(m) {
+    // Parametric material variants — zero WGSL required.
+    const creamTile = m.material({ base: "tile_white", tint: [1.02, 1.0, 0.95], roughness: 0.16, coat: 0.85 });
+    const archTile = m.material({ base: "tile_white", tint: [0.98, 1.0, 0.96], roughness: 0.18, coat: 0.80 });
+    const poolFloor = m.material({ base: "tile_pool", tint: [0.85, 1.05, 1.02], roughness: 0.20, coat: 0.70 });
+    const mosaicCol = m.material({ base: "tile_mosaic", tint: [0.96, 1.02, 1.0], roughness: 0.17, coat: 0.78 });
+    const plaster = m.material({ base: "plaster_warm", tint: [1.0, 0.99, 0.96], roughness: 0.84 });
+    const warmCove = m.material({ base: "fluorescent_panel", emissive: [1.0, 0.90, 0.70], emissiveStrength: 9.0 });
+
+    // Main flooded hall shell with two overhead skylight shafts.
+    m.room([-8, 0, -16], [8, 5.8, 13], {
+      floor: poolFloor,
+      ceiling: plaster,
+      walls: creamTile,
+      ceilingHoles: [
+        [-4.0, -1.2, 2.2, 5.2],   // Primary foreground skylight
+        [-2.8, -13.4, 2.8, -8.6], // Far atrium skylight
+      ],
+    });
+
+    // Skylight shaft framing walls rising above roof so daylight pours through clean wells.
+    const addShaft = (x0, z0, x1, z1, y0, y1) => {
+      m.box([x0 - 0.3, y0, z0], [x0, y1, z1], creamTile, { solid: false, priority: 0.5 });
+      m.box([x1, y0, z0], [x1 + 0.3, y1, z1], creamTile, { solid: false, priority: 0.5 });
+      m.box([x0, y0, z0 - 0.3], [x1, y1, z0], creamTile, { solid: false, priority: 0.5 });
+      m.box([x0, y0, z1], [x1, y1, z1 + 0.3], creamTile, { solid: false, priority: 0.5 });
+      m.skylight(x0, z0, x1, z1, y1, { color: [0.76, 0.92, 1.0], intensity: 3.4 });
+    };
+    addShaft(-4.0, -1.2, 2.2, 5.2, 5.8, 7.6);
+    addShaft(-2.8, -13.4, 2.8, -8.6, 5.8, 7.6);
+
+    // Three signature semicircular arch colonnade walls creating deep Poolrooms layering.
+    m.wallWithArch([-8, 0, 1.6], [8, 5.8, 2.45], {
+      material: archTile,
+      arches: [
+        { pos: -5.1, radius: 1.75, spring: 2.45 },
+        { pos: 0.0, radius: 1.95, spring: 2.55 },
+        { pos: 5.1, radius: 1.75, spring: 2.45 },
+      ],
+    });
+
+    m.wallWithArch([-8, 0, -5.8], [8, 5.8, -4.95], {
+      material: archTile,
+      arches: [
+        { pos: -4.2, radius: 1.85, spring: 2.5 },
+        { pos: 4.2, radius: 1.85, spring: 2.5 },
+      ],
+    });
+
+    m.wallWithArch([-8, 0, -11.4], [8, 5.8, -10.6], {
+      material: archTile,
+      arches: [{ pos: 0.0, radius: 2.4, spring: 2.4 }],
+    });
+
+    // Round mosaic-tiled columns flanking the skylight atrium.
+    m.cylinder(-4.2, -2.0, 0, 5.8, 0.52, mosaicCol);
+    m.cylinder(4.2, -2.0, 0, 5.8, 0.52, mosaicCol);
+    m.cylinder(-4.8, -8.5, 0, 5.8, 0.58, mosaicCol);
+    m.cylinder(4.8, -8.5, 0, 5.8, 0.58, mosaicCol);
+
+    // Raised dry tiled promenade deck along the left wall + walkable submerged entry steps.
+    m.box([-8, 0, 2.45], [-5.8, 0.62, 13], creamTile, { walkable: true });
+    m.stairs([-5.8, 0, 5.8], [-4.5, 0.62, 8.6], "-x", 4, poolFloor);
+    // Stainless steel pool ladder descending from deck edge into the sunlit basin.
+    m.poolLadder(-5.68, 4.1, 0.02, 0.62, { facing: "+x", rungs: 3 });
+
+    // Low tiled underwater bench along the right wall.
+    m.box([6.6, 0, 2.45], [8, 0.34, 11.5], poolFloor, { walkable: true });
+
+    // Subtle warm recessed cove lights in the deep rear gallery for atmospheric contrast.
+    m.panelLight([-5.6, 5.79, -13.8], 1.1, 0.5, { color: [1.0, 0.90, 0.70], intensity: 9.0, material: warmCove });
+    m.panelLight([5.6, 5.79, -13.8], 1.1, 0.5, { color: [1.0, 0.90, 0.70], intensity: 9.0, material: warmCove });
+
+    // Interactive finite-depth water covering the entire hall floor.
+    m.water(-8, -16, 8, 13, 0.44, {
+      absorption: [0.58, 0.13, 0.075],
+      waveAmp: 0.014,
+      causticStrength: 1.55,
+      cellSize: 0.08,
+    });
+
+    m.bookmark("Sunlit Colonnade", { x: 1.6, y: 1.65, z: 9.8, yaw: 0.14, pitch: -0.05 });
+    m.bookmark("Atrium Pillars", { x: -4.4, y: 1.65, z: 0.4, yaw: -0.26, pitch: -0.05 });
+    m.bookmark("Promenade Steps", { x: -6.7, y: 2.27, z: 9.5, yaw: -0.52, pitch: -0.14 });
+  },
 };
