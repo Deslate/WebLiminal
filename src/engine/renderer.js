@@ -538,8 +538,8 @@ export async function createRenderer(canvas, options = {}) {
     const gNormalRough = mkTex("gNormalRough", w, h, "rgba16float", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
     const gAlbedoMetal = mkTex("gAlbedoMetal", w, h, "rgba8unorm", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
     const depth = mkTex("depth", w, h, "depth32float", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
-    const ssrW = w;
-    const ssrH = h;
+    const ssrW = isSoftware ? halfW : w;
+    const ssrH = isSoftware ? halfH : h;
     const ssr = mkTex("ssr", ssrW, ssrH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const volA = mkTex("volA", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const volB = mkTex("volB", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
@@ -1063,11 +1063,16 @@ export async function createRenderer(canvas, options = {}) {
     ], 64);
     device.queue.writeBuffer(frameUniformBuf, 0, fBuf);
 
+    // Update local player-tracking water window before recording main frame passes
+    if (sceneRes.water) {
+      sceneRes.water.prepare(view);
+    }
+
     const enc = device.createCommandEncoder({ label: "frame" });
 
-    // Optional interactive water simulation step
+    // Two-solver GPU water step: Chebyshev finite-depth Neumann ripples + FFT dispersive wading wake
     if (sceneRes.water) {
-      sceneRes.water.advance(enc, dt);
+      sceneRes.water.advance(enc, dt, elapsed);
     }
 
     // Pass 1: Sky Backdrop + Opaque Hardware-Rasterized PBR Scene
@@ -1185,6 +1190,35 @@ export async function createRenderer(canvas, options = {}) {
     device.queue.submit([enc.finish()]);
   }
 
+  function stepWater(view, elapsed, dt = 0.016) {
+    if (!sceneRes?.water) return;
+    const aspect = width / Math.max(1, height);
+    const vp = buildViewProj(view, aspect, settings.fov);
+    const invVp = invertMat4(vp);
+    const atm = activeAtmosphere;
+    const sun = atm.sun;
+    const sunDir = sun ? normalize3(sun.direction) : [0, 1, 0];
+    const sunCol = sun ? sun.color : [0, 0, 0];
+    const sunInt = sun ? sun.intensity : 0;
+    const fBuf = new Float32Array(68);
+    fBuf.set(vp, 0);
+    fBuf.set(invVp, 16);
+    fBuf.set([view.x, view.y, view.z, elapsed], 32);
+    fBuf.set([width, height, 1 / width, 1 / height], 36);
+    fBuf.set([sunDir[0], sunDir[1], sunDir[2], sun?.angularRadius ?? 0.025], 40);
+    fBuf.set([sunCol[0] * sunInt, sunCol[1] * sunInt, sunCol[2] * sunInt, sun ? 1 : 0], 44);
+    fBuf.set([atm.skyTop[0], atm.skyTop[1], atm.skyTop[2], settings.exposure], 48);
+    fBuf.set([atm.skyHorizon[0], atm.skyHorizon[1], atm.skyHorizon[2], sceneRes.lightCount], 52);
+    fBuf.set([atm.fogColor[0], atm.fogColor[1], atm.fogColor[2], atm.fogDensity], 56);
+    fBuf.set([atm.heightFogFalloff, settings.volumetricEnabled ? atm.volumetricStrength : 0, settings.bloomEnabled ? atm.bloomStrength : 0, atm.ambientFloor], 60);
+    fBuf.set([sceneRes.water.level, 1, settings.debugView, settings.vhsMode ? 1 : 0], 64);
+    device.queue.writeBuffer(frameUniformBuf, 0, fBuf);
+    sceneRes.water.prepare(view);
+    const enc = device.createCommandEncoder({ label: "water-step-only" });
+    sceneRes.water.advance(enc, dt, elapsed);
+    device.queue.submit([enc.finish()]);
+  }
+
   return {
     isSoftware,
     adapterInfo,
@@ -1193,6 +1227,13 @@ export async function createRenderer(canvas, options = {}) {
     bakeTo,
     resize,
     render,
+    stepWater,
+    setBody(pose) {
+      sceneRes?.water?.setBody(pose);
+    },
+    addFootstep(contact) {
+      sceneRes?.water?.addFootstep(contact);
+    },
     addWake(x, z, radius, strength) {
       sceneRes?.water?.addWake(x, z, radius, strength);
     },

@@ -1,15 +1,23 @@
-// Optional GPU Physical Water Module.
-// Only instantiated when a compiled map declares a water volume. Dry maps
-// allocate zero water buffers, zero wave/caustic shaders, and zero per-frame work.
-// Features:
-//   - Neumann solid-masked 9-point isotropic wave simulation with viscous dissipation & wading wakes
-//   - Real-time GPU photon-refracted water caustics (zero fake sine caustic patterns!)
-//   - Full-scene BVH Snell refraction + exact analytic submerged tiles + full-scene BVH reflections
+// Optional GPU Physical Water Module (v2).
+// Only instantiated when a compiled map declares a water volume. Dry maps allocate
+// zero water buffers, zero wave/caustic shaders, and zero per-frame work.
+//
+// Two-solver physical architecture (ported from v1 into a local player-tracking window):
+//   1) Chebyshev Finite-Depth Neumann Background Solver:
+//      Solves h_tt = -G(L)[g*h + (sigma/rho)*L*h + p/rho] - damping*h_t on the wet-domain
+//      9-point isotropic graph Laplacian, driven by homogeneous band-limited stochastic pressure.
+//   2) 256x256 Spectral FFT Dispersive Body Wake & Footstep Solver:
+//      Integrates exact omega^2 = (g*k + (sigma/rho)*k^3)*tanh(k*H) driven by continuous moving
+//      wading body displacement, alternating collision-resolved footsteps, and kick-splash parcels.
+//   3) Shared C1 Catmull-Rom composition feeding BOTH live GPU photon-refracted caustics and
+//      full-scene BVH Snell refraction + Beer-Lambert optics + full-scene BVH mirror reflections.
 
 import bvhCommonWGSL from "./shaders/bvh-common.wgsl?raw";
-import waterSimWGSL from "./shaders/water-sim.wgsl?raw";
+import waterReconstructWGSL from "./shaders/water-reconstruct.wgsl?raw";
 import waterCausticsWGSL from "./shaders/water-caustics.wgsl?raw";
 import waterRenderWGSL from "./shaders/water-render.wgsl?raw";
+import { createFiniteDepthSolver } from "./water-finite-depth.js";
+import { createBodyWaveSolver, BODY_DX } from "./water-body-waves.js";
 
 export async function createWaterModule(
   device,
@@ -20,74 +28,60 @@ export async function createWaterModule(
   sceneBindings,
   isSoftware = false,
 ) {
-  const sizeX = waterDesc.maxX - waterDesc.minX;
-  const sizeZ = waterDesc.maxZ - waterDesc.minZ;
-  const targetCell = waterDesc.cellSize ?? 0.075;
-  const nx = Math.max(32, Math.min(384, Math.round(sizeX / targetCell)));
-  const nz = Math.max(32, Math.min(384, Math.round(sizeZ / targetCell)));
-  const dx = Math.max(sizeX / nx, sizeZ / nz);
-  const cellCount = nx * nz;
+  const mapMinX = waterDesc.minX;
+  const mapMinZ = waterDesc.minZ;
+  const mapSizeX = waterDesc.maxX - waterDesc.minX;
+  const mapSizeZ = waterDesc.maxZ - waterDesc.minZ;
+  const wl = waterDesc.level;
 
-  // Caustic world-space grid size (higher photon density on hardware GPU)
+  // Player-tracking local simulation window: keeps fine 6.25-8.0 cm physical ripple resolution
+  // even across giant multi-chamber or endless worlds (never stretches one coarse grid over 40+ m!).
+  const dx = isSoftware ? 0.08 : 0.0625;
+  const maxWinCells = isSoftware ? 224 : 320; // 17.92 m (software) or 20.0 m (hardware GPU)
+  const nx = Math.max(64, Math.min(maxWinCells, Math.ceil(mapSizeX / dx)));
+  const nz = Math.max(64, Math.min(maxWinCells, Math.ceil(mapSizeZ / dx)));
+  const winSizeX = nx * dx;
+  const winSizeZ = nz * dx;
+  const cellCount = nx * nz;
+  const pressurePasses = isSoftware ? 2 : 3;
+
+  // Caustic world-space grid spans the exact active local window (~7.5 cm photon density!).
   const causticSize = isSoftware ? 160 : 256;
   const causticSubSamples = isSoftware ? 1 : 2;
 
-  // Rasterize 2D solids intersecting the water level into a Neumann zero-flux solid mask.
-  const solidMaskData = new Uint32Array(cellCount);
-  const wl = waterDesc.level;
-  for (let iz = 0; iz < nz; iz++) {
-    const wz = waterDesc.minZ + ((iz + 0.5) / nz) * sizeZ;
-    for (let ix = 0; ix < nx; ix++) {
-      const wx = waterDesc.minX + ((ix + 0.5) / nx) * sizeX;
-      let solid = 0;
-      for (const s of collision.solids ?? []) {
-        if (s.minY !== undefined && s.minY > wl + 0.08) continue;
-        if (s.maxY !== undefined && s.maxY < wl - 0.08) continue;
-        if (s.kind === "circle") {
-          const rx = wx - s.x;
-          const rz = wz - s.z;
-          if (rx * rx + rz * rz <= s.radius * s.radius) {
-            solid = 1;
-            break;
-          }
-        } else if (wx >= s.minX && wx <= s.maxX && wz >= s.minZ && wz <= s.maxZ) {
-          solid = 1;
-          break;
-        }
-      }
-      solidMaskData[iz * nx + ix] = solid;
-    }
-  }
-
-  const solidMaskBuf = device.createBuffer({
-    label: "water solid mask",
-    size: solidMaskData.byteLength,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  });
-  device.queue.writeBuffer(solidMaskBuf, 0, solidMaskData);
-
-  // Ping-pong wave height/velocity state buffers (vec2f per cell).
-  const stateBufs = [0, 1].map((i) =>
+  // Ping-pong finite-depth height/velocity buffers + combined wave buffer (vec2f per cell).
+  const fdStates = [0, 1].map((i) =>
     device.createBuffer({
-      label: `water wave state ${i}`,
+      label: `water-fd-state-${i}`,
       size: cellCount * 8,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     }),
   );
+  const combinedWaveBuf = device.createBuffer({
+    label: "water-combined-wave",
+    size: cellCount * 8,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  const [finiteDepth, bodyWaves] = await Promise.all([
+    createFiniteDepthSolver(device, { nx, nz, dx, states: fdStates, pressurePasses }),
+    createBodyWaveSolver(device),
+  ]);
+  finiteDepth.setDepth(Math.max(0.2, wl));
 
   // Photon caustic GPU buffers & resolved texture.
   const staticMapBuf = device.createBuffer({
-    label: "water static sun/floor map",
+    label: "water-static-sun-floor",
     size: causticSize * causticSize * 16,
     usage: GPUBufferUsage.STORAGE,
   });
   const causticAccumBuf = device.createBuffer({
-    label: "water caustic atomic accum",
+    label: "water-caustic-accum",
     size: causticSize * causticSize * 12,
     usage: GPUBufferUsage.STORAGE,
   });
   const causticTex = device.createTexture({
-    label: "water caustic irradiance",
+    label: "water-caustic-irradiance",
     size: [causticSize, causticSize],
     format: "rgba16float",
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
@@ -95,45 +89,25 @@ export async function createWaterModule(
   const causticView = causticTex.createView();
 
   // Uniform buffers.
-  const simUniformBuf = device.createBuffer({
-    label: "water sim uniform",
-    size: 16 * 11,
+  const reconstructUniformBuf = device.createBuffer({
+    label: "water-reconstruct-uniform",
+    size: 48,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const causticUniformBuf = device.createBuffer({
-    label: "water caustic uniform",
+    label: "water-caustic-uniform",
     size: 48,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const renderUniformBuf = device.createBuffer({
-    label: "water render uniform",
-    size: 64,
+    label: "water-render-uniform",
+    size: 80,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  // Write static caustic domain uniform.
-  {
-    const cBuf = new ArrayBuffer(48);
-    const cf = new Float32Array(cBuf);
-    const cu = new Uint32Array(cBuf);
-    cf[0] = waterDesc.minX;
-    cf[1] = waterDesc.minZ;
-    cf[2] = 1 / sizeX;
-    cf[3] = 1 / sizeZ;
-    cu[4] = nx;
-    cu[5] = nz;
-    cu[6] = causticSize;
-    cu[7] = causticSubSamples;
-    cf[8] = waterDesc.level;
-    cf[9] = waterDesc.waveAmp ?? 0.018;
-    cf[10] = sizeX;
-    cf[11] = sizeZ;
-    device.queue.writeBuffer(causticUniformBuf, 0, cBuf);
-  }
-
   const quadVerts = new Float32Array([0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0]);
   const quadBuf = device.createBuffer({
-    label: "water surface quad",
+    label: "water-surface-quad",
     size: quadVerts.byteLength,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
@@ -148,15 +122,15 @@ export async function createWaterModule(
     return mod;
   };
 
-  const [simMod, causticMod, renMod] = await Promise.all([
-    compileMod("water-sim", waterSimWGSL),
+  const [reconMod, causticMod, renMod] = await Promise.all([
+    compileMod("water-reconstruct", waterReconstructWGSL),
     compileMod("water-caustics", bvhCommonWGSL + "\n" + waterCausticsWGSL),
     compileMod("water-render", bvhCommonWGSL + "\n" + waterRenderWGSL),
   ]);
 
-  const [simPipeline, bakeStaticPipe, clearCausticPipe, splatCausticPipe, resolveCausticPipe, renderPipeline] =
+  const [reconPipe, bakeStaticPipe, clearCausticPipe, splatCausticPipe, resolveCausticPipe, renderPipeline] =
     await Promise.all([
-      device.createComputePipelineAsync({ label: "water-wave-step", layout: "auto", compute: { module: simMod, entryPoint: "stepWaves" } }),
+      device.createComputePipelineAsync({ label: "water-reconstruct", layout: "auto", compute: { module: reconMod, entryPoint: "reconstruct" } }),
       device.createComputePipelineAsync({ label: "water-static-bake", layout: "auto", compute: { module: causticMod, entryPoint: "bakeWaterStatic" } }),
       device.createComputePipelineAsync({ label: "water-caustic-clear", layout: "auto", compute: { module: causticMod, entryPoint: "clearCaustics" } }),
       device.createComputePipelineAsync({ label: "water-caustic-splat", layout: "auto", compute: { module: causticMod, entryPoint: "splatCaustics" } }),
@@ -178,14 +152,15 @@ export async function createWaterModule(
       }),
     ]);
 
-  const simGroups = [0, 1].map((i) =>
+  const reconGroups = [0, 1].map((i) =>
     device.createBindGroup({
-      layout: simPipeline.getBindGroupLayout(0),
+      layout: reconPipe.getBindGroupLayout(0),
       entries: [
-        { binding: 0, resource: { buffer: simUniformBuf } },
-        { binding: 1, resource: { buffer: solidMaskBuf } },
-        { binding: 2, resource: { buffer: stateBufs[i] } },
-        { binding: 3, resource: { buffer: stateBufs[1 - i] } },
+        { binding: 0, resource: { buffer: reconstructUniformBuf } },
+        { binding: 1, resource: { buffer: fdStates[i] } },
+        { binding: 2, resource: { buffer: finiteDepth.maskBuf } },
+        { binding: 3, resource: { buffer: bodyWaves.field } },
+        { binding: 4, resource: { buffer: combinedWaveBuf } },
       ],
     }),
   );
@@ -209,18 +184,16 @@ export async function createWaterModule(
     ],
   });
 
-  const splatCausticGroups = [0, 1].map((i) =>
-    device.createBindGroup({
-      layout: splatCausticPipe.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: frameUniformBuffer } },
-        { binding: 1, resource: { buffer: causticUniformBuf } },
-        { binding: 4, resource: { buffer: stateBufs[i] } },
-        { binding: 5, resource: { buffer: staticMapBuf } },
-        { binding: 6, resource: { buffer: causticAccumBuf } },
-      ],
-    }),
-  );
+  const splatCausticGroup = device.createBindGroup({
+    layout: splatCausticPipe.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: frameUniformBuffer } },
+      { binding: 1, resource: { buffer: causticUniformBuf } },
+      { binding: 4, resource: { buffer: combinedWaveBuf } },
+      { binding: 5, resource: { buffer: staticMapBuf } },
+      { binding: 6, resource: { buffer: causticAccumBuf } },
+    ],
+  });
 
   const resolveCausticGroup = device.createBindGroup({
     layout: resolveCausticPipe.getBindGroupLayout(0),
@@ -231,116 +204,286 @@ export async function createWaterModule(
     ],
   });
 
-  let ping = 0;
+  // Rasterizes both 2D solid obstacles AND raised walkable decks/terraces above waterLevel
+  // so finite-depth background ripples reflect realistically off walls, columns, AND pool decks!
+  const wetScratch = new Uint8Array(cellCount);
+  function rasterizeWetMask(wMinX, wMinZ) {
+    const solids = collision.solids ?? [];
+    const floors = collision.floors ?? [];
+    for (let iz = 0; iz < nz; iz++) {
+      const wz = wMinZ + (iz + 0.5) * dx;
+      const inZ = wz >= mapMinZ && wz <= mapMinZ + mapSizeZ;
+      for (let ix = 0; ix < nx; ix++) {
+        const wx = wMinX + (ix + 0.5) * dx;
+        if (!inZ || wx < mapMinX || wx > mapMinX + mapSizeX) {
+          wetScratch[iz * nx + ix] = 0;
+          continue;
+        }
+        let blocked = false;
+        for (let sIdx = 0; sIdx < solids.length; sIdx++) {
+          const s = solids[sIdx];
+          if (s.minY !== undefined && s.minY > wl + 0.04) continue;
+          if (s.maxY !== undefined && s.maxY < wl - 0.04) continue;
+          if (s.kind === "circle") {
+            const rx = wx - s.x;
+            const rz = wz - s.z;
+            if (rx * rx + rz * rz <= s.radius * s.radius) {
+              blocked = true;
+              break;
+            }
+          } else if (wx >= s.minX && wx <= s.maxX && wz >= s.minZ && wz <= s.maxZ) {
+            blocked = true;
+            break;
+          }
+        }
+        if (!blocked) {
+          for (let fIdx = 0; fIdx < floors.length; fIdx++) {
+            const fl = floors[fIdx];
+            if (wx < fl.minX || wx > fl.maxX || wz < fl.minZ || wz > fl.maxZ) continue;
+            if (fl.kind === "ramp") {
+              const t = fl.axis === "x"
+                ? (wx - fl.minX) / Math.max(fl.maxX - fl.minX, 1e-4)
+                : (wz - fl.minZ) / Math.max(fl.maxZ - fl.minZ, 1e-4);
+              const fy = fl.y0 + (fl.y1 - fl.y0) * Math.max(0, Math.min(1, t));
+              if (fy >= wl - 0.02) {
+                blocked = true;
+                break;
+              }
+            } else if (fl.y >= wl - 0.02) {
+              blocked = true;
+              break;
+            }
+          }
+        }
+        wetScratch[iz * nx + ix] = blocked ? 0 : 1;
+      }
+    }
+    finiteDepth.uploadWetMask(wetScratch);
+  }
+
+  let winMinX = mapMinX;
+  let winMinZ = mapMinZ;
+  let windowReady = false;
+  let staticBaked = false;
+  let fdActive = 0;
   let simTime = 0;
   let accumDt = 0;
-  let stepCount = 0;
-  let staticBaked = false;
+  let pendingShift = null;
+  let bodyPose = null;
+  let renderGroup = null;
+
   const fixedDt = 1 / 60;
-  const maxWaveSpeed = Math.min(1.25, (0.42 * dx) / fixedDt);
-  const pendingWakes = [];
-  let renderGroups = [null, null];
+  const waveAmp = waterDesc.waveAmp ?? 0.018;
+  const waveSeed = waterDesc.seed ?? 137;
+
+  function clampWinMin(targetMin, mapMin, mapSize, winSize) {
+    if (winSize >= mapSize) return mapMin;
+    return Math.max(mapMin, Math.min(mapMin + mapSize - winSize, targetMin));
+  }
+
+  function snapWindowOrigin(cx, cz) {
+    const rawX = clampWinMin(cx - winSizeX * 0.5, mapMinX, mapSizeX, winSizeX);
+    const rawZ = clampWinMin(cz - winSizeZ * 0.5, mapMinZ, mapSizeZ, winSizeZ);
+    // Snap to exact dx multiples so shifting preserves grid-cell alignment with zero blurring!
+    const snappedX = mapMinX + Math.round((rawX - mapMinX) / dx) * dx;
+    const snappedZ = mapMinZ + Math.round((rawZ - mapMinZ) / dx) * dx;
+    return [snappedX, snappedZ];
+  }
+
+  // Runs fast physical initialization + brief warmup steps when loading or jumping to a new chamber.
+  function initializeWindow(cx, cz) {
+    const [nxMin, nzMin] = snapWindowOrigin(cx, cz);
+    winMinX = nxMin;
+    winMinZ = nzMin;
+    rasterizeWetMask(winMinX, winMinZ);
+    bodyWaves.reset(cx, cz);
+    staticBaked = false;
+    windowReady = true;
+    pendingShift = null;
+    accumDt = 0;
+
+    // 1 init + 16 physical finite-depth steps (~0.27 s) in ONE command buffer so frame 0 already
+    // displays natural, wall-reflected indoor pool ripples with zero startup flatness!
+    const warmSteps = isSoftware ? 14 : 18;
+    const enc = device.createCommandEncoder({ label: "water-fd-init-warm" });
+    finiteDepth.writeParamSlot(0, { time: simTime, dt: fixedDt, amp: waveAmp, seed: waveSeed, forcing: 1 });
+    finiteDepth.encodeInitialize(enc, fdActive, 0);
+    fdActive = 1 - fdActive;
+
+    for (let s = 1; s <= warmSteps; s++) {
+      simTime += fixedDt;
+      finiteDepth.writeParamSlot(s, { time: simTime, dt: fixedDt, amp: waveAmp, seed: waveSeed, forcing: 1 });
+      finiteDepth.encodeStep(enc, fdActive, s);
+      fdActive = 1 - fdActive;
+    }
+    finiteDepth.flushParams(warmSteps + 1);
+    device.queue.submit([enc.finish()]);
+  }
 
   function bindSceneTextures(sceneDepthView) {
-    renderGroups = [0, 1].map((i) =>
-      device.createBindGroup({
-        layout: renderPipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: frameUniformBuffer } },
-          { binding: 1, resource: { buffer: renderUniformBuf } },
-          { binding: 2, resource: { buffer: stateBufs[i] } },
-          { binding: 3, resource: sceneDepthView },
-          { binding: 4, resource: linSampler },
-          { binding: 5, resource: { buffer: sceneBindings.bvhNodeBuf } },
-          { binding: 6, resource: { buffer: sceneBindings.bvhTriBuf } },
-          { binding: 7, resource: { buffer: sceneBindings.materialBuf } },
-          { binding: 8, resource: sceneBindings.lmIrradFinalView },
-          { binding: 9, resource: causticView },
-        ],
-      }),
-    );
+    renderGroup = device.createBindGroup({
+      layout: renderPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: frameUniformBuffer } },
+        { binding: 1, resource: { buffer: renderUniformBuf } },
+        { binding: 2, resource: { buffer: combinedWaveBuf } },
+        { binding: 3, resource: sceneDepthView },
+        { binding: 4, resource: linSampler },
+        { binding: 5, resource: { buffer: sceneBindings.bvhNodeBuf } },
+        { binding: 6, resource: { buffer: sceneBindings.bvhTriBuf } },
+        { binding: 7, resource: { buffer: sceneBindings.materialBuf } },
+        { binding: 8, resource: sceneBindings.lmIrradFinalView },
+        { binding: 9, resource: causticView },
+      ],
+    });
   }
 
-  function addWake(x, z, radius = 0.34, strength = -0.18) {
-    if (x < waterDesc.minX || x > waterDesc.maxX || z < waterDesc.minZ || z > waterDesc.maxZ) return;
-    if (pendingWakes.length >= 8) pendingWakes.shift();
-    pendingWakes.push([x, z, radius, strength]);
+  function setBody(pose) {
+    bodyPose = pose ? { x: pose.x, z: pose.z } : null;
   }
 
-  function writeSimUniform() {
-    const buf = new ArrayBuffer(176);
-    const u = new Uint32Array(buf);
-    const f = new Float32Array(buf);
-    u[0] = nx;
-    u[1] = nz;
-    u[2] = stepCount;
-    u[3] = pendingWakes.length;
-    f[4] = waterDesc.minX;
-    f[5] = waterDesc.minZ;
-    f[6] = dx;
-    f[7] = fixedDt;
-    f[8] = maxWaveSpeed;
-    f[9] = 0.42;
-    f[10] = waterDesc.waveAmp ?? 0.008;
-    f[11] = simTime;
-    for (let i = 0; i < pendingWakes.length; i++) {
-      f.set(pendingWakes[i], 12 + i * 4);
+  function addFootstep(contact) {
+    bodyWaves.addFootstep(contact);
+  }
+
+  function addWake(x, z, _radius = 0.34, strength = -0.18) {
+    if (x < mapMinX || x > mapMinX + mapSizeX || z < mapMinZ || z > mapMinZ + mapSizeZ) return;
+    bodyWaves.addImpulse(x, z, strength);
+  }
+
+  // Called right before main frame CommandEncoder starts: ensures local simulation window covers
+  // the active player/camera location (re-initializing cleanly on teleport, or scheduling a seamless shift).
+  function prepare(focusPos) {
+    const fx = focusPos?.x ?? mapMinX + mapSizeX * 0.5;
+    const fz = focusPos?.z ?? mapMinZ + mapSizeZ * 0.5;
+    if (!windowReady) {
+      initializeWindow(fx, fz);
+      return;
     }
-    device.queue.writeBuffer(simUniformBuf, 0, buf);
-    pendingWakes.length = 0;
-  }
+    const curCX = winMinX + winSizeX * 0.5;
+    const curCZ = winMinZ + winSizeZ * 0.5;
+    const dist = Math.hypot(fx - curCX, fz - curCZ);
+    const canShiftX = winSizeX < mapSizeX - 0.5;
+    const canShiftZ = winSizeZ < mapSizeZ - 0.5;
+    if (!canShiftX && !canShiftZ) return;
 
-  // Pre-warm wave simulation (~72 steps = 1.2s) on load so the very first frame already has
-  // natural, settled organic pool undulations with zero flat-mirror startup artifact!
-  {
-    const warmSteps = 72;
-    for (let w = 0; w < warmSteps; w++) {
-      simTime += fixedDt;
-      stepCount++;
-      writeSimUniform();
-      const enc = device.createCommandEncoder({ label: "water-prewarm" });
-      const pass = enc.beginComputePass();
-      pass.setPipeline(simPipeline);
-      pass.setBindGroup(0, simGroups[ping]);
-      pass.dispatchWorkgroups(Math.ceil(nx / 8), Math.ceil(nz / 8));
-      pass.end();
-      device.queue.submit([enc.finish()]);
-      ping = 1 - ping;
+    if (dist > 6.5) {
+      // Bookmark jump or teleport to another chamber -> re-center & pre-warm cleanly.
+      initializeWindow(fx, fz);
+    } else if (dist > 2.4) {
+      const [newMinX, newMinZ] = snapWindowOrigin(fx, fz);
+      const shiftX = Math.round((newMinX - winMinX) / dx);
+      const shiftZ = Math.round((newMinZ - winMinZ) / dx);
+      if (shiftX !== 0 || shiftZ !== 0) {
+        winMinX = newMinX;
+        winMinZ = newMinZ;
+        rasterizeWetMask(winMinX, winMinZ);
+        staticBaked = false;
+        pendingShift = { shiftX, shiftZ };
+      }
     }
   }
 
-  function advance(encoder, dt) {
-    // Bake static water sun-visibility & floor depth once on first frame (after frameUniform is populated).
-    if (!staticBaked) {
-      const wgC = Math.ceil(causticSize / 8);
-      const p = encoder.beginComputePass({ label: "water-static-bake" });
-      p.setPipeline(bakeStaticPipe);
-      p.setBindGroup(0, bakeStaticGroup);
-      p.dispatchWorkgroups(wgC, wgC);
-      p.end();
-      staticBaked = true;
+  function advance(encoder, dt, elapsed = null) {
+    if (!windowReady) initializeWindow(mapMinX + mapSizeX * 0.5, mapMinZ + mapSizeZ * 0.5);
+
+    // 1. Finite-depth Neumann background wave propagation (with optional seamless window shift).
+    let slot = 0;
+    if (pendingShift) {
+      finiteDepth.writeParamSlot(slot, {
+        time: simTime,
+        dt: fixedDt,
+        amp: waveAmp,
+        seed: waveSeed,
+        forcing: 1,
+        shiftX: pendingShift.shiftX,
+        shiftZ: pendingShift.shiftZ,
+      });
+      finiteDepth.encodeShift(encoder, fdActive, slot);
+      fdActive = 1 - fdActive;
+      slot++;
+      pendingShift = null;
     }
 
     accumDt = Math.min(accumDt + Math.max(0, Math.min(dt, 0.05)), fixedDt * 3);
     let ran = false;
-    while (accumDt >= fixedDt) {
+    while (accumDt >= fixedDt && slot < 8) {
       accumDt -= fixedDt;
       simTime += fixedDt;
-      stepCount++;
-      writeSimUniform();
-
-      const pass = encoder.beginComputePass({ label: "water-wave-sim" });
-      pass.setPipeline(simPipeline);
-      pass.setBindGroup(0, simGroups[ping]);
-      pass.dispatchWorkgroups(Math.ceil(nx / 8), Math.ceil(nz / 8));
-      pass.end();
-      ping = 1 - ping;
+      finiteDepth.writeParamSlot(slot, {
+        time: simTime,
+        dt: fixedDt,
+        amp: waveAmp,
+        seed: waveSeed,
+        forcing: 1,
+      });
+      finiteDepth.encodeStep(encoder, fdActive, slot);
+      fdActive = 1 - fdActive;
+      slot++;
       ran = true;
     }
+    if (slot > 0) finiteDepth.flushParams(slot);
 
-    // Live GPU photon-refracted caustic map update
-    const wgC = Math.ceil(causticSize / 8);
+    // 2. Spectral FFT dispersive body wake + alternating footstep + kick-splash evolution.
+    const bodyClock = elapsed ?? simTime;
+    bodyWaves.encodeAdvance(encoder, bodyClock, wl, bodyPose);
+
+    // 3. Compose finite-depth background + spectral FFT body wake into shared combinedWaveBuf.
     {
+      const rBuf = new ArrayBuffer(48);
+      const rf = new Float32Array(rBuf);
+      const ru = new Uint32Array(rBuf);
+      const anc = bodyWaves.anchor;
+      rf[0] = winMinX;
+      rf[1] = winMinZ;
+      rf[2] = dx;
+      rf[3] = Math.min(fixedDt, Math.max(0, accumDt));
+      rf[4] = anc.minX;
+      rf[5] = anc.minZ;
+      rf[6] = 1 / BODY_DX;
+      rf[7] = bodyWaves.isActive || bodyPose ? 1 : 0;
+      ru[8] = nx;
+      ru[9] = nz;
+      ru[10] = cellCount;
+      ru[11] = 0;
+      device.queue.writeBuffer(reconstructUniformBuf, 0, rBuf);
+
+      const p = encoder.beginComputePass({ label: "water-reconstruct" });
+      p.setPipeline(reconPipe);
+      p.setBindGroup(0, reconGroups[fdActive]);
+      p.dispatchWorkgroups(Math.ceil(cellCount / 128));
+      p.end();
+    }
+
+    // 4. Update local-window caustic domain uniform & trace live GPU photon caustics.
+    {
+      const cBuf = new ArrayBuffer(48);
+      const cf = new Float32Array(cBuf);
+      const cu = new Uint32Array(cBuf);
+      cf[0] = winMinX;
+      cf[1] = winMinZ;
+      cf[2] = 1 / winSizeX;
+      cf[3] = 1 / winSizeZ;
+      cu[4] = nx;
+      cu[5] = nz;
+      cu[6] = causticSize;
+      cu[7] = causticSubSamples;
+      cf[8] = wl;
+      cf[9] = dx;
+      cf[10] = winSizeX;
+      cf[11] = winSizeZ;
+      device.queue.writeBuffer(causticUniformBuf, 0, cBuf);
+
+      const wgC = Math.ceil(causticSize / 8);
+      if (!staticBaked) {
+        const p = encoder.beginComputePass({ label: "water-static-bake" });
+        p.setPipeline(bakeStaticPipe);
+        p.setBindGroup(0, bakeStaticGroup);
+        p.dispatchWorkgroups(wgC, wgC);
+        p.end();
+        staticBaked = true;
+      }
+
       let p = encoder.beginComputePass({ label: "water-caustic-clear" });
       p.setPipeline(clearCausticPipe);
       p.setBindGroup(0, clearCausticGroup);
@@ -349,7 +492,7 @@ export async function createWaterModule(
 
       p = encoder.beginComputePass({ label: "water-caustic-splat" });
       p.setPipeline(splatCausticPipe);
-      p.setBindGroup(0, splatCausticGroups[ping]);
+      p.setBindGroup(0, splatCausticGroup);
       p.dispatchWorkgroups(wgC, wgC);
       p.end();
 
@@ -360,62 +503,76 @@ export async function createWaterModule(
       p.end();
     }
 
-    // Update water render uniforms.
-    const rBuf = new ArrayBuffer(64);
-    const rf = new Float32Array(rBuf);
-    const ru = new Uint32Array(rBuf);
-    rf[0] = waterDesc.minX;
-    rf[1] = waterDesc.minZ;
-    rf[2] = 1 / sizeX;
-    rf[3] = 1 / sizeZ;
-    ru[4] = nx;
-    ru[5] = nz;
-    ru[6] = 0;
-    ru[7] = 0;
-    rf[8] = waterDesc.absorption[0];
-    rf[9] = waterDesc.absorption[1];
-    rf[10] = waterDesc.absorption[2];
-    rf[11] = waterDesc.causticStrength ?? 1.05;
-    rf[12] = waterDesc.level;
-    rf[13] = waterDesc.waveAmp ?? 0.018;
-    rf[14] = sizeX;
-    rf[15] = sizeZ;
-    device.queue.writeBuffer(renderUniformBuf, 0, rBuf);
+    // 5. Update water surface render uniforms (full map quad + active local physics window).
+    {
+      const uBuf = new ArrayBuffer(80);
+      const uf = new Float32Array(uBuf);
+      const uu = new Uint32Array(uBuf);
+      uf[0] = mapMinX;
+      uf[1] = mapMinZ;
+      uf[2] = mapSizeX;
+      uf[3] = mapSizeZ;
+      uf[4] = winMinX;
+      uf[5] = winMinZ;
+      uf[6] = 1 / winSizeX;
+      uf[7] = 1 / winSizeZ;
+      uu[8] = nx;
+      uu[9] = nz;
+      uu[10] = 0;
+      uu[11] = 0;
+      uf[12] = waterDesc.absorption[0];
+      uf[13] = waterDesc.absorption[1];
+      uf[14] = waterDesc.absorption[2];
+      uf[15] = waterDesc.causticStrength ?? 1.15;
+      uf[16] = wl;
+      uf[17] = dx;
+      uf[18] = winSizeX;
+      uf[19] = winSizeZ;
+      device.queue.writeBuffer(renderUniformBuf, 0, uBuf);
+    }
+
     return ran;
   }
 
   function render(encoder, targetHdrView) {
+    if (!renderGroup) return;
     const pass = encoder.beginRenderPass({
       label: "water-surface",
       colorAttachments: [{ view: targetHdrView, loadOp: "load", storeOp: "store" }],
     });
     pass.setPipeline(renderPipeline);
-    pass.setBindGroup(0, renderGroups[ping]);
+    pass.setBindGroup(0, renderGroup);
     pass.setVertexBuffer(0, quadBuf);
     pass.draw(6);
     pass.end();
   }
 
   function destroy() {
-    solidMaskBuf.destroy();
-    stateBufs[0].destroy();
-    stateBufs[1].destroy();
+    finiteDepth.destroy();
+    bodyWaves.destroy();
+    fdStates[0].destroy();
+    fdStates[1].destroy();
+    combinedWaveBuf.destroy();
     staticMapBuf.destroy();
     causticAccumBuf.destroy();
     causticTex.destroy();
-    simUniformBuf.destroy();
+    reconstructUniformBuf.destroy();
     causticUniformBuf.destroy();
     renderUniformBuf.destroy();
     quadBuf.destroy();
   }
 
   return {
-    level: waterDesc.level,
+    level: wl,
     absorption: waterDesc.absorption,
     nx,
     nz,
+    dx,
     bindSceneTextures,
+    setBody,
+    addFootstep,
     addWake,
+    prepare,
     advance,
     render,
     destroy,

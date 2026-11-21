@@ -555,14 +555,14 @@ export class MapBuilder {
       const p01 = [x + radius * c0, y1, z + radius * s0];
 
       if (!inside) {
-        // Outward normal: p10 -> p00 goes CCW viewed from outside (+Y up)
+        // Outward normal: p10 -> p00 goes CCW viewed from outside (+Y up), so 1-f1 -> 1-f0 increases monotonically
         const n0 = [c0, 0, s0];
         const n1 = [c1, 0, s1];
         this.addQuad(p10, p00, p01, p11, matSpec, {
-          u0: f0 * circum, v0: y0, u1: f1 * circum, v1: y1,
+          u0: (1 - f1) * circum, v0: y0, u1: (1 - f0) * circum, v1: y1,
           normals: [n1, n0, n0, n1],
           chart,
-          lu0: f0, lv0: 0, lu1: f1, lv1: 1,
+          lu0: 1 - f1, lv0: 0, lu1: 1 - f0, lv1: 1,
         });
       } else {
         // Inward normal: p00 -> p10 goes right when facing outward from center
@@ -655,14 +655,16 @@ export class MapBuilder {
     for (let i = 0; i < count; i++) {
       const f0 = i / count;
       const f1 = (i + 1) / count;
+      const bot = y0 + i * dy;
       const top = y0 + (i + 1) * dy;
       let sx0 = x0, sx1 = x1, sz0 = z0, sz1 = z1;
-      if (dir === "+x") { sx0 = x0 + f0 * (x1 - x0); sx1 = x0 + f1 * (x1 - x0); }
-      if (dir === "-x") { sx0 = x1 - f1 * (x1 - x0); sx1 = x1 - f0 * (x1 - x0); }
-      if (dir === "+z") { sz0 = z0 + f0 * (z1 - z0); sz1 = z0 + f1 * (z1 - z0); }
-      if (dir === "-z") { sz0 = z1 - f1 * (z1 - z0); sz1 = z1 - f0 * (z1 - z0); }
-      this.box([sx0, y0, sz0], [sx1, top, sz1], matSpec, {
+      if (dir === "+x") { sx0 = x0 + f0 * (x1 - x0); sx1 = x1; }
+      if (dir === "-x") { sx0 = x0; sx1 = x1 - f0 * (x1 - x0); }
+      if (dir === "+z") { sz0 = z0 + f0 * (z1 - z0); sz1 = z1; }
+      if (dir === "-z") { sz0 = z0; sz1 = z1 - f0 * (z1 - z0); }
+      this.box([sx0, bot, sz0], [sx1, top, sz1], matSpec, {
         solid: false,
+        skipFaces: ["ny"],
         priority: opts.priority ?? 1.0,
       });
     }
@@ -1246,9 +1248,16 @@ export class MapBuilder {
       const v0 = cumLen[i], v1 = cumLen[i + 1];
       const lv0 = v0 / Math.max(totalLen, 1e-4);
       const lv1 = v1 / Math.max(totalLen, 1e-4);
-      // Optional subtle fiberglass joint flange bulge every ~2.2m
-      const rA = opts.flanges && i > 0 && i % 7 === 0 ? radius * 1.07 : radius;
-      const rB = opts.flanges && (i + 1) % 7 === 0 ? radius * 1.07 : radius;
+      // Optional subtle smooth fiberglass joint collar every ~2.2m (zero sharp normal kinks)
+      const flangeAt = (idx) => {
+        if (!opts.flanges || idx <= 1) return radius;
+        const m = idx % 9;
+        if (m === 0) return radius * 1.032;
+        if (m === 1 || m === 8) return radius * 1.012;
+        return radius;
+      };
+      const rA = flangeAt(i);
+      const rB = flangeAt(i + 1);
 
       for (let j = 0; j < radialSegs; j++) {
         const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;

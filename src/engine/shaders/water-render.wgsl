@@ -24,10 +24,11 @@ struct FrameUniform {
 };
 
 struct WaterRenderUniform {
-  domain: vec4f,      // x = minX, y = minZ, z = invSizeX, w = invSizeZ
+  mapDomain: vec4f,   // x = mapMinX, y = mapMinZ, z = mapSizeX, w = mapSizeZ
+  simDomain: vec4f,   // x = winMinX, y = winMinZ, z = invWinSizeX, w = invWinSizeZ
   grid: vec4u,        // x = nx, y = nz, z = 0, w = 0
   optics: vec4f,      // rgb = Beer-Lambert absorption coeffs, w = causticStrength
-  surface: vec4f,     // x = waterLevel, y = dx, z = sizeX, w = sizeZ
+  surface: vec4f,     // x = waterLevel, y = dx, z = winSizeX, w = winSizeZ
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniform;
@@ -48,8 +49,8 @@ struct VSOut {
 
 @vertex
 fn vsWater(@location(0) xz: vec2f) -> VSOut {
-  let wx = water.domain.x + xz.x * water.surface.z;
-  let wz = water.domain.y + xz.y * water.surface.w;
+  let wx = water.mapDomain.x + xz.x * water.mapDomain.z;
+  let wz = water.mapDomain.y + xz.y * water.mapDomain.w;
   let wp = vec3f(wx, water.surface.x, wz);
   var o: VSOut;
   o.worldPos = wp;
@@ -84,46 +85,64 @@ fn waveCellH(ix: i32, iz: i32, nx: i32, nz: i32) -> f32 {
   return waveState[u32(cz * nx + cx)].x;
 }
 
-// Smooth Catmull-Rom bicubic surface normal directly from the simulated heightfield!
-fn waterBicubicNormal(wx: f32, wz: f32) -> vec3f {
+// Returns vec3f(height, dhdx, dhdz) directly from the combined finite-depth Neumann +
+// spectral FFT body-wake field inside the active local simulation window, fading smoothly
+// into a fine-scale capillary tail only for far distant tunnel water (>9 m away).
+fn waterBicubicSample(wx: f32, wz: f32) -> vec3f {
   let nx = i32(water.grid.x);
   let nz = i32(water.grid.y);
-  let u = clamp((wx - water.domain.x) * water.domain.z, 0.0, 0.9999);
-  let v = clamp((wz - water.domain.y) * water.domain.w, 0.0, 0.9999);
-  let fx = u * f32(nx - 1);
-  let fz = v * f32(nz - 1);
-  let ix = i32(floor(fx));
-  let iz = i32(floor(fz));
-  let tx = fx - f32(ix);
-  let tz = fz - f32(iz);
+  let dx = max(water.surface.y, 1e-4);
 
-  let wxW = catmullRomW(tx);
-  let wxD = catmullRomDW(tx);
-  let wzW = catmullRomW(tz);
-  let wzD = catmullRomDW(tz);
+  let u = (wx - water.simDomain.x) * water.simDomain.z;
+  let v = (wz - water.simDomain.y) * water.simDomain.w;
+  let margin = min(min(u, 1.0 - u), min(v, 1.0 - v));
+  let winMask = smoothstep(0.0, 0.08, margin);
 
-  var dhdu = 0.0;
-  var dhdv = 0.0;
-  for (var j = -1; j <= 2; j++) {
-    let rW = wzW[j + 1];
-    let rD = wzD[j + 1];
-    var rowVal = 0.0;
-    var rowDerivX = 0.0;
-    for (var i = -1; i <= 2; i++) {
-      let h = waveCellH(ix + i, iz + j, nx, nz);
-      rowVal += h * wxW[i + 1];
-      rowDerivX += h * wxD[i + 1];
+  var hVal = 0.0;
+  var dhdx = 0.0;
+  var dhdz = 0.0;
+
+  if (winMask > 0.001) {
+    let fx = clamp((wx - water.simDomain.x) / dx - 0.5, 0.0, f32(nx - 1) - 1e-4);
+    let fz = clamp((wz - water.simDomain.y) / dx - 0.5, 0.0, f32(nz - 1) - 1e-4);
+    let ix = i32(floor(fx));
+    let iz = i32(floor(fz));
+    let tx = fx - f32(ix);
+    let tz = fz - f32(iz);
+
+    let wxW = catmullRomW(tx);
+    let wxD = catmullRomDW(tx);
+    let wzW = catmullRomW(tz);
+    let wzD = catmullRomDW(tz);
+
+    var dhdu = 0.0;
+    var dhdv = 0.0;
+    for (var j = -1; j <= 2; j++) {
+      let rW = wzW[j + 1];
+      let rD = wzD[j + 1];
+      var rowVal = 0.0;
+      var rowDerivX = 0.0;
+      for (var i = -1; i <= 2; i++) {
+        let h = waveCellH(ix + i, iz + j, nx, nz);
+        rowVal += h * wxW[i + 1];
+        rowDerivX += h * wxD[i + 1];
+      }
+      hVal += rowVal * rW;
+      dhdu += rowDerivX * rW;
+      dhdv += rowVal * rD;
     }
-    dhdu += rowDerivX * rW;
-    dhdv += rowVal * rD;
+    dhdx = dhdu / dx;
+    dhdz = dhdv / dx;
   }
 
-  let cellX = water.surface.z / f32(nx - 1);
-  let cellZ = water.surface.w / f32(nz - 1);
-  let dhdx = dhdu / max(cellX, 1e-4);
-  let dhdz = dhdv / max(cellZ, 1e-4);
-  let bgSlope = evalDispersiveWaveSlope(vec2f(wx, wz), frame.cameraPos.w, max(water.surface.x, 0.35), water.surface.y);
-  return normalize(vec3f(-(dhdx + bgSlope.x), 1.0, -(dhdz + bgSlope.y)));
+  if (winMask < 0.999) {
+    let farSlope = evalFarCapillarySlope(vec2f(wx, wz), frame.cameraPos.w, max(water.surface.x, 0.35), 0.045);
+    dhdx = mix(farSlope.x, dhdx, winMask);
+    dhdz = mix(farSlope.y, dhdz, winMask);
+    hVal *= winMask;
+  }
+
+  return vec3f(hVal, dhdx, dhdz);
 }
 
 fn traceClosestWater(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
@@ -268,20 +287,31 @@ fn shadeSurfaceHit(hit: RayHit, hitPos: vec3f, rayDir: vec3f, rayDist: f32, isSu
     let sunDir = frame.sunDirRad.xyz;
     let ndl = dot(hit.n, sunDir);
     if (ndl > 0.0) {
-      let shadowPos = hitPos + hit.n * 0.015;
-      if (!traceShadowWater(shadowPos, sunDir, 150.0)) {
-        var sunTerm = frame.sunColorInt.rgb * ndl * INV_PI;
-        if (isSubmerged) {
-          // Attenuate incoming sun beam through water depth + focus via real live photon caustics!
-          let subDepth = max(0.0, water.surface.x - hitPos.y);
-          let inTransmit = exp(-water.optics.rgb * (subDepth / max(sunDir.y, 0.25)));
-          let cUV = clamp((hitPos.xz - water.domain.xy) * water.domain.zw, vec2f(0.001), vec2f(0.999));
-          let causticRaw = textureSampleLevel(causticTex, linSampler, cUV, 0.0).rgb;
-          // Blend photon-focused caustics smoothly with flat transmittance (strength controlled by optics.w)
-          let causticMul = mix(vec3f(1.0), causticRaw, clamp(water.optics.w, 0.0, 1.35));
-          sunTerm *= inTransmit * causticMul;
+      if (isSubmerged) {
+        let subDepth = max(0.0, water.surface.x - hitPos.y);
+        let inTransmit = exp(-water.optics.rgb * (subDepth / max(sunDir.y, 0.25)));
+        let cUV = (hitPos.xz - water.simDomain.xy) * water.simDomain.zw;
+        let cMargin = min(min(cUV.x, 1.0 - cUV.x), min(cUV.y, 1.0 - cUV.y));
+        let cMask = smoothstep(0.0, 0.05, cMargin);
+        var sunFactor = vec3f(0.0);
+        if (cMask > 0.5) {
+          // Inside local physics window: causticTex already carries exact water-surface solar
+          // visibility + live Snell-refracted photon focusing (eliminates shadow-edge mismatch!).
+          let causticRaw = max(textureSampleLevel(causticTex, linSampler, clamp(cUV, vec2f(0.002), vec2f(0.998)), 0.0).rgb, vec3f(0.0));
+          let cPow = clamp(water.optics.w, 0.5, 1.6);
+          sunFactor = pow(causticRaw, vec3f(cPow));
+        } else {
+          let shadowPos = hitPos + hit.n * 0.015;
+          if (!traceShadowWater(shadowPos, sunDir, 150.0)) {
+            sunFactor = vec3f(1.0);
+          }
         }
-        col += albedo * kD * sunTerm;
+        col += albedo * kD * frame.sunColorInt.rgb * ndl * INV_PI * inTransmit * sunFactor;
+      } else {
+        let shadowPos = hitPos + hit.n * 0.015;
+        if (!traceShadowWater(shadowPos, sunDir, 150.0)) {
+          col += albedo * kD * frame.sunColorInt.rgb * ndl * INV_PI;
+        }
       }
     }
   }
@@ -307,8 +337,19 @@ fn fsWater(i: VSOut) -> @location(0) vec4f {
   // Discard where opaque dry geometry (pillars, decks, walls) is closer than water surface.
   if (i.clipPos.z >= sceneDepth) { discard; }
 
-  let wp = i.worldPos;
-  let N = waterBicubicNormal(wp.x, wp.z);
+  let baseP = i.worldPos;
+  let toCam0 = frame.cameraPos.xyz - baseP;
+  let camDist0 = length(toCam0);
+  let V0 = toCam0 / max(camDist0, 1e-4);
+
+  // One-step parallax refinement onto actual displaced physical wave height y = waterLevel + h(x, z).
+  let w0 = waterBicubicSample(baseP.x, baseP.z);
+  let tShift = clamp(w0.x / max(abs(V0.y), 0.18), -0.18, 0.18);
+  let evalXZ = baseP.xz + V0.xz * tShift;
+  let w = waterBicubicSample(evalXZ.x, evalXZ.y);
+  let wp = vec3f(evalXZ.x, water.surface.x + w.x, evalXZ.y);
+  let N = normalize(vec3f(-w.y, 1.0, -w.z));
+
   let toCam = frame.cameraPos.xyz - wp;
   let camDist = length(toCam);
   let V = toCam / max(camDist, 1e-4);
@@ -326,26 +367,24 @@ fn fsWater(i: VSOut) -> @location(0) vec4f {
   let refrOrigin = wp + vec3f(0.0, -0.004, 0.0);
   let subHit = traceClosestWater(refrOrigin, T, 24.0);
   var underwater = vec3f(0.0);
-  var subLen = 0.0;
   if (subHit.hit) {
-    subLen = subHit.t;
+    let subLen = subHit.t;
     let subPos = refrOrigin + T * subHit.t;
     let subCol = shadeSurfaceHit(subHit, subPos, T, camDist + subHit.t, true);
     // Exact Beer-Lambert physical RGB water absorption
     let transmit = exp(-water.optics.rgb * subLen);
-    // Subtle light-proportional volume scattering inside sunlit water (zero glow in dark pools!)
+    // Light-proportional warm emerald-jade volume scattering (zero glow in shadowed pools!)
     let subLuma = dot(subCol, vec3f(0.2126, 0.7152, 0.0722));
-    let inScatter = vec3f(0.010, 0.048, 0.045) * (1.0 - transmit) * min(subLuma * 0.85, 1.1);
+    let inScatter = vec3f(0.008, 0.040, 0.028) * (1.0 - transmit) * min(subLuma * 0.72, 0.95);
     underwater = subCol * transmit + inScatter;
   }
 
   // 3. TRUE Full-Scene BVH Mirror Reflection Ray!
   var R = reflect(-V, N);
   if (R.y < 0.005) {
-    // Clamp ultra-grazing downward reflections smoothly onto horizontal plane
     R = normalize(vec3f(R.x, 0.008, R.z));
   }
-  let reflOrigin = wp + vec3f(0.0, 0.008, 0.0);
+  let reflOrigin = wp + vec3f(0.0, 0.010, 0.0);
   let reflHit = traceClosestWater(reflOrigin, R, 90.0);
   var reflCol: vec3f;
   if (reflHit.hit) {

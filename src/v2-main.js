@@ -7,6 +7,7 @@ import { createMap } from "./engine/map-builder.js";
 import { createRenderer } from "./engine/renderer.js";
 import { movePlayer, sampleFloorHeight, PLAYER_EYE_HEIGHT } from "./engine/collision.js";
 import { createAudioEngine } from "./engine/audio.js";
+import { createWakeTrail } from "./engine/wake-trail.js";
 
 const viewport = document.getElementById("viewport");
 const canvas = document.createElement("canvas");
@@ -58,9 +59,8 @@ let loadingLevel = false;
 let paused = false;
 
 const pose = { x: 0, y: PLAYER_EYE_HEIGHT, z: 0, yaw: 0, pitch: 0, footY: 0 };
+const wakeTrail = createWakeTrail();
 let walkBobPhase = 0;
-let wakeDistAccum = 0;
-let wakeSide = 1;
 
 function syncResize() {
   const rect = viewport.getBoundingClientRect();
@@ -118,6 +118,7 @@ function setPose(spawn) {
   const floorY = compiledScene ? sampleFloorHeight(pose.x, pose.z, compiledScene.collision) : 0;
   pose.footY = floorY;
   pose.y = spawn.y ?? floorY + PLAYER_EYE_HEIGHT;
+  wakeTrail.reset();
 }
 
 function jumpToBookmark(index) {
@@ -283,42 +284,39 @@ function tick(now) {
   if (paused || loadingLevel || !compiledScene) return;
   elapsed += dt;
 
-  // Player movement + stair elevation + live water wake impulses
+  // Player movement + stair elevation + real-time dispersive wading wake & footstep physics
   let forward = Number(keys.has("KeyW") || keys.has("ArrowUp")) - Number(keys.has("KeyS") || keys.has("ArrowDown"));
   let strafe = Number(keys.has("KeyD") || keys.has("ArrowRight")) - Number(keys.has("KeyA") || keys.has("ArrowLeft"));
   const len = Math.hypot(forward, strafe);
   const water = compiledScene.water;
-  const inWater = Boolean(water && pose.footY < water.level - 0.05);
+  const inWater = Boolean(water && pose.footY < water.level - 0.04);
   const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
-  const speed = inWater ? (sprint ? 2.4 : 1.45) : sprint ? 4.4 : 2.55;
+  // v1-calibrated wading speeds (<= 1.6 m/s physical near-critical cap in shallow water).
+  const speed = inWater ? (sprint ? 1.55 : 0.85) : sprint ? 4.4 : 2.55;
 
-  const beforeX = pose.x;
-  const beforeZ = pose.z;
+  const beforePose = { ...pose };
   if (len > 0) {
     forward /= len;
     strafe /= len;
     const dx = (-Math.sin(pose.yaw) * forward + Math.cos(pose.yaw) * strafe) * speed * dt;
     const dz = (-Math.cos(pose.yaw) * forward - Math.sin(pose.yaw) * strafe) * speed * dt;
     movePlayer(pose, dx, dz, compiledScene.collision, dt);
-    walkBobPhase += dt * (inWater ? 6.2 : sprint ? 11.5 : 8.2);
+    walkBobPhase += dt * (inWater ? 5.6 : sprint ? 11.5 : 8.2);
   }
 
-  const moved = Math.hypot(pose.x - beforeX, pose.z - beforeZ);
-  if (inWater && moved > 1e-4) {
-    wakeDistAccum += moved;
-    if (wakeDistAccum >= 0.22) {
-      wakeDistAccum = 0;
-      wakeSide = -wakeSide;
-      const sideX = Math.cos(pose.yaw) * 0.14 * wakeSide;
-      const sideZ = -Math.sin(pose.yaw) * 0.14 * wakeSide;
-      renderer.addWake(pose.x + sideX, pose.z + sideZ, 0.36, -0.22);
+  if (water) {
+    const nowInWater = pose.footY < water.level - 0.04;
+    renderer.setBody(nowInWater ? pose : null);
+    const contact = wakeTrail.advance(beforePose, pose, elapsed, water.level);
+    if (contact) {
+      renderer.addFootstep(contact);
     }
   }
 
   audio.update(elapsed, len > 0, inWater);
 
   // Subtle vertical walking head-bob (zero when standing still)
-  const bob = len > 0 ? Math.sin(walkBobPhase) * 0.022 : 0;
+  const bob = len > 0 ? Math.sin(walkBobPhase) * 0.020 : 0;
   const renderPose = { ...pose, y: pose.y + bob };
   renderer.render(renderPose, elapsed, dt);
 
@@ -363,10 +361,12 @@ window.__WEBLIMINAL__ = {
     paused = true;
     if (targetSpp) await renderer.bakeTo(targetSpp);
     if (compiledScene?.water) {
-      renderer.addWake(pose.x - Math.sin(pose.yaw) * 2.2, pose.z - Math.cos(pose.yaw) * 2.2, 0.42, -0.22);
+      const inW = pose.footY < compiledScene.water.level - 0.04;
+      renderer.setBody(inW ? pose : null);
     }
     await new Promise((r) => requestAnimationFrame(r));
-    renderer.render(pose, elapsed + 1.2, 0.032);
+    elapsed += 0.032;
+    renderer.render(pose, elapsed, 0.032);
     await renderer.waitIdle();
     return {
       level: activeLevel?.id,
@@ -374,6 +374,42 @@ window.__WEBLIMINAL__ = {
       resolution: renderer.getResolution(),
       stats: compiledScene?.stats,
       bake: renderer.getBakeState(),
+      errors: renderer.getErrors(),
+    };
+  },
+  // Steps real collision-resolved wading locomotion to physically evolve the FFT Kelvin V-wake,
+  // alternating footsteps, and ballistic kick splashes, then renders the requested view pose.
+  async walkWading({ distance = 3.0, speed = 0.95, dt = 1 / 30, targetSpp = null, observerPose = null } = {}) {
+    paused = true;
+    if (targetSpp) await renderer.bakeTo(targetSpp);
+    const water = compiledScene?.water;
+    const steps = Math.max(1, Math.round(distance / (speed * dt)));
+    let footsteps = 0;
+    for (let s = 0; s < steps; s++) {
+      elapsed += dt;
+      const before = { ...pose };
+      const dx = -Math.sin(pose.yaw) * speed * dt;
+      const dz = -Math.cos(pose.yaw) * speed * dt;
+      movePlayer(pose, dx, dz, compiledScene.collision, dt);
+      if (water) {
+        renderer.setBody(pose.footY < water.level - 0.04 ? pose : null);
+        const contact = wakeTrail.advance(before, pose, elapsed, water.level);
+        if (contact) {
+          renderer.addFootstep(contact);
+          footsteps++;
+        }
+      }
+      renderer.stepWater(pose, elapsed, dt);
+      if ((s & 15) === 15) await renderer.waitIdle();
+    }
+    const finalView = observerPose ? { ...pose, ...observerPose } : { ...pose };
+    elapsed += dt;
+    renderer.render(finalView, elapsed, dt);
+    await renderer.waitIdle();
+    return {
+      steps,
+      footsteps,
+      finalPose: { ...pose },
       errors: renderer.getErrors(),
     };
   },

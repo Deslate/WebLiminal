@@ -113,3 +113,52 @@ test("MapBuilder ringWall, spiralStairs, pillWindowBay, curvedTube, and handrail
   assert(hitPier && Math.abs(hitPier.t - 2.7) < 0.05, `Expected ray to hit ring pier at t=2.7, got t=${hitPier?.t}`);
 });
 
+import { dispersionPolynomial } from "../src/engine/water-dispersion.js";
+import { createWakeTrail, kickImpacts } from "../src/engine/wake-trail.js";
+
+test("v2 finite-depth Chebyshev polynomial fits sqrt(s)*tanh(H*sqrt(s)) accurately across wavenumbers", () => {
+  const H = 0.52;
+  const dx = 0.0625;
+  const fit = dispersionPolynomial(H, 24, dx);
+  assert.equal(fit.coefficients.length, 25);
+  for (const s of [0.5, 4, 25, 100, 400, 1100]) {
+    const x = (2 * s) / fit.limit - 1;
+    let t0 = 1, t1 = x;
+    let approx = fit.coefficients[0] * t0 + fit.coefficients[1] * t1;
+    for (let k = 2; k <= fit.degree; k++) {
+      const tk = 2 * x * t1 - t0;
+      approx += fit.coefficients[k] * tk;
+      t0 = t1;
+      t1 = tk;
+    }
+    const exact = Math.tanh(H * Math.sqrt(s)) / Math.sqrt(s);
+    assert(approx > 0, `Operator must stay positive at s=${s}`);
+    const freqErr = Math.abs(Math.sqrt(approx / exact) - 1);
+    assert(freqErr < 0.025, `Frequency error ${freqErr} too high at s=${s}`);
+  }
+});
+
+test("v2 wading wake trail fires alternating footsteps in water and generates ballistic kick splashes", () => {
+  const trail = createWakeTrail();
+  const contacts = [];
+  let x = 0, z = 0;
+  for (let i = 1; i <= 45; i++) {
+    const prev = { x, z, footY: 0 };
+    z -= 0.05; // 1.5 m/s at 30 Hz
+    const next = { x, z, footY: 0 };
+    const c = trail.advance(prev, next, i / 30, 0.52);
+    if (c) contacts.push(c);
+  }
+  assert(contacts.length >= 3, `Expected >= 3 wading footsteps, got ${contacts.length}`);
+  assert(Math.sign(contacts[0].x) === -Math.sign(contacts[1].x), "Footsteps should alternate left and right");
+  const splashes = kickImpacts(contacts[0]);
+  assert.equal(splashes.length, 6);
+  for (const sp of splashes) {
+    assert(sp.time > contacts[0].time && sp.momentum > 0);
+  }
+  // Dry floor must never fire wading footsteps
+  trail.reset();
+  assert.equal(trail.advance({ x: 0, z: 0, footY: 0.64 }, { x: 0, z: -0.2, footY: 0.64 }, 1.0, 0.52), null);
+});
+
+

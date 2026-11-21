@@ -5,10 +5,10 @@
 export const MATERIAL_PRESETS = {
   tile_white: {
     presetId: 0,
-    albedo: [0.85, 0.86, 0.82],
-    roughness: 0.13,
+    albedo: [0.76, 0.755, 0.675], // authentic warm architectural alabaster porcelain (matches v1 porcelain.wgsl)
+    roughness: 0.145,
     metallic: 0.0,
-    coat: 0.92,
+    coat: 0.88,
     tileScale: 1.25, // 5x5 tiles per meter (200 mm architectural porcelain)
     pomDepth: 0.004,
     emissive: [0, 0, 0],
@@ -18,10 +18,10 @@ export const MATERIAL_PRESETS = {
   },
   tile_pool: {
     presetId: 1,
-    albedo: [0.80, 0.83, 0.80], // neutral light ceramic so real Beer-Lambert optics produce water color
-    roughness: 0.14,
+    albedo: [0.73, 0.745, 0.675], // warm neutral pool porcelain; emerald-jade hue arises purely from Beer-Lambert water optics
+    roughness: 0.16,
     metallic: 0.0,
-    coat: 0.88,
+    coat: 0.84,
     tileScale: 1.25,
     pomDepth: 0.004,
     emissive: [0, 0, 0],
@@ -31,10 +31,10 @@ export const MATERIAL_PRESETS = {
   },
   tile_mosaic: {
     presetId: 2,
-    albedo: [0.83, 0.85, 0.81],
-    roughness: 0.14,
+    albedo: [0.75, 0.75, 0.675],
+    roughness: 0.155,
     metallic: 0.0,
-    coat: 0.90,
+    coat: 0.86,
     tileScale: 1.0, // 8x8 fine mosaic tiles per meter (125 mm)
     pomDepth: 0.003,
     emissive: [0, 0, 0],

@@ -279,27 +279,34 @@ fn fsMain(i: VSOut) -> GBufferOut {
 
   var nXY = nh.rg * 2.0 - 1.0;
 
-  // Analytic razor-sharp glazed ceramic tile evaluation (infinite-resolution grout, bevels & per-tile 3D tilt!).
-  let cer = evalAnalyticCeramic(i.uv, m, ar.rgb, ar.a, fwUV2);
+  // Flat architectural glazed porcelain evaluation with 4-tap footprint slope-moment roughness compensation.
+  let hasWater = frame.waterInfo.y > 0.5;
+  let cer = evalAnalyticCeramicFull(i.uv, m, ar.rgb, ar.a, fwUV2, i.worldPos.y, frame.waterInfo.x, hasWater);
   if (cer.isCeramic) {
     albedo = cer.albedo;
     rough = cer.rough;
     coat = cer.coat;
     texAO *= cer.ao;
-    nXY = nXY * 0.25 + cer.slope;
+    // Use pure world-metric ceramic slope (flat face + tiny tilt + delicate glaze waviness),
+    // never superimposing coarse 256px baked texture bump!
+    nXY = cer.slope;
   }
 
-  let nZ = sqrt(max(0.02, 1.0 - min(0.95, dot(nXY, nXY))));
+  let nZ = sqrt(max(0.04, 1.0 - min(0.92, dot(nXY, nXY))));
   let N = normalize(T * nXY.x + B * nXY.y + Ngeom * nZ);
 
-  // Authentic waterline darkening & wet glossy film right above water surface.
-  if (frame.waterInfo.y > 0.5) {
+  // Subtle physical damp zone right above waterline (waterline stain already applied inside ceramic).
+  if (hasWater) {
     let hAbove = i.worldPos.y - frame.waterInfo.x;
-    let waterline = exp(-abs(hAbove - 0.025) / 0.075);
-    let wetZone = smoothstep(0.24, -0.02, hAbove);
-    albedo *= 1.0 - waterline * 0.16 - wetZone * 0.06;
-    rough = mix(rough, min(rough, 0.048), wetZone * 0.78);
-    coat = mix(coat, max(coat, 0.98), wetZone * 0.80 * (1.0 - cer.inGrout * 0.6));
+    let wetZone = smoothstep(0.20, -0.02, hAbove);
+    if (!cer.isCeramic) {
+      let waterline = exp(-abs(hAbove - 0.045) / 0.08);
+      albedo *= 1.0 - waterline * 0.16 - wetZone * 0.06;
+    } else {
+      albedo *= 1.0 - wetZone * 0.05;
+    }
+    rough = mix(rough, min(rough, 0.075), wetZone * 0.60 * (1.0 - cer.inGrout * 0.8));
+    coat = mix(coat, max(coat, 0.94), wetZone * 0.55 * (1.0 - cer.inGrout * 0.8));
   }
 
   // Sample baked Directional Indirect GI + Area-Light Lightmap.
@@ -307,7 +314,7 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let lmD = textureSample(lmDirTex, lmSampler, i.uv2);
   let irrad = lmI.rgb + vec3f(frame.fogParams.w);
   let bakedAO = clamp(lmD.a, 0.0, 1.0);
-  let ao = mix(0.28, 1.0, bakedAO) * mix(0.45, 1.0, texAO);
+  let ao = mix(0.28, 1.0, bakedAO) * mix(0.55, 1.0, texAO);
 
   // Directional normal modulation from lightmap dominant incoming light vector.
   let irradLuma = max(0.002, dot(irrad, vec3f(0.2126, 0.7152, 0.0722)));
@@ -316,22 +323,20 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let domDir = select(Ngeom, lmD.rgb / max(dirLen, 1e-4), dirLen > 1e-4);
   let ndlBump = max(dot(N, domDir), 0.0);
   let ndlGeom = max(dot(Ngeom, domDir), 0.25);
-  let dirRatio = clamp(ndlBump / ndlGeom, 0.25, 1.75);
-  let directionalFactor = mix(1.0, dirRatio, dirStrength * 0.78);
+  let dirRatio = clamp(ndlBump / ndlGeom, 0.35, 1.55);
+  let directionalFactor = mix(1.0, dirRatio, dirStrength * 0.72);
 
   let ndv = max(dot(N, V), 0.001);
-  let f0 = mix(vec3f(0.048), albedo, metallic);
+  // Physical Fresnel F0: glazed porcelain ~0.046 (v1 coat=0.047), matte mortar/plaster ~0.014, metals use albedo.
+  let dielecF0 = mix(0.012, 0.047, clamp(coat, 0.0, 1.0));
+  let f0 = mix(vec3f(dielecF0), albedo, metallic);
   let Fv = fresnelSchlick(ndv, f0);
   let kD = (vec3f(1.0) - Fv) * (1.0 - metallic);
 
-  // 1. Indirect GI + Baked Area Lights Diffuse & Directional Lobe Specular
+  // 1. Indirect GI + Baked Area Lights Diffuse & Energy-Conserving Dominant Specular
   var diffuse = kD * albedo * irrad * directionalFactor * ao;
-  let specRough = clamp(mix(rough, max(rough, 0.20), 1.0 - dirStrength * 0.72), 0.045, 0.96);
-  var specular = evalGGXSpec(N, V, domDir, specRough, f0) * irrad * dirStrength * ao * 1.15;
-  if (coat > 0.02) {
-    let coatRough = max(rough * 0.55, 0.038);
-    specular += evalGGXSpec(N, V, domDir, coatRough, vec3f(0.052)) * irrad * dirStrength * coat * ao * 1.35;
-  }
+  let specRough = clamp(mix(rough, max(rough, 0.24), 1.0 - dirStrength * 0.65), 0.06, 0.96);
+  var specular = evalGGXSpec(N, V, domDir, specRough, f0) * irrad * dirStrength * ao * 0.75;
 
   // 2. Per-Pixel Razor-Sharp Direct Sunlight with 6-Sample Soft BVH Shadows!
   if (frame.sunColorInt.w > 0.5) {
@@ -341,11 +346,9 @@ fn fsMain(i: VSOut) -> GBufferOut {
       let sunVis = evalSunVisibility(i.worldPos, Ngeom, i.clipPos.xy);
       if (sunVis > 0.0) {
         let sunRad = frame.sunColorInt.rgb * sunVis;
-        diffuse += kD * albedo * sunRad * ndlSun * INV_PI * mix(0.68, 1.0, texAO);
-        specular += evalGGXSpec(N, V, sunDir, max(rough, 0.045), f0) * sunRad * 0.95;
-        if (coat > 0.02) {
-          specular += evalGGXSpec(N, V, sunDir, max(rough * 0.50, 0.032), vec3f(0.052)) * sunRad * coat * 1.25;
-        }
+        let fIn = fresnelSchlick(ndlSun, f0);
+        diffuse += kD * (vec3f(1.0) - fIn) * albedo * sunRad * ndlSun * INV_PI * mix(0.74, 1.0, texAO);
+        specular += evalGGXSpec(N, V, sunDir, max(rough, 0.065), f0) * sunRad;
       }
     }
   }
@@ -365,19 +368,17 @@ fn fsMain(i: VSOut) -> GBufferOut {
     let cosL = dot(lNorm, -dirL);
     if (cosL <= 0.02 || dot(Ngeom, dirL) <= 0.0 || dot(N, dirL) <= 0.0) { continue; }
     let atten = (cosL * l.originArea.w) / max(dist2, 0.35);
-    let areaSpecRough = clamp(rough + sqrt(l.originArea.w) * 0.05 / max(dist, 0.5), 0.04, 0.90);
-    let sCol = evalGGXSpec(N, V, dirL, areaSpecRough, f0) * l.radianceCdf.rgb * atten * 0.52;
-    let cCol = evalGGXSpec(N, V, dirL, max(areaSpecRough * 0.58, 0.032), vec3f(0.055)) * l.radianceCdf.rgb * atten * coat * 0.68;
-    let cand = sCol + cCol;
-    // Early-cull shadow ray if candidate specular is negligible (skips >90% of shadow rays!).
-    if (dot(cand, vec3f(0.2126, 0.7152, 0.0722)) < 0.018) { continue; }
+    let areaSpecRough = clamp(rough + sqrt(l.originArea.w) * 0.075 / max(dist, 0.5), 0.065, 0.92);
+    let cand = evalGGXSpec(N, V, dirL, areaSpecRough, f0) * l.radianceCdf.rgb * atten * 0.45;
+    if (dot(cand, vec3f(0.2126, 0.7152, 0.0722)) < 0.016) { continue; }
     if (!traceShadowPBR(shadowOrigin, dirL, max(0.02, dist - 0.08))) {
       specular += cand;
     }
   }
 
-  // Subtle metallic/glaze indirect floor (kept modest since full BVH reflections provide real room mirror!).
-  let envSpec = Fv * irrad * mix(0.08, 0.38, metallic) * ao * (1.0 - rough * 0.65);
+  // Subtle fallback ambient specular only for matte/non-SSR surfaces (reflective ones get true BVH GGX!).
+  let isReflCandidate = max(metallic, coat) > 0.12 && rough <= 0.52;
+  let envSpec = select(Fv * irrad * 0.12 * ao * (1.0 - rough * 0.65), vec3f(0.0), isReflCandidate);
 
   // Emissive contribution (with optional fluorescent ballast flicker).
   let flk = fluorescentFlicker(frame.cameraPos.w, m.extra.z, m.extra.w);
@@ -396,11 +397,10 @@ fn fsMain(i: VSOut) -> GBufferOut {
     color = vec3f(rough, bakedAO, coat);
   }
 
-  // Encode reflection tint (white for dielectric glaze/puddles, albedo for stainless steel/metal)
-  // and reflection mask for the Full-Scene BVH Glossy Reflection pass.
+  // Encode reflection tint (white for dielectric glaze, albedo for stainless steel/metal)
+  // and reflection mask for the Multi-Ray BVH GGX Reflection pass.
   let reflTint = mix(vec3f(1.0), albedo, metallic);
-  let isDielectricGlaze = coat > 0.15 && metallic < 0.5;
-  let reflStrength = clamp(max(metallic, max(coat * 0.96, select(0.0, 0.65, isDielectricGlaze))), 0.0, 1.0);
+  let reflStrength = clamp(max(metallic, coat * (1.0 - cer.inGrout)), 0.0, 1.0);
 
   var o: GBufferOut;
   o.hdrColor = vec4f(color, 1.0);

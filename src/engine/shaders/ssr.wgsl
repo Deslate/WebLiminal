@@ -196,6 +196,10 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
   return col;
 }
 
+fn smithG1Refl(nv: f32, a: f32) -> f32 {
+  return 2.0 * nv / max(nv + sqrt(a * a + (1.0 - a * a) * nv * nv), 1e-5);
+}
+
 @compute @workgroup_size(8, 8)
 fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
   let dims = textureDimensions(outSSR);
@@ -215,8 +219,8 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
   let rough = nr.w;
   let reflMask = ar.a;
 
-  // Skip truly matte surfaces quickly (carpet, rough wallpaper, plaster, grout).
-  if (reflMask < 0.05 || rough > 0.55) {
+  // Skip truly matte surfaces quickly (carpet, rough wallpaper, plaster, recessed grout).
+  if (reflMask < 0.08 || rough > 0.54) {
     textureStore(outSSR, vec2i(gid.xy), vec4f(0.0));
     return;
   }
@@ -224,45 +228,67 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
   let wp = reconstructWorldPos(uv, depth);
   let N = normalize(nr.xyz);
   let V = normalize(frame.cameraPos.xyz - wp);
+  let nv = max(dot(N, V), 0.02);
 
-  // Deterministic GGX reflection ray (zero temporal flicker, crisp per-tile glazed ceramic facets!).
-  let xi = r2Noise(vec2f(gid.xy));
-  let sampleRough = clamp(rough * 0.52, 0.015, 0.28);
-  let H = sampleGGXHalf(N, sampleRough, xi.x, xi.y * 0.78);
-  var R = reflect(-V, H);
-  if (dot(R, N) <= 0.01) {
-    R = reflect(-V, N);
-  }
-  R = normalize(R);
-
-  let ro = wp + N * 0.016;
-  let hit = traceClosestRefl(ro, R, 90.0);
-
-  var reflCol: vec3f;
-  if (hit.hit) {
-    let hitPos = ro + R * hit.t;
-    reflCol = shadeReflHit(hit, hitPos, R);
-    if (frame.waterInfo.y > 0.5 && wp.y > frame.waterInfo.x && hitPos.y < frame.waterInfo.x) {
-      let subDepth = max(0.0, frame.waterInfo.x - hitPos.y);
-      reflCol *= exp(-vec3f(0.38, 0.085, 0.042) * subDepth * 1.6);
-    }
-  } else {
-    reflCol = evalSkyRadiance(R, frame.skyTop.rgb, frame.skyHorizon.rgb, frame.sunDirRad.xyz, frame.sunColorInt.rgb, frame.sunColorInt.w > 0.5);
-  }
-
-  // Exact Fresnel reflectance: glossy glazed ceramic / wet clearcoat (IOR 1.56) vs metallic conductor.
-  let ndv = max(dot(N, V), 0.01);
-  let dielecF = exactDielectricFresnel(ndv, 1.56);
+  // Exact physical Fresnel: glazed porcelain dielectric (IOR = 1.52 -> F0 ~ 0.043) vs conductor metal.
   let isMetal = step(0.85, reflMask) * step(0.02, length(ar.rgb - vec3f(1.0)));
-  let fresnel = mix(dielecF * 1.35, 0.62 + 0.38 * pow(1.0 - ndv, 5.0), isMetal);
-  let roughFade = 1.0 - smoothstep(0.16, 0.52, rough);
-  let weight = clamp(reflMask * roughFade * fresnel, 0.0, 0.96);
+  let alpha = max(rough * rough, 0.004);
+  let frameN = orthoBasis(N);
+  let ro = wp + N * 0.026;
+  let baseXi = r2Noise(vec2f(gid.xy));
 
-  textureStore(outSSR, vec2i(gid.xy), vec4f(min(reflCol, vec3f(28.0)), weight));
+  // 4-ray deterministic Fibonacci-stratified GGX quadrature:
+  // Eliminates 1-ray confetti sparkles on rough glazed walls while keeping crisp per-tile reflections.
+  let rays = 4u;
+  var accumCol = vec3f(0.0);
+  var accumW = 0.0;
+
+  for (var ri = 0u; ri < rays; ri++) {
+    let u = fract((f32(ri) + 0.5) / f32(rays) + baseXi.x * 0.25) * 0.86;
+    let phi = 2.0 * PI * fract(baseXi.y + f32(ri) * 0.61803398875);
+    let rad = alpha * sqrt(u / max(1.0 - u, 0.04));
+    let H = normalize(frameN * vec3f(rad * cos(phi), rad * sin(phi), 1.0));
+    let vh = max(dot(V, H), 0.0);
+    let nh = max(dot(N, H), 1e-4);
+    let R = reflect(-V, H);
+    let nl = dot(N, R);
+    if (nl <= 0.015 || vh <= 0.0) { continue; }
+
+    let hit = traceClosestRefl(ro, R, 90.0);
+    var sCol: vec3f;
+    if (hit.hit) {
+      let hitPos = ro + R * hit.t;
+      sCol = shadeReflHit(hit, hitPos, R);
+      if (frame.waterInfo.y > 0.5 && wp.y > frame.waterInfo.x && hitPos.y < frame.waterInfo.x) {
+        let subDepth = max(0.0, frame.waterInfo.x - hitPos.y);
+        sCol *= exp(-vec3f(0.62, 0.12, 0.14) * subDepth * 1.4);
+      }
+    } else {
+      sCol = evalSkyRadiance(R, frame.skyTop.rgb, frame.skyHorizon.rgb, frame.sunDirRad.xyz, frame.sunColorInt.rgb, frame.sunColorInt.w > 0.5);
+    }
+
+    // Clamp extreme single-ray emissive fireflies so bright backlit windows reflect softly without polka dots.
+    sCol = min(sCol, vec3f(14.0));
+
+    let gWeight = clamp(smithG1Refl(nv, alpha) * smithG1Refl(nl, alpha) * vh / max(nv * nh, 1e-4), 0.0, 2.0);
+    let dielecF = exactDielectricFresnel(vh, 1.52);
+    let metalF = 0.72 + 0.28 * pow(1.0 - vh, 5.0);
+    let F = mix(dielecF, metalF, isMetal);
+
+    accumCol += sCol * F * gWeight;
+    accumW += 1.0;
+  }
+
+  let roughFade = 1.0 - smoothstep(0.24, 0.54, rough);
+  let invN = 1.0 / f32(rays);
+  let reflRad = accumCol * invN * reflMask * roughFade;
+  let valid = select(0.0, 1.0, accumW > 0.0);
+
+  textureStore(outSSR, vec2i(gid.xy), vec4f(reflRad, valid * reflMask * roughFade));
 }
 
 // Normal- & depth-guided bilateral filter composite:
-// Smooths GGX glossy reflection lobes cleanly WITHOUT bleeding across individual tilted ceramic tiles!
+// Smooths 4-ray GGX glossy lobes cleanly WITHOUT bleeding across architectural edges or tile joints.
 @group(1) @binding(0) var ssrTex: texture_2d<f32>;
 @group(1) @binding(1) var outHdr: texture_storage_2d<rgba16float, write>;
 
@@ -276,7 +302,7 @@ fn compositeSSR(@builtin(global_invocation_id) gid: vec3u) {
   let ar = textureLoad(albedoReflTex, px, 0);
   let rough = nr.w;
 
-  if (ar.a < 0.05 || rough > 0.55) {
+  if (ar.a < 0.08 || rough > 0.54) {
     textureStore(outHdr, px, vec4f(base, 1.0));
     return;
   }
@@ -287,13 +313,12 @@ fn compositeSSR(@builtin(global_invocation_id) gid: vec3u) {
   let cN = normalize(nr.xyz);
   let cD = textureLoad(depthTex, px, 0);
 
-  let radius = select(1, 2, rough > 0.11);
-  let stride = select(1, 2, rough > 0.24);
+  let radius = select(1, 2, rough > 0.09);
+  let stride = select(1, 2, rough > 0.22);
   let fullMax = vec2i(dims) - vec2i(1);
   let ssrMax = ssrDims - vec2i(1);
 
   var colSum = vec3f(0.0);
-  var alphaSum = 0.0;
   var wSum = 0.0;
 
   for (var dy = -radius; dy <= radius; dy++) {
@@ -306,23 +331,22 @@ fn compositeSSR(@builtin(global_invocation_id) gid: vec3u) {
       let sD = textureLoad(depthTex, fpx, 0);
       let sN = normalize(sNR.xyz);
 
-      // Edge-stopping weights preserve individual tile micro-tilt facets & architectural corners!
-      let wNorm = pow(max(dot(cN, sN), 0.0), 40.0);
-      let wDepth = exp(-abs(sD - cD) * 800.0);
-      let wSpatial = exp(-f32(dx * dx + dy * dy) / max(0.8, 1.5 + rough * 6.0));
-      let w = wNorm * wDepth * wSpatial;
+      // Edge-stopping weights preserve tile joints & architectural corners cleanly.
+      let wNorm = pow(max(dot(cN, sN), 0.0), 48.0);
+      let wDepth = exp(-abs(sD - cD) * 900.0);
+      let wRough = exp(-abs(sNR.w - rough) * 14.0);
+      let wSpatial = exp(-f32(dx * dx + dy * dy) / max(1.0, 1.8 + rough * 8.0));
+      let w = wNorm * wDepth * wRough * wSpatial;
 
       let samp = textureLoad(ssrTex, sc, 0);
-      colSum += samp.rgb * samp.a * w;
-      alphaSum += samp.a * w;
+      colSum += samp.rgb * w;
       wSum += w;
     }
   }
 
   let refl = select(vec3f(0.0), colSum / max(wSum, 1e-4), wSum > 1e-4);
-  let reflAlpha = select(0.0, alphaSum / max(wSum, 1e-4), wSum > 1e-4);
 
-  // Energy-conserving glaze/metal reflection blend.
-  let finalCol = base * (1.0 - reflAlpha * 0.35) + refl * ar.rgb;
+  // Energy-conserving glaze/metal reflection addition (diffuse already scaled by 1 - Fv in gbuffer-pbr).
+  let finalCol = base + refl * ar.rgb;
   textureStore(outHdr, px, vec4f(finalCol, 1.0));
 }

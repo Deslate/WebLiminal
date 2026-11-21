@@ -121,14 +121,14 @@ fn waveCellH(ix: i32, iz: i32, nx: i32, nz: i32) -> f32 {
   return waveState[u32(cz * nx + cx)].x;
 }
 
-// Smooth Catmull-Rom bicubic surface normal from the live simulated heightfield!
+// Exact cell-centered Catmull-Rom bicubic surface normal from the live combined
+// finite-depth + spectral FFT body-wake heightfield (zero fake sine-wave jello!).
 fn sampleBicubicNormal(wx: f32, wz: f32) -> vec3f {
   let nx = i32(cuni.grid.x);
   let nz = i32(cuni.grid.y);
-  let u = clamp((wx - cuni.domain.x) * cuni.domain.z, 0.0, 0.9999);
-  let v = clamp((wz - cuni.domain.y) * cuni.domain.w, 0.0, 0.9999);
-  let fx = u * f32(nx - 1);
-  let fz = v * f32(nz - 1);
+  let dx = max(cuni.surface.y, 1e-4);
+  let fx = clamp((wx - cuni.domain.x) / dx - 0.5, 0.0, f32(nx - 1) - 1e-4);
+  let fz = clamp((wz - cuni.domain.y) / dx - 0.5, 0.0, f32(nz - 1) - 1e-4);
   let ix = i32(floor(fx));
   let iz = i32(floor(fz));
   let tx = fx - f32(ix);
@@ -155,12 +155,9 @@ fn sampleBicubicNormal(wx: f32, wz: f32) -> vec3f {
     dhdv += rowVal * rD;
   }
 
-  let cellX = cuni.surface.z / f32(nx - 1);
-  let cellZ = cuni.surface.w / f32(nz - 1);
-  let dhdx = dhdu / max(cellX, 1e-4);
-  let dhdz = dhdv / max(cellZ, 1e-4);
-  let bgSlope = evalDispersiveWaveSlope(vec2f(wx, wz), frame.cameraPos.w, max(cuni.surface.x, 0.35), cuni.surface.y);
-  return normalize(vec3f(-(dhdx + bgSlope.x), 1.0, -(dhdz + bgSlope.y)));
+  let dhdx = dhdu / dx;
+  let dhdz = dhdv / dx;
+  return normalize(vec3f(-dhdx, 1.0, -dhdz));
 }
 
 // 1. Run once on level load: precompute water-surface solar visibility & submerged floor height.
