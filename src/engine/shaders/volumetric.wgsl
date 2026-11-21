@@ -1,5 +1,6 @@
-// Half-resolution Volumetric Sunbeams & Atmospheric Area-Light Haze Pass.
-// Prepended with bvh-common.wgsl so volumetric shafts trace exact BVH shadows!
+// Half-resolution BVH-Occluded Volumetric Sunbeams & Humid Skylight/Window Mist Pass.
+// Prepended with bvh-common.wgsl so BOTH sunlight shafts AND skylight/window mist
+// respect true 3D architectural occlusion (blinding misty lightwells never bleed through walls!).
 
 struct FrameUniform {
   viewProj: mat4x4f,
@@ -104,16 +105,16 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
   let wpFar = frame.invViewProj * ndc;
   let targetPos = wpFar.xyz / wpFar.w;
   let toTarget = targetPos - frame.cameraPos.xyz;
-  let maxDist = min(length(toTarget), 30.0);
+  let maxDist = min(length(toTarget), 34.0);
   let rd = toTarget / max(length(toTarget), 1e-4);
 
-  let steps = 18;
+  let steps = 20;
   let dt = maxDist / f32(steps);
   let jitter = ign(vec2f(gid.xy));
 
   let hasSun = frame.sunColorInt.w > 0.5;
   let sunPhase = select(0.0, hgPhase(dot(rd, frame.sunDirRad.xyz), 0.62), hasSun);
-  let lightCount = min(u32(frame.skyHorizon.w + 0.5), 16u);
+  let lightCount = min(u32(frame.skyHorizon.w + 0.5), 24u);
   let fogDens = max(frame.fogColorDens.w, 0.012);
 
   var scatter = vec3f(0.0);
@@ -124,24 +125,33 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
     let p = frame.cameraPos.xyz + rd * t;
     var inLight = vec3f(0.0);
 
-    // 1. Real BVH-occluded volumetric sunbeams (Poolrooms skylights & arches)
+    // 1. Real BVH-occluded volumetric sunbeams (Poolrooms skylights & arch shafts)
     if (hasSun) {
-      if (!traceShadowVol(p, frame.sunDirRad.xyz, 120.0)) {
-        inLight += frame.sunColorInt.rgb * sunPhase * 0.55;
+      if (!traceShadowVol(p, frame.sunDirRad.xyz, 140.0)) {
+        inLight += frame.sunColorInt.rgb * sunPhase * 0.58;
       }
     }
 
-    // 2. Soft proximity haze around indoor fluorescent fixtures & glowing signs
-    for (var li = 0u; li < lightCount; li++) {
-      let l = lights[li];
+    // 2. Stochastic 1-light-per-step BVH-occluded humid mist around bright skylights & windows!
+    // Combined across 16 steps x 3x3 blur = 144 samples, giving silky mist at 1/10th the ray cost.
+    if (lightCount > 0u) {
+      let pickIdx = u32(floor(fract(jitter + f32(s) * 0.61803399) * f32(lightCount))) % lightCount;
+      let l = lights[pickIdx];
       let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
-      let d = p - lCenter;
-      let dist2 = dot(d, d);
-      if (dist2 > 36.0) { continue; }
-      let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
-      let cone = max(0.0, dot(lNorm, d / max(sqrt(dist2), 0.1)));
-      if (cone > 0.05) {
-        inLight += l.radianceCdf.rgb * (l.originArea.w * cone / (dist2 + 1.8)) * 0.032;
+      let toL = lCenter - p;
+      let dist2 = dot(toL, toL);
+      let isSkylight = l.edgeVKind.w > 0.5;
+      let maxR2 = select(48.0, 220.0, isSkylight);
+      if (dist2 < maxR2 && dist2 > 0.04) {
+        let dist = sqrt(dist2);
+        let dirL = toL / dist;
+        let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+        let cone = max(0.0, dot(lNorm, -dirL));
+        if (cone > 0.04 && !traceShadowVol(p, dirL, max(0.02, dist - 0.12))) {
+          let phase = mix(0.28, hgPhase(dot(rd, dirL), 0.52), 0.58);
+          let gain = select(0.095, 0.28, isSkylight);
+          inLight += l.radianceCdf.rgb * (l.originArea.w * cone * phase / (dist2 + 1.3)) * gain * f32(lightCount);
+        }
       }
     }
 
@@ -150,10 +160,10 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
     transmittance *= exp(-stepExt);
   }
 
-  textureStore(outVol, vec2i(gid.xy), vec4f(min(scatter, vec3f(3.0)), 1.0));
+  textureStore(outVol, vec2i(gid.xy), vec4f(min(scatter, vec3f(5.5)), 1.0));
 }
 
-// Separable/3x3 smooth blur removes interleaved-gradient noise from half-res volumetrics.
+// 3x3 smooth blur removes interleaved-gradient noise from half-res volumetrics.
 @group(1) @binding(0) var srcVol: texture_2d<f32>;
 
 @compute @workgroup_size(8, 8)

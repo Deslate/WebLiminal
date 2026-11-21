@@ -35,11 +35,11 @@ fn bloomExtract(@builtin(global_invocation_id) gid: vec3u) {
   let uv = (vec2f(gid.xy) + 0.5) / vec2f(dims);
   let col = textureSampleLevel(bloomSrc, linSampler, uv, 0.0).rgb;
   let luma = dot(col, vec3f(0.2126, 0.7152, 0.0722));
-  let threshold = 0.85;
-  let knee = 0.45;
+  let threshold = 0.92;
+  let knee = 0.55;
   let soft = clamp(luma - threshold + knee, 0.0, 2.0 * knee);
   let contrib = max(luma - threshold, (soft * soft) / (4.0 * knee + 1e-4)) / max(luma, 1e-4);
-  textureStore(bloomDst, vec2i(gid.xy), vec4f(min(col * contrib, vec3f(6.0)), 1.0));
+  textureStore(bloomDst, vec2i(gid.xy), vec4f(min(col * contrib, vec3f(8.0)), 1.0));
 }
 
 fn gaussianBlur(gid: vec3u, dir: vec2f) {
@@ -50,7 +50,7 @@ fn gaussianBlur(gid: vec3u, dir: vec2f) {
   let weights = array<f32, 5>(0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
   var sum = textureSampleLevel(bloomSrc, linSampler, uv, 0.0).rgb * weights[0];
   for (var i = 1; i < 5; i++) {
-    let off = stepUV * f32(i) * 1.6;
+    let off = stepUV * f32(i) * 2.25;
     sum += textureSampleLevel(bloomSrc, linSampler, uv + off, 0.0).rgb * weights[i];
     sum += textureSampleLevel(bloomSrc, linSampler, uv - off, 0.0).rgb * weights[i];
   }

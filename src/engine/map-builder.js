@@ -756,6 +756,524 @@ export class MapBuilder {
     return this;
   }
 
+  // Sleek stainless-steel horizontal poolside handrail with vertical posts and mid-rail.
+  handrail(p0, p1, yBase, height = 0.92, opts = {}) {
+    const mat = opts.material ?? "stainless_steel";
+    const r = opts.radius ?? 0.022;
+    const dx = p1[0] - p0[0];
+    const dz = p1[1] - p0[1];
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-4) return this;
+    const postSpacing = opts.postSpacing ?? 1.4;
+    const posts = Math.max(2, Math.round(len / postSpacing) + 1);
+    for (let i = 0; i < posts; i++) {
+      const f = i / (posts - 1);
+      const px = p0[0] + dx * f;
+      const pz = p0[1] + dz * f;
+      this.pipe([px, yBase, pz], [px, yBase + height, pz], r * 0.9, mat, { segments: 8 });
+    }
+    this.pipe([p0[0], yBase + height, p0[1]], [p1[0], yBase + height, p1[1]], r, mat, { segments: 8 });
+    if (opts.midRail !== false) {
+      this.pipe([p0[0], yBase + height * 0.54, p0[1]], [p1[0], yBase + height * 0.54, p1[1]], r * 0.78, mat, { segments: 8 });
+    }
+    return this;
+  }
+
+  // Helper: shoots ray from (cx, cy) along (cosA, sinA) to intersect bounding rect [s0, s1] x [y0, y1].
+  _rayToRect2D(cx, cy, cosA, sinA, s0, s1, y0, y1) {
+    let t = Infinity;
+    if (cosA > 1e-7) t = Math.min(t, (s1 - cx) / cosA);
+    else if (cosA < -1e-7) t = Math.min(t, (s0 - cx) / cosA);
+    if (sinA > 1e-7) t = Math.min(t, (y1 - cy) / sinA);
+    else if (sinA < -1e-7) t = Math.min(t, (y0 - cy) / sinA);
+    return [cx + cosA * t, cy + sinA * t];
+  }
+
+  // Wall pierced by a circular ring tunnel (clipped cleanly by floor y0) or full circular porthole.
+  // Generates watertight corner-exact planar faces with world-scale tile UVs + smooth cylindrical reveal!
+  ringWall(lo, hi, opts = {}) {
+    const [x0, y0, z0] = lo;
+    const [x1, y1, z1] = hi;
+    const mat = opts.material ?? "tile_white";
+    const alongX = x1 - x0 >= z1 - z0;
+    const sMin = alongX ? x0 : z0;
+    const sMax = alongX ? x1 : z1;
+    const t0 = alongX ? z0 : x0;
+    const t1 = alongX ? z1 : x1;
+    const thick = t1 - t0;
+    const cx = opts.center ?? (sMin + sMax) * 0.5;
+    const cy = opts.centerY ?? y0 + (y1 - y0) * 0.42;
+    const r = opts.radius ?? Math.min((sMax - sMin) * 0.38, (y1 - y0) * 0.55);
+    const segs = opts.segments ?? 36;
+
+    const pt = (s, y, t) => (alongX ? [s, y, t] : [t, y, s]);
+    const fullCircle = cy - r > y0 + 0.02;
+
+    // Build sorted angle list including exact rectangle corners so outer perimeter is 100% watertight.
+    const angles = [];
+    let aStart, aEnd;
+    if (fullCircle) {
+      aStart = 0;
+      aEnd = TAU;
+      for (let i = 0; i <= segs; i++) angles.push((i / segs) * TAU);
+    } else {
+      const clipRatio = Math.max(-0.995, Math.min(0.995, (y0 - cy) / r));
+      const aClip = Math.asin(clipRatio); // negative angle where circle meets y0 on the right
+      aStart = aClip;
+      aEnd = Math.PI - aClip;
+      for (let i = 0; i <= segs; i++) angles.push(aStart + (i / segs) * (aEnd - aStart));
+    }
+
+    // Insert the 4 wall rectangle corners that fall inside (aStart, aEnd).
+    const corners = [
+      [sMax, y0],
+      [sMax, y1],
+      [sMin, y1],
+      [sMin, y0],
+    ];
+    for (const [cs, cyC] of corners) {
+      let ang = Math.atan2(cyC - cy, cs - cx);
+      if (fullCircle && ang < 0) ang += TAU;
+      if (!fullCircle && ang < aStart - 1e-4) ang += TAU;
+      if (ang > aStart + 1e-4 && ang < aEnd - 1e-4) {
+        angles.push(ang);
+      }
+    }
+    angles.sort((a, b) => a - b);
+    // Deduplicate near-identical angles.
+    const uniq = [angles[0]];
+    for (let i = 1; i < angles.length; i++) {
+      if (angles[i] - uniq[uniq.length - 1] > 1e-4) uniq.push(angles[i]);
+    }
+
+    const wallW = sMax - sMin;
+    const wallH = y1 - y0;
+    const frontChart = this._beginChart(wallW, wallH, opts.priority ?? 1.15);
+    const backChart = this._beginChart(wallW, wallH, opts.priority ?? 1.15);
+    const revealChart = this._beginChart((aEnd - aStart) * r, thick, opts.priority ?? 1.2);
+
+    const normLU = (s) => Math.max(0, Math.min(1, (s - sMin) / wallW));
+    const normLV = (y) => Math.max(0, Math.min(1, (y - y0) / wallH));
+
+    const totalArc = aEnd - aStart;
+    for (let i = 0; i < uniq.length - 1; i++) {
+      const a0 = uniq[i];
+      const a1 = uniq[i + 1];
+      const c0 = Math.cos(a0), s0 = Math.sin(a0);
+      const c1 = Math.cos(a1), s1 = Math.sin(a1);
+      const in0 = [cx + r * c0, cy + r * s0];
+      const in1 = [cx + r * c1, cy + r * s1];
+      const out0 = this._rayToRect2D(cx, cy, c0, s0, sMin, sMax, y0, y1);
+      const out1 = this._rayToRect2D(cx, cy, c1, s1, sMin, sMax, y0, y1);
+
+      const f0 = (a0 - aStart) / totalArc;
+      const f1 = (a1 - aStart) / totalArc;
+
+      if (alongX) {
+        // Front face (+z = t1): outward normal +Z => CCW in (x, y) is (in0 -> out0 -> out1 -> in1)
+        this.addQuad(
+          pt(in0[0], in0[1], t1),
+          pt(out0[0], out0[1], t1),
+          pt(out1[0], out1[1], t1),
+          pt(in1[0], in1[1], t1),
+          mat,
+          {
+            uvs: [in0, out0, out1, in1],
+            chart: frontChart,
+            luvs: [
+              [normLU(in0[0]), normLV(in0[1])],
+              [normLU(out0[0]), normLV(out0[1])],
+              [normLU(out1[0]), normLV(out1[1])],
+              [normLU(in1[0]), normLV(in1[1])],
+            ],
+          },
+        );
+        // Back face (-z = t0): outward normal -Z => reverse winding
+        this.addQuad(
+          pt(in1[0], in1[1], t0),
+          pt(out1[0], out1[1], t0),
+          pt(out0[0], out0[1], t0),
+          pt(in0[0], in0[1], t0),
+          mat,
+          {
+            uvs: [[-in1[0], in1[1]], [-out1[0], out1[1]], [-out0[0], out0[1]], [-in0[0], in0[1]]],
+            chart: backChart,
+            luvs: [
+              [1 - normLU(in1[0]), normLV(in1[1])],
+              [1 - normLU(out1[0]), normLV(out1[1])],
+              [1 - normLU(out0[0]), normLV(out0[1])],
+              [1 - normLU(in0[0]), normLV(in0[1])],
+            ],
+          },
+        );
+        // Inner cylindrical reveal (normal pointing inward toward circle center)
+        const n0 = [-c0, -s0, 0];
+        const n1 = [-c1, -s1, 0];
+        this.addQuad(
+          pt(in0[0], in0[1], t1),
+          pt(in1[0], in1[1], t1),
+          pt(in1[0], in1[1], t0),
+          pt(in0[0], in0[1], t0),
+          mat,
+          {
+            u0: f0 * totalArc * r, v0: t1, u1: f1 * totalArc * r, v1: t0,
+            normals: [n0, n1, n1, n0],
+            chart: revealChart,
+            lu0: f0, lv0: 0, lu1: f1, lv1: 1,
+          },
+        );
+      } else {
+        // Wall along Z: +x = t1 face has outward normal +X => CCW in (z, y) is (in1 -> out1 -> out0 -> in0)
+        this.addQuad(
+          pt(in1[0], in1[1], t1),
+          pt(out1[0], out1[1], t1),
+          pt(out0[0], out0[1], t1),
+          pt(in0[0], in0[1], t1),
+          mat,
+          {
+            uvs: [[-in1[0], in1[1]], [-out1[0], out1[1]], [-out0[0], out0[1]], [-in0[0], in0[1]]],
+            chart: frontChart,
+            luvs: [
+              [1 - normLU(in1[0]), normLV(in1[1])],
+              [1 - normLU(out1[0]), normLV(out1[1])],
+              [1 - normLU(out0[0]), normLV(out0[1])],
+              [1 - normLU(in0[0]), normLV(in0[1])],
+            ],
+          },
+        );
+        // -x = t0 face has outward normal -X
+        this.addQuad(
+          pt(in0[0], in0[1], t0),
+          pt(out0[0], out0[1], t0),
+          pt(out1[0], out1[1], t0),
+          pt(in1[0], in1[1], t0),
+          mat,
+          {
+            uvs: [in0, out0, out1, in1],
+            chart: backChart,
+            luvs: [
+              [normLU(in0[0]), normLV(in0[1])],
+              [normLU(out0[0]), normLV(out0[1])],
+              [normLU(out1[0]), normLV(out1[1])],
+              [normLU(in1[0]), normLV(in1[1])],
+            ],
+          },
+        );
+        const n0 = [0, -s0, -c0];
+        const n1 = [0, -s1, -c1];
+        this.addQuad(
+          pt(in0[0], in0[1], t0),
+          pt(in1[0], in1[1], t0),
+          pt(in1[0], in1[1], t1),
+          pt(in0[0], in0[1], t1),
+          mat,
+          {
+            u0: f0 * totalArc * r, v0: t0, u1: f1 * totalArc * r, v1: t1,
+            normals: [n0, n1, n1, n0],
+            chart: revealChart,
+            lu0: f0, lv0: 0, lu1: f1, lv1: 1,
+          },
+        );
+      }
+    }
+
+    // Optional backlit glass fill inside a full circular porthole!
+    if (opts.glassMaterial && fullCircle) {
+      const gMat = opts.glassMaterial;
+      const gT = opts.glassFacing === "-" ? t0 + thick * 0.25 : t1 - thick * 0.25;
+      const gChart = this._beginChart(2 * r, 2 * r, 0.35);
+      const centerPt = pt(cx, cy, gT);
+      for (let i = 0; i < segs; i++) {
+        const a0 = (i / segs) * TAU;
+        const am = ((i + 0.5) / segs) * TAU;
+        const a1 = ((i + 1) / segs) * TAU;
+        const pA = pt(cx + r * Math.cos(a0), cy + r * Math.sin(a0), gT);
+        const pM = pt(cx + r * Math.cos(am), cy + r * Math.sin(am), gT);
+        const pB = pt(cx + r * Math.cos(a1), cy + r * Math.sin(a1), gT);
+        const facePos = opts.glassFacing !== "-";
+        if ((alongX && facePos) || (!alongX && !facePos)) {
+          this.addQuad(centerPt, pA, pM, pB, gMat, { u0: 0, v0: 0, u1: 1, v1: 1, chart: gChart, lu0: 0, lv0: 0, lu1: 1, lv1: 1 });
+        } else {
+          this.addQuad(centerPt, pB, pM, pA, gMat, { u0: 0, v0: 0, u1: 1, v1: 1, chart: gChart, lu0: 0, lv0: 0, lu1: 1, lv1: 1 });
+        }
+      }
+      if (opts.lightColor && opts.lightIntensity) {
+        const hr = r * 0.72;
+        const eT = opts.glassFacing === "-" ? t0 - 0.04 : t1 + 0.04;
+        if (alongX) {
+          if (opts.glassFacing !== "-") {
+            this.addAreaLight([cx - hr, cy - hr, eT], [cx + hr, cy - hr, eT], [cx - hr, cy + hr, eT], opts.lightColor, opts.lightIntensity);
+          } else {
+            this.addAreaLight([cx + hr, cy - hr, eT], [cx - hr, cy - hr, eT], [cx + hr, cy + hr, eT], opts.lightColor, opts.lightIntensity);
+          }
+        } else {
+          if (opts.glassFacing !== "-") {
+            this.addAreaLight([eT, cy - hr, cx + hr], [eT, cy - hr, cx - hr], [eT, cy + hr, cx + hr], opts.lightColor, opts.lightIntensity);
+          } else {
+            this.addAreaLight([eT, cy - hr, cx - hr], [eT, cy - hr, cx + hr], [eT, cy + hr, cx - hr], opts.lightColor, opts.lightIntensity);
+          }
+        }
+      }
+    }
+
+    // Collision solids on left & right piers flanking the circular opening (walk right through the ring!).
+    if (opts.solid !== false) {
+      if (fullCircle) {
+        this.solids.push({ kind: "box", minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: z0, maxZ: z1 });
+      } else {
+        const passHalf = Math.sqrt(Math.max(0.04, r * r - Math.pow(Math.max(0, cy - y0 - 0.5), 2))) * 0.90;
+        const leftEnd = cx - passHalf;
+        const rightStart = cx + passHalf;
+        if (alongX) {
+          if (leftEnd > x0 + 0.05) this.solids.push({ kind: "box", minX: x0, maxX: leftEnd, minY: y0, maxY: y1, minZ: z0, maxZ: z1 });
+          if (x1 > rightStart + 0.05) this.solids.push({ kind: "box", minX: rightStart, maxX: x1, minY: y0, maxY: y1, minZ: z0, maxZ: z1 });
+        } else {
+          if (leftEnd > z0 + 0.05) this.solids.push({ kind: "box", minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: z0, maxZ: leftEnd });
+          if (z1 > rightStart + 0.05) this.solids.push({ kind: "box", minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: rightStart, maxZ: z1 });
+        }
+      }
+    }
+    return this;
+  }
+
+  // Cantilevered spiral staircase wrapping a cylindrical column (iconic Poolrooms geometry!).
+  spiralStairs(cx, cz, y0, y1, innerR, outerR, startAngle, sweepAngle, steps, matSpec, opts = {}) {
+    const count = Math.max(4, Math.round(steps));
+    const dy = (y1 - y0) / count;
+    const da = sweepAngle / count;
+    const slabH = opts.slabThickness ?? Math.max(dy * 1.15, 0.24);
+    const dirSign = sweepAngle >= 0 ? 1 : -1;
+
+    for (let i = 0; i < count; i++) {
+      const a0 = startAngle + i * da;
+      const a1 = startAngle + (i + 1) * da + da * 0.08; // slight overlap avoids hairline cracks
+      const yTop = y0 + (i + 1) * dy;
+      const yBot = Math.max(y0, yTop - slabH);
+
+      const c0 = Math.cos(a0), s0 = Math.sin(a0);
+      const c1 = Math.cos(a1), s1 = Math.sin(a1);
+      const in0B = [cx + innerR * c0, yBot, cz + innerR * s0];
+      const out0B = [cx + outerR * c0, yBot, cz + outerR * s0];
+      const out1B = [cx + outerR * c1, yBot, cz + outerR * s1];
+      const in1B = [cx + innerR * c1, yBot, cz + innerR * s1];
+
+      const in0T = [cx + innerR * c0, yTop, cz + innerR * s0];
+      const out0T = [cx + outerR * c0, yTop, cz + outerR * s0];
+      const out1T = [cx + outerR * c1, yTop, cz + outerR * s1];
+      const in1T = [cx + innerR * c1, yTop, cz + innerR * s1];
+
+      const treadW = outerR - innerR;
+      const arcOut = Math.abs(da) * outerR;
+      const prio = opts.priority ?? 0.9;
+      const aMid = 0.5 * (a0 + a1);
+      const rMid = 0.5 * (innerR + outerR);
+      const stepCenter = [cx + rMid * Math.cos(aMid), 0.5 * (yBot + yTop), cz + rMid * Math.sin(aMid)];
+
+      const emitOut = (q0, q1, q2, q3, u1, v0, v1) => {
+        const n = cross3(sub3(q1, q0), sub3(q3, q0));
+        const qc = [
+          0.25 * (q0[0] + q1[0] + q2[0] + q3[0]),
+          0.25 * (q0[1] + q1[1] + q2[1] + q3[1]),
+          0.25 * (q0[2] + q1[2] + q2[2] + q3[2]),
+        ];
+        const out = sub3(qc, stepCenter);
+        if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] >= 0) {
+          this.addQuad(q0, q1, q2, q3, matSpec, { u0: 0, v0, u1, v1, priority: prio });
+        } else {
+          this.addQuad(q0, q3, q2, q1, matSpec, { u0: 0, v0, u1, v1, priority: prio });
+        }
+      };
+
+      // Top tread, bottom soffit, outer arc riser, and front/back step risers — all guaranteed outward!
+      emitOut(in0T, out0T, out1T, in1T, treadW, 0, arcOut);
+      emitOut(in0B, in1B, out1B, out0B, arcOut, 0, treadW);
+      emitOut(out0B, out1B, out1T, out0T, arcOut, yBot, yTop);
+      emitOut(in0B, out0B, out0T, in0T, treadW, yBot, yTop);
+      emitOut(out1B, in1B, in1T, out1T, treadW, yBot, yTop);
+    }
+    return this;
+  }
+
+  // Wall bay with backlit rounded-top pill-shaped frosted window (automatically adds area light!).
+  pillWindowBay(lo, hi, opts = {}) {
+    const [x0, y0, z0] = lo;
+    const [x1, y1, z1] = hi;
+    const mat = opts.material ?? "tile_white";
+    const glassMat = opts.glassMaterial ?? "frosted_window";
+    const alongX = x1 - x0 >= z1 - z0;
+    const sMin = alongX ? x0 : z0;
+    const sMax = alongX ? x1 : z1;
+    const t0 = alongX ? z0 : x0;
+    const t1 = alongX ? z1 : x1;
+    const thick = t1 - t0;
+    const wWidth = opts.windowWidth ?? (sMax - sMin) * 0.44;
+    const wSill = opts.sillY ?? y0 + 0.55;
+    const wHead = opts.headY ?? y1 - 0.55;
+    const radius = wWidth * 0.5;
+    const midS = (sMin + sMax) * 0.5;
+    const a = midS - radius;
+    const b = midS + radius;
+    const springTop = Math.max(wSill + 0.1, wHead - radius);
+    const springBot = Math.min(springTop - 0.05, wSill + radius);
+    const facePos = opts.facing !== "-";
+
+    // Left & right full-height wall piers
+    if (alongX) {
+      if (a > sMin + 0.01) this.box([sMin, y0, t0], [a, y1, t1], mat, { solid: opts.solid !== false });
+      if (sMax > b + 0.01) this.box([b, y0, t0], [sMax, y1, t1], mat, { solid: opts.solid !== false });
+      // Sill below window & lintel above window
+      if (springBot > y0 + 0.01) this.box([a, y0, t0], [b, wSill, t1], mat, { solid: opts.solid !== false });
+      if (y1 > wHead + 0.01) this.box([a, wHead, t0], [b, y1, t1], mat, { solid: opts.solid !== false });
+    } else {
+      if (a > sMin + 0.01) this.box([t0, y0, sMin], [t1, y1, a], mat, { solid: opts.solid !== false });
+      if (sMax > b + 0.01) this.box([t0, y0, b], [t1, y1, sMax], mat, { solid: opts.solid !== false });
+      if (springBot > y0 + 0.01) this.box([t0, y0, a], [t1, wSill, b], mat, { solid: opts.solid !== false });
+      if (y1 > wHead + 0.01) this.box([t0, wHead, a], [t1, y1, b], mat, { solid: opts.solid !== false });
+    }
+
+    // Semicircular upper arch header inside [a, b] x [springTop, wHead]
+    const segs = 12;
+    const pt = (s, y, t) => (alongX ? [s, y, t] : [t, y, s]);
+    const spChart = this._beginChart(wWidth, radius, 0.9);
+    const revChart = this._beginChart(Math.PI * radius, thick, 0.9);
+    for (let i = 0; i < segs; i++) {
+      const f0 = i / segs, f1 = (i + 1) / segs;
+      const ang0 = Math.PI * (1 - f0), ang1 = Math.PI * (1 - f1);
+      const s0 = midS + radius * Math.cos(ang0), s1 = midS + radius * Math.cos(ang1);
+      const ay0 = springTop + radius * Math.sin(ang0), ay1 = springTop + radius * Math.sin(ang1);
+      const by0 = springBot - radius * Math.sin(ang0), by1 = springBot - radius * Math.sin(ang1);
+      if (alongX) {
+        this.addQuad(pt(s0, ay0, t1), pt(s1, ay1, t1), pt(s1, wHead, t1), pt(s0, wHead, t1), mat, {
+          uvs: [[s0, ay0], [s1, ay1], [s1, wHead], [s0, wHead]], chart: spChart,
+          luvs: [[f0, 0], [f1, 0], [f1, 1], [f0, 1]],
+        });
+        this.addQuad(pt(s1, ay1, t0), pt(s0, ay0, t0), pt(s0, wHead, t0), pt(s1, wHead, t0), mat, {
+          uvs: [[-s1, ay1], [-s0, ay0], [-s0, wHead], [-s1, wHead]], chart: spChart,
+          luvs: [[1 - f1, 0], [1 - f0, 0], [1 - f0, 1], [1 - f1, 1]],
+        });
+        const n0 = [-Math.cos(ang0), -Math.sin(ang0), 0], n1 = [-Math.cos(ang1), -Math.sin(ang1), 0];
+        this.addQuad(pt(s0, ay0, t0), pt(s1, ay1, t0), pt(s1, ay1, t1), pt(s0, ay0, t1), mat, {
+          u0: f0 * Math.PI * radius, v0: t0, u1: f1 * Math.PI * radius, v1: t1,
+          normals: [n0, n1, n1, n0], chart: revChart, lu0: f0, lv0: 0, lu1: f1, lv1: 1,
+        });
+        // Lower semicircular pill sill
+        this.addQuad(pt(s0, wSill, t1), pt(s1, wSill, t1), pt(s1, by1, t1), pt(s0, by0, t1), mat, {
+          uvs: [[s0, wSill], [s1, wSill], [s1, by1], [s0, by0]], chart: spChart,
+          luvs: [[f0, 0], [f1, 0], [f1, 1], [f0, 1]],
+        });
+        const nb0 = [-Math.cos(ang0), Math.sin(ang0), 0], nb1 = [-Math.cos(ang1), Math.sin(ang1), 0];
+        this.addQuad(pt(s0, by0, t1), pt(s1, by1, t1), pt(s1, by1, t0), pt(s0, by0, t0), mat, {
+          u0: f0 * Math.PI * radius, v0: t1, u1: f1 * Math.PI * radius, v1: t0,
+          normals: [nb0, nb1, nb1, nb0], chart: revChart, lu0: f0, lv0: 0, lu1: f1, lv1: 1,
+        });
+      }
+    }
+
+    // Recessed glowing frosted glass backing quad + real area light!
+    const gT = facePos ? t0 + thick * 0.22 : t1 - thick * 0.22;
+    const eT = facePos ? t1 + 0.04 : t0 - 0.04;
+    const col = opts.lightColor ?? [1.0, 0.96, 0.86];
+    const intensity = opts.lightIntensity ?? 15.0;
+    if (alongX) {
+      if (facePos) {
+        this.addQuad([a, wSill, gT], [b, wSill, gT], [b, wHead, gT], [a, wHead, gT], glassMat, { u0: 0, v0: 0, u1: 1, v1: 1, priority: 0.3 });
+        this.addAreaLight([a + 0.05, wSill + 0.08, eT], [b - 0.05, wSill + 0.08, eT], [a + 0.05, wHead - 0.08, eT], col, intensity);
+      } else {
+        this.addQuad([b, wSill, gT], [a, wSill, gT], [a, wHead, gT], [b, wHead, gT], glassMat, { u0: 0, v0: 0, u1: 1, v1: 1, priority: 0.3 });
+        this.addAreaLight([b - 0.05, wSill + 0.08, eT], [a + 0.05, wSill + 0.08, eT], [b - 0.05, wHead - 0.08, eT], col, intensity);
+      }
+    }
+    return this;
+  }
+
+  // Smooth Catmull-Rom 3D curved tubular geometry (fiberglass water slides, industrial conduits).
+  curvedTube(controlPoints, radius, matSpec, opts = {}) {
+    if (controlPoints.length < 2) return this;
+    const stepsPerSeg = opts.stepsPerSegment ?? 8;
+    const radialSegs = opts.radialSegments ?? 16;
+    const pts = [];
+    const n = controlPoints.length;
+    const getP = (idx) => controlPoints[Math.max(0, Math.min(n - 1, idx))];
+
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = getP(i - 1), p1 = getP(i), p2 = getP(i + 1), p3 = getP(i + 2);
+      const count = i === n - 2 ? stepsPerSeg : stepsPerSeg - 1;
+      for (let s = 0; s <= count; s++) {
+        const t = s / stepsPerSeg;
+        const t2 = t * t, t3 = t2 * t;
+        const q = [0, 0, 0];
+        for (let k = 0; k < 3; k++) {
+          q[k] = 0.5 * (
+            2 * p1[k] +
+            (-p0[k] + p2[k]) * t +
+            (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 +
+            (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3
+          );
+        }
+        pts.push(q);
+      }
+    }
+
+    // Parallel-transport smooth Frenet frames along the curve (zero twist kinks!).
+    const tangents = pts.map((_, i) => {
+      const prev = pts[Math.max(0, i - 1)];
+      const next = pts[Math.min(pts.length - 1, i + 1)];
+      return norm3(sub3(next, prev));
+    });
+    const ref0 = Math.abs(tangents[0][1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+    let curU = norm3(cross3(ref0, tangents[0]));
+    const frames = [];
+    let totalLen = 0;
+    const cumLen = [0];
+    for (let i = 0; i < pts.length; i++) {
+      if (i > 0) {
+        const d = sub3(pts[i], pts[i - 1]);
+        totalLen += Math.hypot(d[0], d[1], d[2]);
+        cumLen.push(totalLen);
+        // Project previous U orthogonal to new tangent
+        const t = tangents[i];
+        const dotUT = curU[0] * t[0] + curU[1] * t[1] + curU[2] * t[2];
+        curU = norm3([curU[0] - t[0] * dotUT, curU[1] - t[1] * dotUT, curU[2] - t[2] * dotUT]);
+      }
+      const curV = cross3(tangents[i], curU);
+      frames.push({ u: curU, v: curV });
+    }
+
+    const chart = this._beginChart(TAU * radius, Math.max(1, totalLen), opts.priority ?? 0.65);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const pA = pts[i], pB = pts[i + 1];
+      const fA = frames[i], fB = frames[i + 1];
+      const v0 = cumLen[i], v1 = cumLen[i + 1];
+      const lv0 = v0 / Math.max(totalLen, 1e-4);
+      const lv1 = v1 / Math.max(totalLen, 1e-4);
+      // Optional subtle fiberglass joint flange bulge every ~2.2m
+      const rA = opts.flanges && i > 0 && i % 7 === 0 ? radius * 1.07 : radius;
+      const rB = opts.flanges && (i + 1) % 7 === 0 ? radius * 1.07 : radius;
+
+      for (let j = 0; j < radialSegs; j++) {
+        const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;
+        const a0 = u0 * TAU, a1 = u1 * TAU;
+        const c0 = Math.cos(a0), s0 = Math.sin(a0);
+        const c1 = Math.cos(a1), s1 = Math.sin(a1);
+        const nA0 = [fA.u[0] * c0 + fA.v[0] * s0, fA.u[1] * c0 + fA.v[1] * s0, fA.u[2] * c0 + fA.v[2] * s0];
+        const nA1 = [fA.u[0] * c1 + fA.v[0] * s1, fA.u[1] * c1 + fA.v[1] * s1, fA.u[2] * c1 + fA.v[2] * s1];
+        const nB0 = [fB.u[0] * c0 + fB.v[0] * s0, fB.u[1] * c0 + fB.v[1] * s0, fB.u[2] * c0 + fB.v[2] * s0];
+        const nB1 = [fB.u[0] * c1 + fB.v[0] * s1, fB.u[1] * c1 + fB.v[1] * s1, fB.u[2] * c1 + fB.v[2] * s1];
+
+        const q0 = [pA[0] + nA0[0] * rA, pA[1] + nA0[1] * rA, pA[2] + nA0[2] * rA];
+        const q1 = [pA[0] + nA1[0] * rA, pA[1] + nA1[1] * rA, pA[2] + nA1[2] * rA];
+        const q2 = [pB[0] + nB1[0] * rB, pB[1] + nB1[1] * rB, pB[2] + nB1[2] * rB];
+        const q3 = [pB[0] + nB0[0] * rB, pB[1] + nB0[1] * rB, pB[2] + nB0[2] * rB];
+        this.addQuad(q0, q1, q2, q3, matSpec, {
+          u0: u0 * TAU * radius, v0, u1: u1 * TAU * radius, v1,
+          normals: [nA0, nA1, nB1, nB0],
+          chart, lu0: u0, lv0, lu1: u1, lv1,
+        });
+      }
+    }
+    return this;
+  }
+
   // Registers an analytical rectangular emitter quad for the GPU lightmapper.
   // Normal is normalize(cross(p1 - p0, p3 - p0)).
   addAreaLight(p0, p1, p3, color, intensity, opts = {}) {
@@ -933,6 +1451,8 @@ export class MapBuilder {
     const vf = new Float32Array(vertexData);
     const vu = new Uint32Array(vertexData);
     const positions = new Float32Array(vCount * 3);
+    const uvs = new Float32Array(vCount * 2);
+    const uv2s = new Float32Array(vCount * 2);
 
     for (let i = 0; i < vCount; i++) {
       const v = this.vertices[i];
@@ -956,11 +1476,15 @@ export class MapBuilder {
       positions[i * 3 + 0] = v.x;
       positions[i * 3 + 1] = v.y;
       positions[i * 3 + 2] = v.z;
+      uvs[i * 2 + 0] = v.u;
+      uvs[i * 2 + 1] = v.v;
+      uv2s[i * 2 + 0] = v.lu;
+      uv2s[i * 2 + 1] = v.lv;
     }
 
     const indexData = new Uint32Array(this.indices);
     const triMats = new Uint32Array(this.triMaterials);
-    const bvh = buildBVH(positions, indexData, triMats);
+    const bvh = buildBVH(positions, indexData, triMats, uvs, uv2s);
 
     // Pack Area Lights (64 bytes each):
     // vec4f origin_area

@@ -90,4 +90,26 @@ test("Material presets pack cleanly and dry v2 levels incur zero water allocatio
   byId["poolrooms-v2"].build(mp);
   const cp = mp.compile();
   assert(cp.water !== null && cp.water.level > 0.2);
+  assert(cp.bookmarks.length === 4);
+  assert(cp.triCount > 1500);
 });
+
+test("MapBuilder ringWall, spiralStairs, pillWindowBay, curvedTube, and handrail compile into watertight BVH", () => {
+  const m = createMap({ atlasSize: 512 });
+  m.ringWall([-5, 0, -0.3], [5, 4.6, 0.3], { center: 0, centerY: 1.5, radius: 2.2, segments: 24 });
+  m.spiralStairs(4, 4, 0.4, 4.4, 1.0, 2.2, 0, -Math.PI, 12, "tile_white");
+  m.pillWindowBay([-2, 0, -5.4], [2, 3.6, -5.0], { facing: "+" });
+  m.curvedTube([[0, 4, -2], [1, 2.5, -3], [1.5, 0.5, -4]], 0.5, "fiberglass_slide", { flanges: true });
+  m.handrail([-3, 2], [3, 2], 0.5, 0.9);
+  const c = m.compile({ atlasSize: 512 });
+
+  assert(c.triCount > 400);
+  assert(c.lightCount >= 1);
+  // Ray straight through circular ring center should pass through unobstructed to the pill window wall
+  const hitCenter = intersectBVH(c.bvh, [0, 1.5, 3], [0, 0, -1]);
+  assert(hitCenter && hitCenter.t > 7.5, `Expected ray through ring opening to pass z=0, got t=${hitCenter?.t}`);
+  // Ray hitting the outer pier of the ring wall should hit at z=0.3 (t=2.7)
+  const hitPier = intersectBVH(c.bvh, [3.8, 1.5, 3], [0, 0, -1]);
+  assert(hitPier && Math.abs(hitPier.t - 2.7) < 0.05, `Expected ray to hit ring pier at t=2.7, got t=${hitPier?.t}`);
+});
+

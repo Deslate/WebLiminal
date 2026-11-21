@@ -180,8 +180,8 @@ export async function createRenderer(canvas, options = {}) {
     compileShader("bake-gbuffer", bakeGBufferWGSL),
     compileShader("bake-lightmap", bvhCommonWGSL + "\n" + bakeLightmapWGSL),
     compileShader("denoise-lightmap", denoiseLightmapWGSL),
-    compileShader("gbuffer-pbr", gbufferPbrWGSL),
-    compileShader("ssr", ssrWGSL),
+    compileShader("gbuffer-pbr", bvhCommonWGSL + "\n" + gbufferPbrWGSL),
+    compileShader("ssr", bvhCommonWGSL + "\n" + ssrWGSL),
     compileShader("volumetric", bvhCommonWGSL + "\n" + volumetricWGSL),
     compileShader("postprocess", postprocessWGSL),
   ]);
@@ -300,10 +300,10 @@ export async function createRenderer(canvas, options = {}) {
   });
   const envUniformBuf = device.createBuffer({
     label: "env uniform",
-    size: 96,
+    size: 112,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  const denoiseParamBufs = [1, 2].map((step) => {
+  const denoiseParamBufs = [1, 2, 4].map((step) => {
     const b = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     return { step, buf: b };
   });
@@ -418,6 +418,8 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 7, resource: sceneRes.metaView },
         { binding: 8, resource: sceneRes.lmIrradFinalView },
         { binding: 9, resource: sceneRes.lmDirFinalView },
+        { binding: 10, resource: { buffer: sceneRes.bvhNodeBuf } },
+        { binding: 11, resource: { buffer: sceneRes.bvhTriBuf } },
       ],
     });
 
@@ -431,6 +433,10 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 4, resource: rt.depthView },
         { binding: 5, resource: linSampler },
         { binding: 6, resource: rt.ssrView },
+        { binding: 7, resource: { buffer: sceneRes.bvhNodeBuf } },
+        { binding: 8, resource: { buffer: sceneRes.bvhTriBuf } },
+        { binding: 9, resource: { buffer: sceneRes.materialBuf } },
+        { binding: 10, resource: sceneRes.lmIrradFinalView },
       ],
     });
 
@@ -440,7 +446,7 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 1, resource: rt.hdrRawView },
         { binding: 2, resource: rt.gNormalRoughView },
         { binding: 3, resource: rt.gAlbedoMetalView },
-        { binding: 5, resource: linSampler },
+        { binding: 4, resource: rt.depthView },
       ],
     });
     rt.ssrCompGroup1 = device.createBindGroup({
@@ -452,7 +458,7 @@ export async function createRenderer(canvas, options = {}) {
     });
 
     if (sceneRes.water) {
-      sceneRes.water.bindSceneTextures(rt.hdrWaterSrcView, rt.depthView);
+      sceneRes.water.bindSceneTextures(rt.depthView);
     }
 
     rt.volMarchGroup = device.createBindGroup({
@@ -532,7 +538,9 @@ export async function createRenderer(canvas, options = {}) {
     const gNormalRough = mkTex("gNormalRough", w, h, "rgba16float", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
     const gAlbedoMetal = mkTex("gAlbedoMetal", w, h, "rgba8unorm", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
     const depth = mkTex("depth", w, h, "depth32float", GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING);
-    const ssr = mkTex("ssr", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
+    const ssrW = w;
+    const ssrH = h;
+    const ssr = mkTex("ssr", ssrW, ssrH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const volA = mkTex("volA", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const volB = mkTex("volB", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const bloomA = mkTex("bloomA", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
@@ -543,6 +551,8 @@ export async function createRenderer(canvas, options = {}) {
       height: h,
       halfW,
       halfH,
+      ssrW,
+      ssrH,
       hdrRaw, hdrRawView: hdrRaw.createView(),
       hdrComposite, hdrCompositeView: hdrComposite.createView(),
       hdrWaterSrc, hdrWaterSrcView: hdrWaterSrc.createView(),
@@ -565,7 +575,7 @@ export async function createRenderer(canvas, options = {}) {
     const sunCol = sun ? sun.color : [0, 0, 0];
     const sunInt = sun ? sun.intensity : 0;
 
-    const buf = new ArrayBuffer(96);
+    const buf = new ArrayBuffer(112);
     const f = new Float32Array(buf);
     const u = new Uint32Array(buf);
     f[0] = sunDir[0]; f[1] = sunDir[1]; f[2] = sunDir[2]; f[3] = sun?.angularRadius ?? 0.025;
@@ -580,6 +590,14 @@ export async function createRenderer(canvas, options = {}) {
     f[21] = atm.bounceBoost ?? 1.15;
     f[22] = atm.aoRadius ?? 1.6;
     f[23] = sceneRes.hasSkylights ? 1.0 : 0.0;
+    if (sceneRes.water) {
+      f[24] = sceneRes.water.absorption[0];
+      f[25] = sceneRes.water.absorption[1];
+      f[26] = sceneRes.water.absorption[2];
+      f[27] = sceneRes.water.level;
+    } else {
+      f[24] = 0; f[25] = 0; f[26] = 0; f[27] = -100;
+    }
     device.queue.writeBuffer(envUniformBuf, 0, buf);
   }
 
@@ -608,7 +626,15 @@ export async function createRenderer(canvas, options = {}) {
     p.dispatchWorkgroups(wg, wg);
     p.end();
 
-    // 4. Final gutter dilation: A -> B (final sampled lightmap!)
+    // 4. Bilateral pass step 4: A -> B (eliminates low-frequency GI mottling!)
+    p = encoder.beginComputePass({ label: "lm-bilateral-3" });
+    p.setPipeline(bilateralLmPipe);
+    p.setBindGroup(0, sceneRes.lmBilateral3Group0);
+    p.setBindGroup(1, sceneRes.lmBilateral3Group1);
+    p.dispatchWorkgroups(wg, wg);
+    p.end();
+
+    // 5. Final gutter dilation: B -> A (final sampled lightmap!)
     p = encoder.beginComputePass({ label: "lm-dilate" });
     p.setPipeline(dilateLmPipe);
     p.setBindGroup(0, sceneRes.lmDilateGroup0);
@@ -816,6 +842,7 @@ export async function createRenderer(canvas, options = {}) {
     device.queue.writeBuffer(resolveParamBuf, 0, new Uint32Array([atlasSize, 1, 0, 0]));
     device.queue.writeBuffer(denoiseParamBufs[0].buf, 0, new Uint32Array([atlasSize, 1, 0, 0]));
     device.queue.writeBuffer(denoiseParamBufs[1].buf, 0, new Uint32Array([atlasSize, 2, 0, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[2].buf, 0, new Uint32Array([atlasSize, 4, 0, 0]));
 
     const lmBakeGroup = device.createBindGroup({
       layout: bakeLmPipe.getBindGroupLayout(0),
@@ -876,25 +903,50 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 1, resource: lmDirBView },
       ],
     });
-    const lmDilateGroup0 = device.createBindGroup({
-      layout: dilateLmPipe.getBindGroupLayout(0),
+    const lmBilateral3Group0 = device.createBindGroup({
+      layout: bilateralLmPipe.getBindGroupLayout(0),
       entries: [
-        { binding: 0, resource: { buffer: resolveParamBuf } },
+        { binding: 0, resource: { buffer: denoiseParamBufs[2].buf } },
+        { binding: 1, resource: { buffer: lmPosBuf } },
+        { binding: 2, resource: { buffer: lmNormBuf } },
         { binding: 5, resource: lmIrradBView },
         { binding: 6, resource: lmDirBView },
       ],
     });
-    const lmDilateGroup1 = device.createBindGroup({
-      layout: dilateLmPipe.getBindGroupLayout(1),
+    const lmBilateral3Group1 = device.createBindGroup({
+      layout: bilateralLmPipe.getBindGroupLayout(1),
       entries: [
         { binding: 0, resource: lmIrradAView },
         { binding: 1, resource: lmDirAView },
       ],
     });
+    const lmDilateGroup0 = device.createBindGroup({
+      layout: dilateLmPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: resolveParamBuf } },
+        { binding: 5, resource: lmIrradAView },
+        { binding: 6, resource: lmDirAView },
+      ],
+    });
+    const lmDilateGroup1 = device.createBindGroup({
+      layout: dilateLmPipe.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: lmIrradBView },
+        { binding: 1, resource: lmDirBView },
+      ],
+    });
 
-    // Optional water module (zero cost on dry levels!)
+    // Optional physical water module (zero cost on dry levels!)
     const water = compiled.water
-      ? await createWaterModule(device, compiled.water, compiled.collision, frameUniformBuf, linSampler)
+      ? await createWaterModule(
+          device,
+          compiled.water,
+          compiled.collision,
+          frameUniformBuf,
+          linSampler,
+          { bvhNodeBuf, bvhTriBuf, materialBuf, lmIrradFinalView: lmIrradAView },
+          isSoftware,
+        )
       : null;
 
     sceneRes = {
@@ -921,12 +973,13 @@ export async function createRenderer(canvas, options = {}) {
       accumIrradBuf,
       accumDirBuf,
       lmIrradA, lmIrradB, lmDirA, lmDirB,
-      lmIrradFinalView: lmIrradBView,
-      lmDirFinalView: lmDirBView,
+      lmIrradFinalView: lmIrradAView,
+      lmDirFinalView: lmDirAView,
       lmBakeGroup,
       lmResolveGroup,
       lmBilateral1Group0, lmBilateral1Group1,
       lmBilateral2Group0, lmBilateral2Group1,
+      lmBilateral3Group0, lmBilateral3Group1,
       lmDilateGroup0, lmDilateGroup1,
       water,
       stats: compiled.stats,
@@ -1045,15 +1098,15 @@ export async function createRenderer(canvas, options = {}) {
       rpass.end();
     }
 
-    // Pass 2: Screen-Space Reflections + Composite -> hdrComposite
+    // Pass 2: Full-Scene BVH Ray-Traced Glossy Reflections + Bilateral Composite -> hdrComposite
     if (settings.ssrEnabled && settings.debugView === 0) {
-      let cpass = enc.beginComputePass({ label: "ssr-trace" });
+      let cpass = enc.beginComputePass({ label: "bvh-refl-trace" });
       cpass.setPipeline(ssrTracePipe);
       cpass.setBindGroup(0, rt.ssrTraceGroup);
-      cpass.dispatchWorkgroups(Math.ceil(rt.halfW / 8), Math.ceil(rt.halfH / 8));
+      cpass.dispatchWorkgroups(Math.ceil(rt.ssrW / 8), Math.ceil(rt.ssrH / 8));
       cpass.end();
 
-      cpass = enc.beginComputePass({ label: "ssr-composite" });
+      cpass = enc.beginComputePass({ label: "bvh-refl-composite" });
       cpass.setPipeline(ssrCompPipe);
       cpass.setBindGroup(0, rt.ssrCompGroup0);
       cpass.setBindGroup(1, rt.ssrCompGroup1);
@@ -1063,9 +1116,8 @@ export async function createRenderer(canvas, options = {}) {
       enc.copyTextureToTexture({ texture: rt.hdrRaw }, { texture: rt.hdrComposite }, [width, height, 1]);
     }
 
-    // Pass 3: Optional Interactive Water Refraction, Live Caustics & Reflections
+    // Pass 3: Optional Physical BVH Water (Snell Refraction, Live Photon Caustics & BVH Mirror Reflections)
     if (sceneRes.water && settings.debugView === 0) {
-      enc.copyTextureToTexture({ texture: rt.hdrComposite }, { texture: rt.hdrWaterSrc }, [width, height, 1]);
       sceneRes.water.render(enc, rt.hdrCompositeView);
     }
 

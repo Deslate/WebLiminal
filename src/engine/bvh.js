@@ -4,16 +4,19 @@
 //     [minX, minY, minZ, leftFirst (u32), maxX, maxY, maxZ, triCount (u32)]
 //     If triCount > 0: leaf covering tris [leftFirst .. leftFirst + triCount)
 //     If triCount == 0: internal node with children leftFirst and leftFirst + 1
-//   tris: 16 floats/u32s (64 bytes) per triangle:
-//     vec4f v0_mat  (v0.x, v0.y, v0.z, materialId as bitcast u32)
-//     vec4f e1_pad  (e1.x, e1.y, e1.z, 0)
-//     vec4f e2_pad  (e2.x, e2.y, e2.z, 0)
-//     vec4f n_pad   (gn.x, gn.y, gn.z, area)
+//   tris: 28 floats/u32s (112 bytes) per triangle:
+//     vec4f v0_mat     (v0.x, v0.y, v0.z, materialId as bitcast u32)
+//     vec4f e1_pad     (e1.x, e1.y, e1.z, 0)
+//     vec4f e2_pad     (e2.x, e2.y, e2.z, 0)
+//     vec4f n_area     (gn.x, gn.y, gn.z, area)
+//     vec4f lm0_dlm1   (lm0.x, lm0.y, lm1.x - lm0.x, lm1.y - lm0.y)
+//     vec4f dlm2_uv0   (lm2.x - lm0.x, lm2.y - lm0.y, uv0.x, uv0.y)
+//     vec4f duv1_duv2  (uv1.x - uv0.x, uv1.y - uv0.y, uv2.x - uv0.x, uv2.y - uv0.y)
 
 export const BVH_NODE_WORDS = 8;
-export const BVH_TRI_WORDS = 16;
+export const BVH_TRI_WORDS = 28;
 
-export function buildBVH(positions, indices, materialIds) {
+export function buildBVH(positions, indices, materialIds, uvs = null, uv2s = null) {
   const triCount = Math.floor(indices.length / 3);
   if (triCount === 0) {
     const emptyNodes = new ArrayBuffer(BVH_NODE_WORDS * 4);
@@ -243,9 +246,12 @@ export function buildBVH(positions, indices, materialIds) {
 
   for (let k = 0; k < triCount; k++) {
     const t = triOrder[k];
-    const i0 = indices[t * 3] * 3;
-    const i1 = indices[t * 3 + 1] * 3;
-    const i2 = indices[t * 3 + 2] * 3;
+    const vi0 = indices[t * 3];
+    const vi1 = indices[t * 3 + 1];
+    const vi2 = indices[t * 3 + 2];
+    const i0 = vi0 * 3;
+    const i1 = vi1 * 3;
+    const i2 = vi2 * 3;
     const x0 = positions[i0], y0 = positions[i0 + 1], z0 = positions[i0 + 2];
     const e1x = positions[i1] - x0, e1y = positions[i1 + 1] - y0, e1z = positions[i1 + 2] - z0;
     const e2x = positions[i2] - x0, e2y = positions[i2 + 1] - y0, e2z = positions[i2 + 2] - z0;
@@ -261,6 +267,24 @@ export function buildBVH(positions, indices, materialIds) {
     triF[o + 8] = e2x; triF[o + 9] = e2y; triF[o + 10] = e2z; triF[o + 11] = 0;
     triF[o + 12] = nx * invLen; triF[o + 13] = ny * invLen; triF[o + 14] = nz * invLen;
     triF[o + 15] = len * 0.5;
+    if (uv2s) {
+      const l0x = uv2s[vi0 * 2], l0y = uv2s[vi0 * 2 + 1];
+      triF[o + 16] = l0x;
+      triF[o + 17] = l0y;
+      triF[o + 18] = uv2s[vi1 * 2] - l0x;
+      triF[o + 19] = uv2s[vi1 * 2 + 1] - l0y;
+      triF[o + 20] = uv2s[vi2 * 2] - l0x;
+      triF[o + 21] = uv2s[vi2 * 2 + 1] - l0y;
+    }
+    if (uvs) {
+      const u0x = uvs[vi0 * 2], u0y = uvs[vi0 * 2 + 1];
+      triF[o + 22] = u0x;
+      triF[o + 23] = u0y;
+      triF[o + 24] = uvs[vi1 * 2] - u0x;
+      triF[o + 25] = uvs[vi1 * 2 + 1] - u0y;
+      triF[o + 26] = uvs[vi2 * 2] - u0x;
+      triF[o + 27] = uvs[vi2 * 2 + 1] - u0y;
+    }
   }
 
   return {

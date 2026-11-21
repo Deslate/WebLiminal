@@ -110,41 +110,21 @@ fn exitLetters(uv: vec2f) -> f32 {
   return 1.0 - smoothstep(th - 0.008, th + 0.008, d);
 }
 
-fn evalCeramicTile(uv: vec2f, m: MaterialGPU, grid: f32, groutFrac: f32) -> Sample {
+fn evalCeramicBase(uv: vec2f, m: MaterialGPU) -> Sample {
   let seed = m.extra.z;
-  let g = uv * grid;
-  let cell = ((floor(g) % vec2f(grid)) + vec2f(grid)) % vec2f(grid);
-  let f = fract(g);
-  let rnd = hash22(cell + seed * 11.3);
-  let rnd2 = hash21(cell + seed * 29.7);
+  // Low-frequency organic ceramic glaze mottling, subtle mineral deposit, and gentle glaze undulation.
+  // Razor-sharp millimeter grout seams, bevels, and per-tile 3D micro-tilt are evaluated analytically
+  // per-pixel at infinite resolution so ceramic tiles never blur into thick grey grids!
+  let macroVar = pFbm(uv, vec2f(2.0), seed + 1.3, 3);
+  let glazeRipple = pFbm(uv, vec2f(6.0), seed + 4.7, 3);
+  let fineGrain = pFbm(uv, vec2f(16.0), seed + 9.1, 2);
+  let mineral = smoothstep(0.60, 0.88, pFbm(uv, vec2f(3.0), seed + 13.5, 3));
 
-  let edgeDist = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
-  let bevelW = groutFrac * 1.45;
-  let inGrout = 1.0 - smoothstep(groutFrac * 0.72, groutFrac + bevelW, edgeDist);
-  let bevelH = smoothstep(groutFrac * 0.75, groutFrac + bevelW, edgeDist);
-  let domePillow = 1.0 - 0.04 * dot(f - 0.5, f - 0.5);
-
-  let glazeWave = (pFbm(uv, vec2f(grid * 2.0), seed + 1.0, 3) - 0.5) * 0.025;
-  let groutGrain = pFbm(uv, vec2f(grid * 8.0), seed + 5.0, 3);
-  let mineral = smoothstep(0.55, 0.85, pFbm(uv, vec2f(grid * 1.0), seed + 9.0, 3));
-
-  let height = clamp(mix(0.18 + groutGrain * 0.12, 0.86 * domePillow + glazeWave, bevelH), 0.0, 1.0);
-  let ao = mix(0.45 + 0.2 * groutGrain, 1.0, smoothstep(groutFrac * 0.5, groutFrac + bevelW * 1.5, edgeDist));
-
-  // Individual ceramic tile variation (subtle warmth/coolness & glaze roughness)
-  let tileTint = vec3f(0.94 + rnd.x * 0.11, 0.95 + rnd.y * 0.09, 0.93 + rnd2 * 0.11);
-  var tileCol = m.albedoScale.rgb * tileTint;
-  tileCol *= 1.0 - mineral * 0.07;
-  let groutCol = m.albedoScale.rgb * vec3f(0.24, 0.27, 0.23) * (0.75 + 0.4 * groutGrain);
-  let albedo = mix(tileCol, groutCol, inGrout);
-
-  let tileRough = clamp(m.pbr.x + (rnd.x - 0.5) * 0.08 + mineral * 0.06, 0.06, 0.92);
-  let roughness = mix(tileRough, 0.88, inGrout);
-  let coat = mix(m.pbr.z, 0.04, inGrout);
-
-  // Tiny random per-tile mounting tilt makes large tiled walls shimmer realistically!
-  let tilt = (rnd - 0.5) * 0.032 * (1.0 - inGrout);
-  return Sample(albedo, roughness, height, ao, 0.0, coat, 0.0, m.extra.y, tilt);
+  let col = m.albedoScale.rgb * (0.955 + 0.085 * macroVar) * (1.0 - mineral * 0.045);
+  let rough = clamp(m.pbr.x + (glazeRipple - 0.5) * 0.035 + mineral * 0.04, 0.04, 0.90);
+  let height = clamp(0.55 + (glazeRipple - 0.5) * 0.08 + (fineGrain - 0.5) * 0.03, 0.0, 1.0);
+  let ao = 0.96 + 0.04 * macroVar;
+  return Sample(col, rough, height, ao, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
 }
 
 fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
@@ -153,17 +133,10 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
   let baseCol = m.albedoScale.rgb;
   let baseRough = m.pbr.x;
 
-  // 0: tile_white (4x4 per meter)
-  if (preset == 0u) {
-    return evalCeramicTile(uv, m, 4.0, 0.022);
-  }
-  // 1: tile_pool (4x4 submerged turquoise ceramic)
-  if (preset == 1u) {
-    return evalCeramicTile(uv, m, 4.0, 0.024);
-  }
-  // 2: tile_mosaic (8x8 fine square mosaic)
-  if (preset == 2u) {
-    return evalCeramicTile(uv, m, 8.0, 0.042);
+  // 0: tile_white, 1: tile_pool, 2: tile_mosaic, 16: tile_dado_green
+  // (organic glaze base baked here; crisp millimeter joints & per-tile tilt computed analytically!)
+  if (preset == 0u || preset == 1u || preset == 2u || preset == 16u) {
+    return evalCeramicBase(uv, m);
   }
   // 3: plaster_warm
   if (preset == 3u) {
@@ -352,6 +325,24 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let faceGlow = (0.14 + 0.86 * letter) * (1.0 - border);
     let col = mix(mix(vec3f(0.05, 0.09, 0.06), vec3f(0.95, 1.0, 0.96), letter), vec3f(0.10, 0.11, 0.11), border);
     return Sample(col, mix(0.20, 0.45, border), mix(0.45, 0.90, border), 1.0, border * 0.8, (1.0 - border) * 0.5, faceGlow, 0.0, vec2f(0.0));
+  }
+  // 17: frosted_window (backlit frosted milk-glass pool window / porthole)
+  if (preset == 17u) {
+    let frost = pFbm(uv, vec2f(8.0), seed, 3);
+    let edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    let softRim = smoothstep(0.0, 0.10, edge);
+    let glow = (0.72 + 0.28 * softRim) * (0.94 + 0.08 * frost);
+    let col = baseCol * (0.95 + 0.05 * frost);
+    return Sample(col, baseRough, 0.5 + (frost - 0.5) * 0.04, 1.0, 0.0, m.pbr.z, glow, 0.0, vec2f(0.0));
+  }
+  // 18: fiberglass_slide (molded dark glossy fiberglass pool water slide)
+  if (preset == 18u) {
+    let grain = pFbm(uv, vec2f(6.0, 2.0), seed, 3);
+    let seam = 1.0 - smoothstep(0.015, 0.032, abs(fract(uv.y * 0.45) - 0.5));
+    let col = baseCol * (0.92 + 0.16 * grain) * (1.0 - seam * 0.28);
+    let h = 0.55 + (grain - 0.5) * 0.04 + seam * 0.14;
+    let rough = clamp(baseRough + (grain - 0.5) * 0.05 + seam * 0.10, 0.06, 0.55);
+    return Sample(col, rough, h, 1.0 - seam * 0.2, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
   // 15: vent_grate (metallic louvered HVAC register)
   let edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));

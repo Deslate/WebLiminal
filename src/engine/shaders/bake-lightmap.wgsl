@@ -1,7 +1,11 @@
-// Progressive GPU BVH Path-Traced Directional Lightmap Baker.
-// Evaluates direct NEE (sun + arbitrary area lights + skylights), multi-bounce
-// indirect GI with material color bleeding, dominant incoming light direction
-// (for normal-map shading at runtime), and short-range baked Ambient Occlusion.
+// Progressive GPU BVH Path-Traced Directional Indirect GI Lightmap Baker.
+// Evaluates:
+//   - Direct area lights & skylight portals (smooth low-frequency interior & sky illumination)
+//   - 3-bounce indirect GI including sunlit bounces (with physical Beer-Lambert water filtering
+//     so sunlit pool floors naturally bounce luminous turquoise GI onto tiled ceilings!)
+//   - Dominant incoming light direction + short-range architectural Ambient Occlusion.
+// Note: Direct sunlight is intentionally excluded from primary texels and evaluated per-pixel
+// via BVH shadow rays at runtime for razor-sharp architectural sunlight boundaries!
 
 @group(0) @binding(0) var<uniform> env: EnvUniform;
 @group(0) @binding(1) var<storage, read> bvhNodes: array<BVHNode>;
@@ -14,7 +18,7 @@
 @group(0) @binding(8) var<storage, read_write> accumDir: array<vec4f>;
 
 fn traceClosest(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
-  var res = RayHit(maxT, vec3f(0.0, 1.0, 0.0), 0u, false);
+  var res = RayHit(maxT, vec3f(0.0, 1.0, 0.0), 0u, false, vec2f(0.0), vec2f(0.0));
   let invD = 1.0 / select(rd, vec3f(1e-8), abs(rd) < vec3f(1e-8));
   if (hitAABB(bvhNodes[0].minB, bvhNodes[0].maxB, ro, invD, res.t) >= res.t) {
     return res;
@@ -44,6 +48,8 @@ fn traceClosest(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
           res.n = select(tri.gn, -tri.gn, det < 0.0);
           res.matId = tri.matId;
           res.hit = true;
+          res.lmUV = tri.lm0_dlm1.xy + u * tri.lm0_dlm1.zw + v * tri.dlm2_uv0.xy;
+          res.uv = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
         }
       }
       if (sp == 0u) { break; }
@@ -145,7 +151,6 @@ fn evalAreaLight(p: vec3f, n: vec3f, l: AreaLight, u1: f32, u2: f32, outDir: ptr
   if (cosLight <= 0.0) { return vec3f(0.0); }
   if (traceShadow(p, wi, max(0.01, dist - 0.03))) { return vec3f(0.0); }
   *outDir = wi;
-  // Soft distance regularization prevents firefly spikes at light fixture rims.
   let g = (cosSurf * cosLight * l.originArea.w) / max(dist2, 0.08);
   return l.radianceCdf.rgb * g;
 }
@@ -153,8 +158,10 @@ fn evalAreaLight(p: vec3f, n: vec3f, l: AreaLight, u1: f32, u2: f32, outDir: ptr
 fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr<function, vec3f>, isBounce: bool) -> vec3f {
   var total = vec3f(0.0);
 
-  // 1. Directional Sun (finite disc soft shadow)
-  if (env.sunColorInt.w > 0.5) {
+  // 1. Directional Sun: ONLY included on indirect bounces!
+  // Primary direct sunlight is evaluated per-pixel in gbuffer-pbr.wgsl & water-render.wgsl
+  // via exact BVH shadow rays so sunlight shadows are razor-sharp with zero lightmap blur!
+  if (isBounce && env.sunColorInt.w > 0.5) {
     let sunCenter = env.sunDirRad.xyz;
     let angR = env.sunDirRad.w;
     let r = angR * sqrt(rand01(rng));
@@ -162,27 +169,31 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
     let sunDir = normalize(orthoBasis(sunCenter) * vec3f(r * cos(phi), r * sin(phi), 1.0));
     let ndl = dot(n, sunDir);
     if (ndl > 0.0 && !traceShadow(p, sunDir, 200.0)) {
-      let c = env.sunColorInt.rgb * ndl;
+      var c = env.sunColorInt.rgb * ndl;
+      // If the sunlit bounce point is underwater, attenuate incoming sun by Beer-Lambert absorption!
+      let wl = env.waterOptics.w;
+      if (wl > -50.0 && p.y < wl) {
+        let subPath = (wl - p.y) / max(sunDir.y, 0.25);
+        c *= exp(-env.waterOptics.rgb * subPath);
+      }
       total += c;
       *dirSum += sunDir * (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b);
     }
   }
 
-  // 2. Area Lights & Skylight Portals.
-  // Primary direct pass evaluates all lights (up to 16) for zero selection blotches;
-  // indirect bounces use 2-sample power-weighted CDF importance sampling for speed.
+  // 2. Area Lights, Frosted Windows & Skylight Portals.
   let lightCount = u32(env.skyHorizon.w + 0.5);
   if (lightCount > 0u) {
-    if (!isBounce && lightCount <= 16u) {
+    if (!isBounce && lightCount <= 6u) {
       for (var li = 0u; li < lightCount; li++) {
         var wi = vec3f(0.0);
         let contrib = evalAreaLight(p, n, lights[li], rand01(rng), rand01(rng), &wi);
-        let clamped = min(contrib, vec3f(26.0));
+        let clamped = min(contrib, vec3f(28.0));
         total += clamped;
         *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
       }
     } else {
-      let pickSamples = min(lightCount, 2u);
+      let pickSamples = select(min(lightCount, 4u), min(lightCount, 2u), isBounce);
       for (var s = 0u; s < pickSamples; s++) {
         var li = 0u;
         var pdf = 1.0;
@@ -201,8 +212,7 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
         var wi = vec3f(0.0);
         let scale = f32(select(pickSamples, 1u, lightCount <= 2u));
         let contrib = evalAreaLight(p, n, lights[li], rand01(rng), rand01(rng), &wi) / (pdf * scale);
-        // Stronger clamp on indirect bounce samples prevents single-ray firefly spots.
-        let clamped = min(contrib, select(vec3f(22.0), vec3f(7.5), isBounce));
+        let clamped = min(contrib, select(vec3f(24.0), vec3f(9.0), isBounce));
         total += clamped;
         *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
       }
@@ -231,9 +241,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   var irradSum = vec3f(0.0);
   var dirSum = vec3f(0.0);
   var aoSum = 0.0;
+  let wl = env.waterOptics.w;
 
   for (var s = 0u; s < spp; s++) {
-    // 1. Direct lighting at texel (stored as E / PI so runtime diffuse = albedo * lmIrrad)
+    // 1. Direct area lights & skylight portals at texel (stored as E / PI)
     var directDir = vec3f(0.0);
     irradSum += sampleDirectLighting(p0, n0, &rng, &directDir, false) * INV_PI;
     dirSum += directDir * INV_PI;
@@ -243,7 +254,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let aoHit = traceShadow(p0, aoDir, env.extra.z);
     aoSum += select(1.0, 0.0, aoHit);
 
-    // 3. Multi-bounce indirect GI path (3 bounces with cosine hemisphere sampling)
+    // 3. Multi-bounce indirect GI path (3 bounces with physical water Beer-Lambert color bounce!)
     var ro = p0;
     var rd = sampleCosineHemisphere(n0, rand01(&rng), rand01(&rng));
     let firstBounceDir = rd;
@@ -259,12 +270,25 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
         break;
       }
 
-      let mat = materials[h.matId];
-      // Do NOT add mat.emissive here: all emissive panels/signs are already sampled
-      // cleanly via NEE in sampleDirectLighting, so adding them here double-counts
-      // and injects single-ray firefly spots into indirect GI!
       let hitPos = ro + rd * h.t + h.n * 0.008;
-      let diffuseAlbedo = clamp(mat.albedoScale.rgb * (1.0 - mat.pbr.y * 0.85), vec3f(0.02), vec3f(0.86));
+
+      // Physical underwater path absorption during GI bounce:
+      // Rays going from ceiling/wall down into a sunlit pool and back out naturally tint the
+      // bounced GI luminous emerald-turquoise — matching photographic Poolrooms ceiling bounce!
+      if (wl > -50.0) {
+        let roSub = ro.y < wl;
+        let hitSub = hitPos.y < wl;
+        if (roSub && hitSub) {
+          throughput *= exp(-env.waterOptics.rgb * min(h.t, 4.0));
+        } else if (roSub != hitSub) {
+          let tCross = clamp((wl - ro.y) / select(rd.y, 1e-5, abs(rd.y) < 1e-5), 0.0, h.t);
+          let subLen = select(h.t - tCross, tCross, roSub);
+          throughput *= exp(-env.waterOptics.rgb * min(subLen, 4.0));
+        }
+      }
+
+      let mat = materials[h.matId];
+      let diffuseAlbedo = clamp(mat.albedoScale.rgb * (1.0 - mat.pbr.y * 0.85), vec3f(0.02), vec3f(0.88));
       throughput *= diffuseAlbedo;
 
       var unusedDir = vec3f(0.0);
@@ -275,8 +299,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       rd = sampleCosineHemisphere(h.n, rand01(&rng), rand01(&rng));
     }
 
-    // Soft firefly bound on indirect bounce contribution keeps GI smooth without losing color bleed.
-    let clampedPath = min(pathRad, vec3f(4.5));
+    let clampedPath = min(pathRad, vec3f(6.5));
     irradSum += clampedPath;
     dirSum += firstBounceDir * (0.2126 * clampedPath.r + 0.7152 * clampedPath.g + 0.0722 * clampedPath.b);
   }

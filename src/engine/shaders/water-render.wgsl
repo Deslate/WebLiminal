@@ -1,11 +1,13 @@
-// Optional Interactive Water Surface Shader:
-// - Live wave normal reconstruction + capillary micro-ripples
-// - Exact Snell refraction with submerged depth validation (no foreground bleeding)
-// - Physical Beer-Lambert RGB pool water absorption (shallow clear -> deep aqua)
-// - Live wave-curvature Jacobian caustics with subtle chromatic dispersion
-// - Dielectric Fresnel Screen-Space Reflections + sky/hall fallback
-
-const PI: f32 = 3.14159265359;
+// Photographic Physical Water Surface Shader:
+// Prepended with bvh-common.wgsl.
+//   - Smooth Catmull-Rom bicubic surface normal directly from live simulated wave field
+//     (zero synthetic cosine capillary grids!)
+//   - True BVH-traced Snell refraction intersecting actual submerged tiles, steps & pillars
+//     with exact analytic ceramic tile rendering (crisp refracted underwater tile lines!)
+//   - Live GPU photon-traced water caustics sampled at the exact submerged world position
+//   - Exact unpolarized dielectric Fresnel (IOR = 1.333) + RGB Beer-Lambert absorption
+//   - Full-scene BVH mirror reflections (zero SSR holes, reflecting off-screen skylights,
+//     glowing pill windows, misty corridors, arches & spiral columns!)
 
 struct FrameUniform {
   viewProj: mat4x4f,
@@ -24,16 +26,20 @@ struct FrameUniform {
 struct WaterRenderUniform {
   domain: vec4f,      // x = minX, y = minZ, z = invSizeX, w = invSizeZ
   grid: vec4u,        // x = nx, y = nz, z = 0, w = 0
-  optics: vec4f,      // rgb = Beer absorption coeffs, w = causticStrength
-  surface: vec4f,     // x = waterLevel, y = dx, z = waveAmp, w = time
+  optics: vec4f,      // rgb = Beer-Lambert absorption coeffs, w = causticStrength
+  surface: vec4f,     // x = waterLevel, y = dx, z = sizeX, w = sizeZ
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniform;
 @group(0) @binding(1) var<uniform> water: WaterRenderUniform;
 @group(0) @binding(2) var<storage, read> waveState: array<vec2f>;
-@group(0) @binding(3) var sceneColorTex: texture_2d<f32>;
-@group(0) @binding(4) var sceneDepthTex: texture_depth_2d;
-@group(0) @binding(5) var linSampler: sampler;
+@group(0) @binding(3) var sceneDepthTex: texture_depth_2d;
+@group(0) @binding(4) var linSampler: sampler;
+@group(0) @binding(5) var<storage, read> bvhNodes: array<BVHNode>;
+@group(0) @binding(6) var<storage, read> bvhTris: array<BVHTri>;
+@group(0) @binding(7) var<storage, read> materials: array<MaterialGPU>;
+@group(0) @binding(8) var lmIrradTex: texture_2d<f32>;
+@group(0) @binding(9) var causticTex: texture_2d<f32>;
 
 struct VSOut {
   @builtin(position) clipPos: vec4f,
@@ -42,8 +48,8 @@ struct VSOut {
 
 @vertex
 fn vsWater(@location(0) xz: vec2f) -> VSOut {
-  let wx = mix(water.domain.x, water.domain.x + 1.0 / water.domain.z, xz.x);
-  let wz = mix(water.domain.y, water.domain.y + 1.0 / water.domain.w, xz.y);
+  let wx = water.domain.x + xz.x * water.surface.z;
+  let wz = water.domain.y + xz.y * water.surface.w;
   let wp = vec3f(wx, water.surface.x, wz);
   var o: VSOut;
   o.worldPos = wp;
@@ -51,199 +57,315 @@ fn vsWater(@location(0) xz: vec2f) -> VSOut {
   return o;
 }
 
-fn sampleWaveHeight(wx: f32, wz: f32) -> f32 {
-  let u = clamp((wx - water.domain.x) * water.domain.z, 0.0, 0.9999);
-  let v = clamp((wz - water.domain.y) * water.domain.w, 0.0, 0.9999);
+fn catmullRomW(t: f32) -> vec4f {
+  let t2 = t * t;
+  let t3 = t2 * t;
+  return vec4f(
+    -0.5 * t3 + t2 - 0.5 * t,
+    1.5 * t3 - 2.5 * t2 + 1.0,
+    -1.5 * t3 + 2.0 * t2 + 0.5 * t,
+    0.5 * t3 - 0.5 * t2,
+  );
+}
+
+fn catmullRomDW(t: f32) -> vec4f {
+  let t2 = t * t;
+  return vec4f(
+    -1.5 * t2 + 2.0 * t - 0.5,
+    4.5 * t2 - 5.0 * t,
+    -4.5 * t2 + 4.0 * t + 0.5,
+    1.5 * t2 - t,
+  );
+}
+
+fn waveCellH(ix: i32, iz: i32, nx: i32, nz: i32) -> f32 {
+  let cx = clamp(ix, 0, nx - 1);
+  let cz = clamp(iz, 0, nz - 1);
+  return waveState[u32(cz * nx + cx)].x;
+}
+
+// Smooth Catmull-Rom bicubic surface normal directly from the simulated heightfield!
+fn waterBicubicNormal(wx: f32, wz: f32) -> vec3f {
   let nx = i32(water.grid.x);
   let nz = i32(water.grid.y);
+  let u = clamp((wx - water.domain.x) * water.domain.z, 0.0, 0.9999);
+  let v = clamp((wz - water.domain.y) * water.domain.w, 0.0, 0.9999);
   let fx = u * f32(nx - 1);
   let fz = v * f32(nz - 1);
-  let x0 = clamp(i32(floor(fx)), 0, nx - 2);
-  let z0 = clamp(i32(floor(fz)), 0, nz - 2);
-  let tx = fx - f32(x0);
-  let tz = fz - f32(z0);
-  let h00 = waveState[u32(z0 * nx + x0)].x;
-  let h10 = waveState[u32(z0 * nx + x0 + 1)].x;
-  let h01 = waveState[u32((z0 + 1) * nx + x0)].x;
-  let h11 = waveState[u32((z0 + 1) * nx + x0 + 1)].x;
-  return mix(mix(h00, h10, tx), mix(h01, h11, tx), tz);
+  let ix = i32(floor(fx));
+  let iz = i32(floor(fz));
+  let tx = fx - f32(ix);
+  let tz = fz - f32(iz);
+
+  let wxW = catmullRomW(tx);
+  let wxD = catmullRomDW(tx);
+  let wzW = catmullRomW(tz);
+  let wzD = catmullRomDW(tz);
+
+  var dhdu = 0.0;
+  var dhdv = 0.0;
+  for (var j = -1; j <= 2; j++) {
+    let rW = wzW[j + 1];
+    let rD = wzD[j + 1];
+    var rowVal = 0.0;
+    var rowDerivX = 0.0;
+    for (var i = -1; i <= 2; i++) {
+      let h = waveCellH(ix + i, iz + j, nx, nz);
+      rowVal += h * wxW[i + 1];
+      rowDerivX += h * wxD[i + 1];
+    }
+    dhdu += rowDerivX * rW;
+    dhdv += rowVal * rD;
+  }
+
+  let cellX = water.surface.z / f32(nx - 1);
+  let cellZ = water.surface.w / f32(nz - 1);
+  let dhdx = dhdu / max(cellX, 1e-4);
+  let dhdz = dhdv / max(cellZ, 1e-4);
+  let bgSlope = evalDispersiveWaveSlope(vec2f(wx, wz), frame.cameraPos.w, max(water.surface.x, 0.35), water.surface.y);
+  return normalize(vec3f(-(dhdx + bgSlope.x), 1.0, -(dhdz + bgSlope.y)));
 }
 
-// Fine capillary wavelets layered on top of simulated heightfield for sparkling close-up detail.
-fn capillaryHeight(p: vec2f, t: f32) -> f32 {
-  let w1 = sin(dot(p, vec2f(6.3, 4.1)) + t * 2.4) * 0.0011;
-  let w2 = sin(dot(p, vec2f(-5.2, 7.4)) - t * 2.9) * 0.0009;
-  let w3 = sin(dot(p, vec2f(11.7, -9.2)) + t * 3.7) * 0.00045;
-  let w4 = sin(dot(p, vec2f(-14.1, -12.3)) - t * 4.3) * 0.00028;
-  return w1 + w2 + w3 + w4;
+fn traceClosestWater(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
+  var res = RayHit(maxT, vec3f(0.0, 1.0, 0.0), 0u, false, vec2f(0.0), vec2f(0.0));
+  let invD = 1.0 / select(rd, vec3f(1e-8), abs(rd) < vec3f(1e-8));
+  if (hitAABB(bvhNodes[0].minB, bvhNodes[0].maxB, ro, invD, res.t) >= res.t) {
+    return res;
+  }
+  var stack: array<u32, 32>;
+  var sp = 0u;
+  var cur = 0u;
+  loop {
+    let node = bvhNodes[cur];
+    if (node.triCount > 0u) {
+      let end = node.leftFirst + node.triCount;
+      for (var i = node.leftFirst; i < end; i++) {
+        let tri = bvhTris[i];
+        let pvec = cross(rd, tri.e2);
+        let det = dot(tri.e1, pvec);
+        if (abs(det) < 1e-8) { continue; }
+        let invDet = 1.0 / det;
+        let tvec = ro - tri.v0;
+        let u = dot(tvec, pvec) * invDet;
+        if (u < 0.0 || u > 1.0) { continue; }
+        let qvec = cross(tvec, tri.e1);
+        let v = dot(rd, qvec) * invDet;
+        if (v < 0.0 || u + v > 1.0) { continue; }
+        let t = dot(tri.e2, qvec) * invDet;
+        if (t > 1e-3 && t < res.t) {
+          res.t = t;
+          res.n = select(tri.gn, -tri.gn, det < 0.0);
+          res.matId = tri.matId;
+          res.hit = true;
+          res.lmUV = tri.lm0_dlm1.xy + u * tri.lm0_dlm1.zw + v * tri.dlm2_uv0.xy;
+          res.uv = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
+        }
+      }
+      if (sp == 0u) { break; }
+      sp -= 1u;
+      cur = stack[sp];
+    } else {
+      let l = node.leftFirst;
+      let r = l + 1u;
+      let dL = hitAABB(bvhNodes[l].minB, bvhNodes[l].maxB, ro, invD, res.t);
+      let dR = hitAABB(bvhNodes[r].minB, bvhNodes[r].maxB, ro, invD, res.t);
+      let nearIdx = select(r, l, dL < dR);
+      let farIdx = select(l, r, dL < dR);
+      if (min(dL, dR) >= res.t) {
+        if (sp == 0u) { break; }
+        sp -= 1u;
+        cur = stack[sp];
+      } else {
+        if (max(dL, dR) < res.t && sp < 31u) {
+          stack[sp] = farIdx;
+          sp += 1u;
+        }
+        cur = nearIdx;
+      }
+    }
+  }
+  return res;
 }
 
-fn totalHeight(wx: f32, wz: f32, t: f32) -> f32 {
-  return sampleWaveHeight(wx, wz) + capillaryHeight(vec2f(wx, wz), t);
+fn traceShadowWater(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
+  let invD = 1.0 / select(rd, vec3f(1e-8), abs(rd) < vec3f(1e-8));
+  if (hitAABB(bvhNodes[0].minB, bvhNodes[0].maxB, ro, invD, maxT) >= maxT) {
+    return false;
+  }
+  var stack: array<u32, 32>;
+  var sp = 0u;
+  var cur = 0u;
+  loop {
+    let node = bvhNodes[cur];
+    if (node.triCount > 0u) {
+      let end = node.leftFirst + node.triCount;
+      for (var i = node.leftFirst; i < end; i++) {
+        let tri = bvhTris[i];
+        let pvec = cross(rd, tri.e2);
+        let det = dot(tri.e1, pvec);
+        if (abs(det) < 1e-8) { continue; }
+        let invDet = 1.0 / det;
+        let tvec = ro - tri.v0;
+        let u = dot(tvec, pvec) * invDet;
+        if (u < 0.0 || u > 1.0) { continue; }
+        let qvec = cross(tvec, tri.e1);
+        let v = dot(rd, qvec) * invDet;
+        if (v < 0.0 || u + v > 1.0) { continue; }
+        let t = dot(tri.e2, qvec) * invDet;
+        if (t > 1e-3 && t < maxT) { return true; }
+      }
+      if (sp == 0u) { break; }
+      sp -= 1u;
+      cur = stack[sp];
+    } else {
+      let l = node.leftFirst;
+      let r = l + 1u;
+      let dL = hitAABB(bvhNodes[l].minB, bvhNodes[l].maxB, ro, invD, maxT);
+      let dR = hitAABB(bvhNodes[r].minB, bvhNodes[r].maxB, ro, invD, maxT);
+      let nearIdx = select(r, l, dL < dR);
+      let farIdx = select(l, r, dL < dR);
+      if (min(dL, dR) >= maxT) {
+        if (sp == 0u) { break; }
+        sp -= 1u;
+        cur = stack[sp];
+      } else {
+        if (max(dL, dR) < maxT && sp < 31u) {
+          stack[sp] = farIdx;
+          sp += 1u;
+        }
+        cur = nearIdx;
+      }
+    }
+  }
+  return false;
 }
 
-fn waterNormal(wx: f32, wz: f32, t: f32) -> vec3f {
-  let e = max(water.surface.y * 0.75, 0.045);
-  let hL = totalHeight(wx - e, wz, t);
-  let hR = totalHeight(wx + e, wz, t);
-  let hD = totalHeight(wx, wz - e, t);
-  let hU = totalHeight(wx, wz + e, t);
-  return normalize(vec3f((hL - hR) / (2.0 * e), 1.0, (hD - hU) / (2.0 * e)));
-}
+fn shadeSurfaceHit(hit: RayHit, hitPos: vec3f, rayDir: vec3f, rayDist: f32, isSubmerged: bool) -> vec3f {
+  let m = materials[hit.matId];
+  let lmI = textureSampleLevel(lmIrradTex, linSampler, hit.lmUV, 0.0).rgb + vec3f(frame.fogParams.w);
 
-// Physically-motivated live caustic focusing from live simulated wave curvature + capillary filaments.
-fn causticWeb(p: vec2f, t: f32) -> f32 {
-  let g1 = sin(dot(p, vec2f(4.7, 3.1)) + t * 1.9) + sin(dot(p, vec2f(-3.8, 5.2)) - t * 2.1);
-  let g2 = sin(dot(p, vec2f(7.9, -6.1)) + t * 2.7 + g1 * 0.65);
-  let g3 = sin(dot(p, vec2f(-8.4, -5.7)) - t * 2.3 + g2 * 0.55);
-  let ridge = 1.0 - abs(g2 + g3) * 0.5;
-  return pow(clamp(ridge, 0.0, 1.0), 4.0);
-}
+  var albedo = m.albedoScale.rgb;
+  let grazing = max(abs(dot(hit.n, rayDir)), 0.16);
+  let baseFw = (0.0028 + rayDist * 0.0014);
+  let fw = vec2f(baseFw, baseFw / grazing);
+  let cer = evalAnalyticCeramic(hit.uv, m, albedo, m.pbr.x, fw);
+  if (cer.isCeramic) {
+    albedo = cer.albedo;
+  }
 
-fn liveCausticAt(wx: f32, wz: f32, t: f32, depth: f32) -> vec3f {
-  let e = 0.07;
-  let hc = totalHeight(wx, wz, t);
-  let lapSim = (totalHeight(wx - e, wz, t) + totalHeight(wx + e, wz, t) + totalHeight(wx, wz - e, t) + totalHeight(wx, wz + e, t) - 4.0 * hc) / (e * e);
+  // Waterline darkening right near water surface on reflected walls/columns
+  if (!isSubmerged) {
+    let hAbove = hitPos.y - water.surface.x;
+    let waterline = exp(-abs(hAbove - 0.025) / 0.075);
+    albedo *= 1.0 - waterline * 0.14;
+  }
 
-  // Chromatic dispersion across refracted water depth
-  let disp = clamp(depth * 0.032, 0.006, 0.045);
-  let p = vec2f(wx, wz);
-  let waveFocus = clamp(1.0 - lapSim * 0.24, 0.4, 2.2);
-  let depthFocus = smoothstep(0.03, 0.22, depth) * exp(-depth * 0.18);
+  let kD = 1.0 - m.pbr.y * 0.85;
+  var col = albedo * kD * lmI;
 
-  let cR = causticWeb(p + vec2f(disp, disp * 0.4), t) * waveFocus;
-  let cG = causticWeb(p, t) * waveFocus;
-  let cB = causticWeb(p - vec2f(disp, disp * 0.4), t) * waveFocus;
-  return vec3f(cR, cG, cB) * depthFocus * 1.45;
-}
+  // Direct sunlight (with LIVE GPU photon-refracted caustics on submerged surfaces!)
+  if (frame.sunColorInt.w > 0.5) {
+    let sunDir = frame.sunDirRad.xyz;
+    let ndl = dot(hit.n, sunDir);
+    if (ndl > 0.0) {
+      let shadowPos = hitPos + hit.n * 0.015;
+      if (!traceShadowWater(shadowPos, sunDir, 150.0)) {
+        var sunTerm = frame.sunColorInt.rgb * ndl * INV_PI;
+        if (isSubmerged) {
+          // Attenuate incoming sun beam through water depth + focus via real live photon caustics!
+          let subDepth = max(0.0, water.surface.x - hitPos.y);
+          let inTransmit = exp(-water.optics.rgb * (subDepth / max(sunDir.y, 0.25)));
+          let cUV = clamp((hitPos.xz - water.domain.xy) * water.domain.zw, vec2f(0.001), vec2f(0.999));
+          let causticRaw = textureSampleLevel(causticTex, linSampler, cUV, 0.0).rgb;
+          // Blend photon-focused caustics smoothly with flat transmittance (strength controlled by optics.w)
+          let causticMul = mix(vec3f(1.0), causticRaw, clamp(water.optics.w, 0.0, 1.35));
+          sunTerm *= inTransmit * causticMul;
+        }
+        col += albedo * kD * sunTerm;
+      }
+    }
+  }
 
-fn reconstructWorldPos(uv: vec2f, depth: f32) -> vec3f {
-  let ndc = vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
-  let wp = frame.invViewProj * ndc;
-  return wp.xyz / wp.w;
-}
+  // Full HDR emissive (glowing frosted pill windows, portholes, fluorescent lights, skylights)
+  col += m.emissive.rgb * m.emissive.w;
 
-fn projectToUV(wp: vec3f) -> vec3f {
-  let clip = frame.viewProj * vec4f(wp, 1.0);
-  if (clip.w <= 1e-4) { return vec3f(-1.0); }
-  let ndc = clip.xyz / clip.w;
-  return vec3f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5, ndc.z);
-}
+  if (!isSubmerged) {
+    // Atmospheric haze along reflected air path
+    let fogF = 1.0 - exp(-hit.t * frame.fogColorDens.w * 0.9);
+    col = mix(col, frame.fogColorDens.rgb, clamp(fogF, 0.0, 0.82));
+  }
 
-fn evalSkyFallback(rd: vec3f) -> vec3f {
-  let up = clamp(rd.y, 0.0, 1.0);
-  return mix(frame.skyHorizon.rgb, frame.skyTop.rgb, pow(up, 0.55)) * 0.7;
+  return col;
 }
 
 @fragment
 fn fsWater(i: VSOut) -> @location(0) vec4f {
-  let fullDims = vec2i(textureDimensions(sceneColorTex));
-  let uv = i.clipPos.xy / vec2f(fullDims);
+  let fullDims = vec2i(textureDimensions(sceneDepthTex));
   let px = clamp(vec2i(i.clipPos.xy), vec2i(0), fullDims - vec2i(1));
 
   let sceneDepth = textureLoad(sceneDepthTex, px, 0);
-  // Discard if opaque geometry is closer than water surface.
+  // Discard where opaque dry geometry (pillars, decks, walls) is closer than water surface.
   if (i.clipPos.z >= sceneDepth) { discard; }
 
-  let t = water.surface.w;
-  let N = waterNormal(i.worldPos.x, i.worldPos.z, t);
-  let toCam = frame.cameraPos.xyz - i.worldPos;
+  let wp = i.worldPos;
+  let N = waterBicubicNormal(wp.x, wp.z);
+  let toCam = frame.cameraPos.xyz - wp;
   let camDist = length(toCam);
   let V = toCam / max(camDist, 1e-4);
 
-  // Reconstruct submerged point right under this pixel.
-  let rawSubPos = reconstructWorldPos(uv, sceneDepth);
-  let rawDepth = max(0.0, length(rawSubPos - i.worldPos));
+  // 1. Exact unpolarized dielectric Fresnel (air -> water, IOR = 1.333)
+  let ndv = max(dot(N, V), 0.002);
+  let fresnel = exactDielectricFresnel(ndv, 1.333);
 
-  // Snell refraction offset in screen space (scaled gently by water depth).
-  let refrScale = clamp(rawDepth * 0.045, 0.0, 0.042) / max(camDist * 0.15, 0.35);
-  let refrUV = clamp(uv + N.xz * refrScale, vec2f(0.002), vec2f(0.998));
-  let refrPx = clamp(vec2i(refrUV * vec2f(fullDims)), vec2i(0), fullDims - vec2i(1));
-  let refrDepthSample = textureLoad(sceneDepthTex, refrPx, 0);
+  // 2. TRUE Snell-Refracted BVH Transmission Ray!
+  // Intersects actual submerged floor tiles, steps & columns with exact geometric refraction!
+  var T = refract(-V, N, 1.0 / 1.333);
+  if (dot(T, T) < 1e-4) { T = -V; }
+  T = normalize(T);
 
-  // Only accept refracted sample if it is actually behind the water plane!
-  let validRefr = refrDepthSample > i.clipPos.z;
-  let finalRefrUV = select(uv, refrUV, validRefr);
-  let finalSubDepth = select(sceneDepth, refrDepthSample, validRefr);
-  let subPos = reconstructWorldPos(finalRefrUV, finalSubDepth);
-  let pathLen = max(0.0, length(subPos - i.worldPos));
-  let verticalDepth = max(0.0, i.worldPos.y - subPos.y);
-
-  var refrCol = textureSampleLevel(sceneColorTex, linSampler, finalRefrUV, 0.0).rgb;
-
-  // Project live physical wave caustics onto submerged geometry along sun/skylight vector!
-  let lightDir = select(vec3f(0.15, 0.96, 0.22), frame.sunDirRad.xyz, frame.sunColorInt.w > 0.5);
-  let hitSurface = subPos.xz + lightDir.xz * (verticalDepth / max(lightDir.y, 0.35));
-  let caustics = liveCausticAt(hitSurface.x, hitSurface.y, t, verticalDepth);
-  let subLuma = dot(refrCol, vec3f(0.2126, 0.7152, 0.0722));
-  // Caustics naturally appear only where real light reaches the pool floor.
-  let litGate = smoothstep(0.05, 0.35, subLuma);
-  let causticTint = select(vec3f(0.85, 0.98, 1.0), normalize(frame.sunColorInt.rgb + vec3f(0.1)) * 1.4, frame.sunColorInt.w > 0.5);
-  refrCol += refrCol * caustics * causticTint * water.optics.w * litGate * 0.85;
-
-  // Beer-Lambert physical RGB water absorption + subtle aqua in-scattering.
-  let transmit = exp(-water.optics.rgb * pathLen);
-  let inScatter = vec3f(0.035, 0.13, 0.14) * (1.0 - transmit) * clamp(subLuma * 1.1 + 0.15, 0.0, 1.4);
-  let underwater = refrCol * transmit + inScatter;
-
-  // Dielectric Fresnel reflection via Screen-Space Reflection march!
-  let R = reflect(-V, N);
-  var reflCol = evalSkyFallback(R);
-  var ssrAlpha = 0.0;
-  var rayT = 0.10;
-  var prevT = 0.0;
-  for (var s = 0; s < 28; s++) {
-    let sp = i.worldPos + R * rayT;
-    let proj = projectToUV(sp);
-    if (proj.x < 0.0 || proj.x > 1.0 || proj.y < 0.0 || proj.y > 1.0 || proj.z < 0.0 || proj.z > 1.0) {
-      break;
-    }
-    let spx = clamp(vec2i(proj.xy * vec2f(fullDims)), vec2i(0), fullDims - vec2i(1));
-    let sd = textureLoad(sceneDepthTex, spx, 0);
-    if (sd < 0.9999 && proj.z > sd) {
-      let hw = reconstructWorldPos(proj.xy, sd);
-      if (length(hw - sp) < 0.25 + rayT * 0.09) {
-        var lo = prevT;
-        var hi = rayT;
-        var hitUV = proj.xy;
-        for (var b = 0; b < 4; b++) {
-          let mid = (lo + hi) * 0.5;
-          let mp = projectToUV(i.worldPos + R * mid);
-          let mpx = clamp(vec2i(mp.xy * vec2f(fullDims)), vec2i(0), fullDims - vec2i(1));
-          if (mp.z > textureLoad(sceneDepthTex, mpx, 0)) {
-            hi = mid;
-            hitUV = mp.xy;
-          } else {
-            lo = mid;
-          }
-        }
-        let edge = min(min(hitUV.x, 1.0 - hitUV.x), min(hitUV.y, 1.0 - hitUV.y));
-        ssrAlpha = smoothstep(0.0, 0.08, edge);
-        reflCol = mix(reflCol, min(textureSampleLevel(sceneColorTex, linSampler, hitUV, 0.0).rgb, vec3f(14.0)), ssrAlpha);
-        break;
-      }
-    }
-    prevT = rayT;
-    rayT += 0.14 + rayT * 0.10;
-    if (rayT > 28.0) { break; }
+  let refrOrigin = wp + vec3f(0.0, -0.004, 0.0);
+  let subHit = traceClosestWater(refrOrigin, T, 24.0);
+  var underwater = vec3f(0.0);
+  var subLen = 0.0;
+  if (subHit.hit) {
+    subLen = subHit.t;
+    let subPos = refrOrigin + T * subHit.t;
+    let subCol = shadeSurfaceHit(subHit, subPos, T, camDist + subHit.t, true);
+    // Exact Beer-Lambert physical RGB water absorption
+    let transmit = exp(-water.optics.rgb * subLen);
+    // Subtle light-proportional volume scattering inside sunlit water (zero glow in dark pools!)
+    let subLuma = dot(subCol, vec3f(0.2126, 0.7152, 0.0722));
+    let inScatter = vec3f(0.010, 0.048, 0.045) * (1.0 - transmit) * min(subLuma * 0.85, 1.1);
+    underwater = subCol * transmit + inScatter;
   }
 
-  // Crisp sun glint on wavelets when sun is enabled.
+  // 3. TRUE Full-Scene BVH Mirror Reflection Ray!
+  var R = reflect(-V, N);
+  if (R.y < 0.005) {
+    // Clamp ultra-grazing downward reflections smoothly onto horizontal plane
+    R = normalize(vec3f(R.x, 0.008, R.z));
+  }
+  let reflOrigin = wp + vec3f(0.0, 0.008, 0.0);
+  let reflHit = traceClosestWater(reflOrigin, R, 90.0);
+  var reflCol: vec3f;
+  if (reflHit.hit) {
+    let reflPos = reflOrigin + R * reflHit.t;
+    reflCol = shadeSurfaceHit(reflHit, reflPos, R, camDist + reflHit.t, false);
+  } else {
+    reflCol = evalSkyRadiance(R, frame.skyTop.rgb, frame.skyHorizon.rgb, frame.sunDirRad.xyz, frame.sunColorInt.rgb, frame.sunColorInt.w > 0.5);
+  }
+
+  // Crisp physical solar specular glint when this water point has line-of-sight to the sun.
   if (frame.sunColorInt.w > 0.5) {
-    let H = normalize(V + frame.sunDirRad.xyz);
+    let sunDir = frame.sunDirRad.xyz;
+    let H = normalize(V + sunDir);
     let ndh = max(dot(N, H), 0.0);
-    let glint = pow(ndh, 420.0) * 1.4 + pow(ndh, 48.0) * 0.06;
-    reflCol += frame.sunColorInt.rgb * glint * litGate;
+    if (ndh > 0.92 && !traceShadowWater(reflOrigin, sunDir, 150.0)) {
+      let glint = pow(ndh, 900.0) * 3.5 + pow(ndh, 120.0) * 0.08;
+      reflCol += frame.sunColorInt.rgb * glint;
+    }
   }
 
-  // Exact Schlick dielectric Fresnel (n1=1.0, n2=1.333 => F0 = 0.0204).
-  let ndv = max(dot(N, V), 0.001);
-  let fresnel = 0.0204 + 0.9796 * pow(1.0 - ndv, 5.0);
-
-  // Soft shoreline blend avoids hard razor edge where water meets steps/walls.
-  let edgeBlend = smoothstep(0.0, 0.035, pathLen);
-  let waterCol = mix(underwater, reflCol, fresnel);
-  let finalCol = mix(refrCol, waterCol, edgeBlend);
-
+  let finalCol = underwater * (1.0 - fresnel) + reflCol * fresnel;
   return vec4f(finalCol, 1.0);
 }

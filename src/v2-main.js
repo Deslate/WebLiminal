@@ -363,15 +363,10 @@ window.__WEBLIMINAL__ = {
     paused = true;
     if (targetSpp) await renderer.bakeTo(targetSpp);
     if (compiledScene?.water) {
-      renderer.addWake(pose.x - Math.sin(pose.yaw) * 2.2, pose.z - Math.cos(pose.yaw) * 2.2, 0.45, -0.26);
-      for (let i = 0; i < 4; i++) {
-        await new Promise((r) => requestAnimationFrame(r));
-        renderer.render(pose, elapsed + i * 0.05, 0.05);
-        await renderer.waitIdle();
-      }
+      renderer.addWake(pose.x - Math.sin(pose.yaw) * 2.2, pose.z - Math.cos(pose.yaw) * 2.2, 0.42, -0.22);
     }
     await new Promise((r) => requestAnimationFrame(r));
-    renderer.render(pose, elapsed + 1.2, 0.016);
+    renderer.render(pose, elapsed + 1.2, 0.032);
     await renderer.waitIdle();
     return {
       level: activeLevel?.id,

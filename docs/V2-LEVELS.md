@@ -1,6 +1,6 @@
-# Map Authoring Guide (`levels/`)
+# v2 Map Authoring Guide (`levels/v2/`)
 
-Adding a new Backrooms or liminal space level requires **zero shader code and zero external assets**. Create a new module under `levels/` and register it in `levels/index.js`.
+Adding a new v2 Backrooms or liminal space level requires **zero shader code and zero external assets**. Create a new module under `levels/v2/` and register it in `levels/v2/index.js`.
 
 ## Minimal level module
 
@@ -12,17 +12,17 @@ export default {
   audio: "backrooms", // "poolrooms" | "backrooms" | "parking"
   spawn: { x: 0, y: 1.65, z: 6, yaw: 0, pitch: 0 },
   atmosphere: {
-    fogColor: [0.12, 0.13, 0.12],
+    fogColor: [0.02, 0.022, 0.02],
     fogDensity: 0.015,
     heightFogFalloff: 0.25,
     skyTop: [0.02, 0.02, 0.02],
     skyHorizon: [0.04, 0.04, 0.04],
-    sun: null, // or { direction: [x,y,z], color: [r,g,b], intensity: 14, angularRadius: 0.028 }
+    sun: null, // or { direction: [x,y,z], color: [r,g,b], intensity: 22, angularRadius: 0.0085 }
     exposure: 1.1,
-    bloomStrength: 0.22,
-    volumetricStrength: 0.25,
-    ambientFloor: 0.006,
-    bounceBoost: 1.3,
+    bloomStrength: 0.25,
+    volumetricStrength: 0.35,
+    ambientFloor: 0.002,
+    bounceBoost: 1.4,
     aoRadius: 1.6,
   },
   build(m, opts = {}) {
@@ -44,9 +44,12 @@ Pass any preset name string directly to geometry methods, or create a customized
 
 | Preset | Description |
 | --- | --- |
-| `tile_white` | Glazed off-white 250 mm ceramic pool tiles with bevelled shoulders, recessed grout, and subtle per-tile tilt |
-| `tile_pool` | Submerged turquoise-mint ceramic pool tiles |
+| `tile_white` | Analytical glazed off-white porcelain tiles with exact box-filtered millimeter grout, bevel lips, and per-tile 3D micro-tilt |
+| `tile_pool` | Neutral light glazed ceramic pool tiles (water color emerges physically from Beer-Lambert optics) |
 | `tile_mosaic` | Fine glazed square mosaic tiles for columns and basins |
+| `tile_dado_green` | Deep glossy emerald-green glazed ceramic wainscoting tile |
+| `frosted_window` | Backlit frosted milk-glass pool window / porthole diffuser |
+| `fiberglass_slide` | Dark glossy molded fiberglass water slide surface |
 | `plaster_warm` | Matte architectural stucco/plaster |
 | `wallpaper_yellow` | Vintage mono-yellow damask/chevron Backrooms wallpaper with paper seams and damp blotches |
 | `carpet_damp` | Commercial woven loop-pile office carpet with damp moisture patches |
@@ -67,19 +70,22 @@ Tip: When placing many lights with identical color/intensity, create shared mate
 
 All coordinates are meters, right-handed Y-up (`+X` right, `+Y` up, `-Z` forward at `yaw = 0`).
 
-- `m.room(lo, hi, opts)` — Hollow interior shell (`floor`, `ceiling`, `walls`, optional `trim`, `trimHeight`, `ceilingHoles`, `floorHoles`, `skipWalls`). Automatically sets walkable room bounds unless `setBounds: false`.
-- `m.box(lo, hi, mat, opts)` — Solid axis-aligned volume. Options: `solid` (default `true`), `walkable` (adds elevated floor surface), `faces`, `skipFaces`, `priority`.
-- `m.floor(minX, minZ, maxX, maxZ, y, mat, opts)` / `m.ceiling(...)` — Horizontal slabs with optional `holes: [[x0, z0, x1, z1], ...]`.
+- `m.room(lo, hi, opts)` — Hollow interior shell (`floor`, `ceiling`, `walls`, optional `trim`, `trimHeight`, `ceilingHoles`, `floorHoles`, `skipWalls`).
+- `m.box(lo, hi, mat, opts)` — Solid axis-aligned volume (`solid`, `walkable`, `faces`, `skipFaces`, `priority`).
+- `m.floor(minX, minZ, maxX, maxZ, y, mat, opts)` / `m.ceiling(...)` — Horizontal slabs with optional `holes`.
 - `m.wallWithDoorway(lo, hi, opts)` — Wall pierced by rectangular openings (`openings: [{ pos, width, bottom, top }]`, optional `trim`).
-- `m.wallWithArch(lo, hi, opts)` — Wall pierced by smooth semicircular arches (`arches: [{ pos, radius, spring }]`, `segments`), with distortion-free planar spandrel UVs and smooth curved intrados.
+- `m.wallWithArch(lo, hi, opts)` — Wall pierced by smooth semicircular arches (`arches: [{ pos, radius, spring }]`, `segments`).
+- `m.ringWall(lo, hi, opts)` — Wall pierced by a full circular tunnel ring (cleanly floor-clipped) or a backlit circular porthole (`center`, `centerY`, `radius`, `glassMaterial`, `lightColor`, `lightIntensity`).
+- `m.pillWindowBay(lo, hi, opts)` — Wall bay with a tall rounded pill-shaped backlit frosted window + automatic area light (`windowWidth`, `sillY`, `headY`, `facing`).
 - `m.cylinder(x, z, y0, y1, radius, mat, opts)` — Smooth vertical column (or inward drum with `inside: true`) with exact circular collision.
 - `m.dome(cx, cy, cz, radius, mat, opts)` — Smooth inward upper hemispherical dome with optional `oculusRadius`.
-- `m.stairs(lo, hi, dir, steps, mat, opts)` — Straight staircase (`dir`: `"+x"`, `"-x"`, `"+z"`, `"-z"`) with automatic walkable ramp collision.
-- `m.pipe(p0, p1, radius, mat, opts)` — 3D cylindrical conduit, rail, or bar between two points.
-- `m.poolLadder(x, z, yBottom, yTop, opts)` — Complete stainless steel pool ladder with curved deck grips and rungs.
-- `m.panelLight(pos, width, depth, opts)` — Recessed ceiling fluorescent troffer (bezel + prismatic diffuser + area light).
-- `m.tubeLight(cx, y, cz, length, axis, opts)` — Suspended industrial fluorescent tube fixture + area light.
-- `m.signLight(lo, hi, face, opts)` — Wall-mounted glowing sign box (`face`: `"+z"`, `"-z"`, `"+x"`, `"-x"`) + area light.
-- `m.skylight(minX, minZ, maxX, maxZ, y, opts)` — Registers a sky portal opening for importance-sampled daylight GI.
-- `m.water(minX, minZ, maxX, maxZ, level, opts)` — Optional interactive pool water volume (`absorption`, `waveAmp`, `causticStrength`, `cellSize`). Omit for zero-cost dry maps.
+- `m.stairs(lo, hi, dir, steps, mat, opts)` — Straight staircase with automatic walkable ramp collision.
+- `m.spiralStairs(cx, cz, y0, y1, innerR, outerR, startAngle, sweepAngle, steps, mat, opts)` — Cantilevered spiral staircase wrapping a cylindrical column.
+- `m.pipe(p0, p1, radius, mat, opts)` — 3D cylindrical conduit or rail between two points.
+- `m.curvedTube(controlPoints, radius, mat, opts)` — Smooth Catmull-Rom 3D swept tubular geometry (fiberglass water slides, curved conduits, optional `flanges`).
+- `m.handrail(p0, p1, yBase, height, opts)` — Sleek stainless-steel poolside railing with posts and mid-rail.
+- `m.poolLadder(x, z, yBottom, yTop, opts)` — Complete stainless-steel pool ladder with curved deck grips and rungs.
+- `m.panelLight(pos, width, depth, opts)` / `m.tubeLight(...)` / `m.signLight(...)` — Recessed troffers, industrial tubes, and backlit signs with automatic analytical area lights.
+- `m.skylight(minX, minZ, maxX, maxZ, y, opts)` — Sky portal opening for importance-sampled daylight GI and occluded volumetric mist.
+- `m.water(minX, minZ, maxX, maxZ, level, opts)` — Optional physical BVH water volume with live GPU photon caustics (`absorption`, `waveAmp`, `causticStrength`, `cellSize`). Omit for zero-cost dry maps.
 - `m.bookmark(name, { x, y, z, yaw, pitch })` — Registers a viewpoint bookmark accessible via key `B` or the Inspector.
