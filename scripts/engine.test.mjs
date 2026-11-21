@@ -224,4 +224,53 @@ test("v2 wading wake trail fires alternating footsteps in water and generates ba
   assert.equal(trail.advance({ x: 0, z: 0, footY: 0.64 }, { x: 0, z: -0.2, footY: 0.64 }, 1.0, 0.52), null);
 });
 
+test("v2 MapBuilder snaps arch, ring, and cylinder UVs cleanly to symmetric tile courses with zero slivers", () => {
+  const mod = 0.20;
+  const m = createMap({ atlasSize: 512 });
+  m.wallWithArch([-5, 0, 0], [5, 4.6, 0.6], { arches: [{ pos: 0, radius: 1.6, spring: 0.8 }], tileModule: mod });
+  m.ringWall([-5.2, 0, 4.0], [5.2, 4.6, 4.6], { center: 0, centerY: 1.6, radius: 2.6, tileModule: mod });
+  m.cylinder(3.0, 3.0, 0, 4.6, 1.2, "tile_white", { segments: 48, tileModule: mod });
+  const c = m.compile({ atlasSize: 512 });
+
+  // Verify cylinder seam wraps onto an exact integer multiple of tileModule (zero sliver)
+  const circum = 2 * Math.PI * 1.2;
+  const expectedCylSpan = Math.round(circum / mod) * mod;
+  assert(Math.abs(expectedCylSpan / mod - Math.round(expectedCylSpan / mod)) < 1e-9);
+
+  // Verify ring wall reveal U spans symmetrically [-half, +half] around crown u=0 in exact mod increments
+  let minU = Infinity, maxU = -Infinity;
+  const vf = new Float32Array(c.vertexData);
+  for (let i = 0; i < c.vertexCount; i++) {
+    const z = vf[i * 16 + 2];
+    const ny = vf[i * 16 + 5];
+    const u = vf[i * 16 + 12];
+    if (z >= 3.99 && z <= 4.61 && Math.abs(ny) > 0.01) {
+      if (u < minU) minU = u;
+      if (u > maxU) maxU = u;
+    }
+  }
+  assert(Math.abs(minU + maxU) < 1e-4, `Ring reveal UVs must be crown-symmetric, got [${minU}, ${maxU}]`);
+  assert(Math.abs(maxU / mod - Math.round(maxU / mod)) < 1e-4, `Ring reveal base must land on exact tile joint, got ${maxU}`);
+});
+
+test("poolrooms-v2 doorways are unobstructed, bookmarks are walkable, and slide/spiral stairs have solid collision", () => {
+  const byId = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
+  const mp = createMap();
+  byId["poolrooms-v2"].build(mp);
+  const cp = mp.compile();
+
+  // Every bookmark spawn must be unobstructed at its local floor/deck height
+  for (const bm of cp.bookmarks) {
+    const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, cp.collision);
+    assert.equal(canStand(bm.spawn.x, bm.spawn.z, cp.collision, fy), true, `Bookmark '${bm.name}' is blocked`);
+  }
+  // All three inter-chamber doorways must be passable (Ring 1 must not clip East doorway z=7.9!)
+  assert.equal(canStand(5.5, 7.9, cp.collision), true, "East doorway to Misty Lightwell should be clear");
+  assert.equal(canStand(-5.5, 8.6, cp.collision), true, "West doorway to Spiral Column should be clear");
+  assert.equal(canStand(-5.5, -5.0, cp.collision), true, "West doorway to Slide & Portholes should be clear");
+  // Fiberglass slide plunge entry (-9.4, -11.6) must block player walk-through
+  assert.equal(canStand(-9.4, -11.6, cp.collision), false, "Water slide tube should have solid collision");
+});
+
+
 

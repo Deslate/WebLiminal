@@ -40,22 +40,51 @@ fn sampleBodyWake(world: vec2f) -> vec2f {
   return cubic2(rows[0], rows[1], rows[2], rows[3], f.y);
 }
 
+fn evalWetCell(idx: u32) -> vec2f {
+  let ix = idx % R.grid.x;
+  let iz = idx / R.grid.x;
+  let world = R.win.xy + (vec2f(f32(ix), f32(iz)) + 0.5) * R.win.z;
+  let q = fdState[idx];
+  let wake = sampleBodyWake(world);
+  let h = clamp(q.x + q.y * R.win.w + wake.x, -0.14, 0.14);
+  let v = q.y + wake.y;
+  return vec2f(h, v);
+}
+
 @compute @workgroup_size(128)
 fn reconstruct(@builtin(global_invocation_id) id: vec3u) {
   let i = id.x;
   if (i >= R.grid.z) { return; }
   let wet = (links[i] & 0x80000000u) != 0u;
-  if (!wet) {
-    combined[i] = vec2f(0.0);
+  if (wet) {
+    combined[i] = evalWetCell(i);
     return;
   }
-  let ix = i % R.grid.x;
-  let iz = i / R.grid.x;
-  let world = R.win.xy + (vec2f(f32(ix), f32(iz)) + 0.5) * R.win.z;
-  let q = fdState[i];
-  let wake = sampleBodyWake(world);
-  // First-order sub-step extrapolation eliminates display stair-stepping without temporal blur.
-  let h = clamp(q.x + q.y * R.win.w + wake.x, -0.14, 0.14);
-  let v = q.y + wake.y;
-  combined[i] = vec2f(h, v);
+
+  // Neumann ghost-cell extrapolation (dh/dn = 0 across solid walls, columns, decks & steps):
+  // Mirrors adjacent wet wave elevation into the 2-cell dry border so Catmull-Rom bicubic
+  // derivatives stay physically smooth right up to every wall (eliminating artificial wall-edge
+  // cliffs, black grazing bands, and flat zero-height shoreline clamping!).
+  let nx = i32(R.grid.x);
+  let nz = i32(R.grid.y);
+  let cx = i32(i % R.grid.x);
+  let cz = i32(i / R.grid.x);
+  var sum = vec2f(0.0);
+  var wSum = 0.0;
+  for (var dz = -2; dz <= 2; dz++) {
+    let qz = cz + dz;
+    if (qz < 0 || qz >= nz) { continue; }
+    for (var dx = -2; dx <= 2; dx++) {
+      let qx = cx + dx;
+      if (qx < 0 || qx >= nx) { continue; }
+      let qIdx = u32(qz * nx + qx);
+      if ((links[qIdx] & 0x80000000u) != 0u) {
+        let d2 = f32(dx * dx + dz * dz);
+        let w = 1.0 / d2;
+        sum += evalWetCell(qIdx) * w;
+        wSum += w;
+      }
+    }
+  }
+  combined[i] = select(vec2f(0.0), sum / max(wSum, 1e-4), wSum > 0.0);
 }

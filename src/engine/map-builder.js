@@ -356,11 +356,12 @@ export class MapBuilder {
     const spanEnd = alongX ? x1 : z1;
     let cursor = spanStart;
 
-    const emitBox = (a, b, yb, yt, isSolid, m = mat) => {
+    const emitBox = (a, b, yb, yt, isSolid, m = mat, skipFaces = []) => {
       if (b - a < 1e-4 || yt - yb < 1e-4) return;
-      if (alongX) this.box([a, yb, z0], [b, yt, z1], m, { solid: isSolid });
-      else this.box([x0, yb, a], [x1, yt, b], m, { solid: isSolid });
+      if (alongX) this.box([a, yb, z0], [b, yt, z1], m, { solid: isSolid, skipFaces });
+      else this.box([x0, yb, a], [x1, yt, b], m, { solid: isSolid, skipFaces });
     };
+    const internalSkip = alongX ? ["nx", "px"] : ["nz", "pz"];
 
     for (const op of openings) {
       const a = Math.max(cursor, op.a);
@@ -370,11 +371,11 @@ export class MapBuilder {
       }
       // Sill below opening (for windows)
       if (op.bottom > y0 + 1e-4) {
-        emitBox(a, b, y0, op.bottom, opts.solid !== false, jambMat);
+        emitBox(a, b, y0, op.bottom, opts.solid !== false, jambMat, internalSkip);
       }
       // Lintel above opening
       if (op.top < y1 - 1e-4) {
-        emitBox(a, b, op.top, y1, false, jambMat);
+        emitBox(a, b, op.top, y1, false, jambMat, internalSkip);
       }
       cursor = Math.max(cursor, b);
     }
@@ -409,13 +410,15 @@ export class MapBuilder {
     return this;
   }
 
-  // Wall along X or Z pierced by one or more semicircular arches with smooth intrados.
+  // Wall along X or Z pierced by one or more semicircular arches with smooth intrados
+  // and symmetric architectural tile setting-out (crown mortar joint + spring course alignment).
   wallWithArch(lo, hi, opts = {}) {
     const [x0, y0, z0] = lo;
     const [x1, y1, z1] = hi;
     const alongX = opts.axis ? opts.axis === "x" : (x1 - x0) >= (z1 - z0);
     const mat = opts.material ?? "tile_white";
-    const segs = opts.segments ?? 16;
+    const segs = opts.segments ?? 20;
+    const tileMod = opts.tileModule ?? 0.20;
     const arches = (
       opts.arches ?? [
         {
@@ -433,6 +436,7 @@ export class MapBuilder {
     const t0 = alongX ? z0 : x0;
     const t1 = alongX ? z1 : x1;
     const thick = t1 - t0;
+    const thickTiles = Math.max(1, Math.round(thick / tileMod)) * tileMod;
 
     const pt = (s, y, t) => (alongX ? [s, y, t] : [t, y, s]);
     let cursor = spanStart;
@@ -442,7 +446,6 @@ export class MapBuilder {
       const b = Math.min(spanEnd, arch.pos + arch.radius);
       const r = arch.radius;
       const spring = arch.spring;
-      const crown = Math.min(y1, spring + r);
 
       // Solid pier before arch
       if (a > cursor + 1e-4) {
@@ -450,8 +453,14 @@ export class MapBuilder {
         else this.box([x0, y0, cursor], [x1, y1, a], mat, { solid: opts.solid !== false });
       }
 
+      // Symmetric even tile course count along the arch intrados:
+      // guarantees a centered crown mortar joint and full courses meeting both vertical jambs.
+      const halfArc = Math.PI * r * 0.5;
+      const halfCourses = Math.max(2, Math.round(halfArc / tileMod));
+      const archTileSpan = halfCourses * 2 * tileMod;
+
       // Spandrel faces (front & back) extend cleanly from spring all the way to y1
-      // in one seamless chart with exact planar UVs (zero tile skew or header seam!).
+      // in one seamless chart with exact world planar UVs (zero tile skew or header seam!).
       const spandrelH = y1 - spring;
       const spandrelFrontChart = this._beginChart(2 * r, spandrelH, 1.1);
       const spandrelBackChart = this._beginChart(2 * r, spandrelH, 1.1);
@@ -497,7 +506,7 @@ export class MapBuilder {
           const n0 = [-Math.cos(ang0), -Math.sin(ang0), 0];
           const n1 = [-Math.cos(ang1), -Math.sin(ang1), 0];
           this.addQuad(pt(s0, ay0, t0), pt(s1, ay1, t0), pt(s1, ay1, t1), pt(s0, ay0, t1), mat, {
-            u0: f0 * Math.PI * r, v0: t0, u1: f1 * Math.PI * r, v1: t1,
+            u0: f0 * archTileSpan, v0: 0, u1: f1 * archTileSpan, v1: thickTiles,
             normals: [n0, n1, n1, n0],
             chart: intradosChart,
             lu0: f0, lv0: 0, lu1: f1, lv1: 1,
@@ -516,7 +525,7 @@ export class MapBuilder {
           const n0 = [0, -Math.sin(ang0), -Math.cos(ang0)];
           const n1 = [0, -Math.sin(ang1), -Math.cos(ang1)];
           this.addQuad(pt(s0, ay0, t1), pt(s1, ay1, t1), pt(s1, ay1, t0), pt(s0, ay0, t0), mat, {
-            u0: f0 * Math.PI * r, v0: t0, u1: f1 * Math.PI * r, v1: t1,
+            u0: f0 * archTileSpan, v0: 0, u1: f1 * archTileSpan, v1: thickTiles,
             normals: [n0, n1, n1, n0],
             chart: intradosChart,
             lu0: f0, lv0: 0, lu1: f1, lv1: 1,
@@ -534,12 +543,15 @@ export class MapBuilder {
     return this;
   }
 
-  // Smooth vertical cylinder (column or inward circular drum).
+  // Smooth vertical cylinder (column or inward circular drum) with seamless integer-module
+  // circumferential tile setting-out (zero vertical wrap sliver!).
   cylinder(x, z, y0, y1, radius, matSpec, opts = {}) {
     const segs = opts.segments ?? 24;
     const inside = !!opts.inside;
     const height = y1 - y0;
     const circum = TAU * radius;
+    const tileMod = opts.tileModule ?? 0.20;
+    const circumTileSpan = Math.max(4, Math.round(circum / tileMod)) * tileMod;
     const chart = this._beginChart(circum, height, opts.priority ?? 1.0);
 
     for (let i = 0; i < segs; i++) {
@@ -559,7 +571,7 @@ export class MapBuilder {
         const n0 = [c0, 0, s0];
         const n1 = [c1, 0, s1];
         this.addQuad(p10, p00, p01, p11, matSpec, {
-          u0: (1 - f1) * circum, v0: y0, u1: (1 - f0) * circum, v1: y1,
+          u0: (1 - f1) * circumTileSpan, v0: y0, u1: (1 - f0) * circumTileSpan, v1: y1,
           normals: [n1, n0, n0, n1],
           chart,
           lu0: 1 - f1, lv0: 0, lu1: 1 - f0, lv1: 1,
@@ -569,7 +581,7 @@ export class MapBuilder {
         const n0 = [-c0, 0, -s0];
         const n1 = [-c1, 0, -s1];
         this.addQuad(p00, p10, p11, p01, matSpec, {
-          u0: f0 * circum, v0: y0, u1: f1 * circum, v1: y1,
+          u0: f0 * circumTileSpan, v0: y0, u1: f1 * circumTileSpan, v1: y1,
           normals: [n0, n1, n1, n0],
           chart,
           lu0: f0, lv0: 0, lu1: f1, lv1: 1,
@@ -589,11 +601,20 @@ export class MapBuilder {
         const pm = [x + radius * Math.cos(am), y1, z + radius * Math.sin(am)];
         const p1 = [x + radius * Math.cos(a1), y1, z + radius * Math.sin(a1)];
         this.addQuad(centerTop, p1, pm, p0, matSpec, {
-          u0: 0, v0: 0, u1: radius, v1: radius,
+          uvs: [
+            [x, -z],
+            [p1[0], -p1[2]],
+            [pm[0], -pm[2]],
+            [p0[0], -p0[2]],
+          ],
           normals: [nUp, nUp, nUp, nUp],
           chart: capChart,
-          lu0: 0.5, lv0: 0.5,
-          lu1: 0.5 + 0.45 * Math.cos(a1), lv1: 0.5 + 0.45 * Math.sin(a1),
+          luvs: [
+            [0.5, 0.5],
+            [0.5 + 0.45 * Math.cos(a1), 0.5 + 0.45 * Math.sin(a1)],
+            [0.5 + 0.45 * Math.cos(am), 0.5 + 0.45 * Math.sin(am)],
+            [0.5 + 0.45 * Math.cos(a0), 0.5 + 0.45 * Math.sin(a0)],
+          ],
         });
       }
     }
@@ -792,17 +813,20 @@ export class MapBuilder {
   }
 
   // Wall pierced by a circular ring tunnel (clipped cleanly by floor y0) or full circular porthole.
-  // Generates watertight corner-exact planar faces with world-scale tile UVs + smooth cylindrical reveal!
+  // Generates watertight corner-exact planar faces with world-scale tile UVs + symmetric
+  // crown-centered integer-module cylindrical reveal setting-out!
   ringWall(lo, hi, opts = {}) {
     const [x0, y0, z0] = lo;
     const [x1, y1, z1] = hi;
     const mat = opts.material ?? "tile_white";
+    const tileMod = opts.tileModule ?? 0.20;
     const alongX = x1 - x0 >= z1 - z0;
     const sMin = alongX ? x0 : z0;
     const sMax = alongX ? x1 : z1;
     const t0 = alongX ? z0 : x0;
     const t1 = alongX ? z1 : x1;
     const thick = t1 - t0;
+    const thickTiles = Math.max(1, Math.round(thick / tileMod)) * tileMod;
     const cx = opts.center ?? (sMin + sMax) * 0.5;
     const cy = opts.centerY ?? y0 + (y1 - y0) * 0.42;
     const r = opts.radius ?? Math.min((sMax - sMin) * 0.38, (y1 - y0) * 0.55);
@@ -857,7 +881,22 @@ export class MapBuilder {
     const normLU = (s) => Math.max(0, Math.min(1, (s - sMin) / wallW));
     const normLV = (y) => Math.max(0, Math.min(1, (y - y0) / wallH));
 
+    // Symmetric crown-centered reveal U mapping:
+    // Crown (angle = PI/2) lands on u = 0 (exact center mortar joint); both floor bases
+    // (or top/bottom of a full porthole) land on exact integer multiples of tileMod!
     const totalArc = aEnd - aStart;
+    let revealU;
+    if (fullCircle) {
+      const halfCourses = Math.max(2, Math.round((Math.PI * r) / tileMod));
+      const fullTileSpan = halfCourses * 2 * tileMod;
+      revealU = (a) => ((a - Math.PI * 0.5) / TAU) * fullTileSpan;
+    } else {
+      const halfArcAng = Math.PI * 0.5 - aStart;
+      const halfCourses = Math.max(2, Math.round((halfArcAng * r) / tileMod));
+      const halfTileSpan = halfCourses * tileMod;
+      revealU = (a) => ((a - Math.PI * 0.5) / halfArcAng) * halfTileSpan;
+    }
+
     for (let i = 0; i < uniq.length - 1; i++) {
       const a0 = uniq[i];
       const a1 = uniq[i + 1];
@@ -870,6 +909,8 @@ export class MapBuilder {
 
       const f0 = (a0 - aStart) / totalArc;
       const f1 = (a1 - aStart) / totalArc;
+      const ru0 = revealU(a0);
+      const ru1 = revealU(a1);
 
       if (alongX) {
         // Front face (+z = t1): outward normal +Z => CCW in (x, y) is (in0 -> out0 -> out1 -> in1)
@@ -908,7 +949,7 @@ export class MapBuilder {
             ],
           },
         );
-        // Inner cylindrical reveal (normal pointing inward toward circle center)
+        // Inner cylindrical reveal (normal pointing inward toward circle center, v=0 flush at front t1)
         const n0 = [-c0, -s0, 0];
         const n1 = [-c1, -s1, 0];
         this.addQuad(
@@ -918,7 +959,7 @@ export class MapBuilder {
           pt(in0[0], in0[1], t0),
           mat,
           {
-            u0: f0 * totalArc * r, v0: t1, u1: f1 * totalArc * r, v1: t0,
+            u0: ru0, v0: 0, u1: ru1, v1: thickTiles,
             normals: [n0, n1, n1, n0],
             chart: revealChart,
             lu0: f0, lv0: 0, lu1: f1, lv1: 1,
@@ -970,7 +1011,7 @@ export class MapBuilder {
           pt(in0[0], in0[1], t1),
           mat,
           {
-            u0: f0 * totalArc * r, v0: t0, u1: f1 * totalArc * r, v1: t1,
+            u0: ru0, v0: 0, u1: ru1, v1: thickTiles,
             normals: [n0, n1, n1, n0],
             chart: revealChart,
             lu0: f0, lv0: 0, lu1: f1, lv1: 1,
@@ -1038,17 +1079,22 @@ export class MapBuilder {
     return this;
   }
 
-  // Cantilevered spiral staircase wrapping a cylindrical column (iconic Poolrooms geometry!).
+  // Cantilevered spiral staircase wrapping a cylindrical column (clean non-overlapping slabs,
+  // world-elevation tile courses, and solid collision on lower reachable steps).
   spiralStairs(cx, cz, y0, y1, innerR, outerR, startAngle, sweepAngle, steps, matSpec, opts = {}) {
     const count = Math.max(4, Math.round(steps));
     const dy = (y1 - y0) / count;
     const da = sweepAngle / count;
-    const slabH = opts.slabThickness ?? Math.max(dy * 1.15, 0.24);
-    const dirSign = sweepAngle >= 0 ? 1 : -1;
+    const tileMod = opts.tileModule ?? 0.20;
+    const slabH = opts.slabThickness ?? dy;
+    const treadW = outerR - innerR;
+    const treadTiles = Math.max(1, Math.round(treadW / tileMod)) * tileMod;
+    const arcOut = Math.abs(da) * outerR;
+    const arcTiles = Math.max(1, Math.round(arcOut / tileMod)) * tileMod;
 
     for (let i = 0; i < count; i++) {
       const a0 = startAngle + i * da;
-      const a1 = startAngle + (i + 1) * da + da * 0.08; // slight overlap avoids hairline cracks
+      const a1 = startAngle + (i + 1) * da;
       const yTop = y0 + (i + 1) * dy;
       const yBot = Math.max(y0, yTop - slabH);
 
@@ -1064,14 +1110,12 @@ export class MapBuilder {
       const out1T = [cx + outerR * c1, yTop, cz + outerR * s1];
       const in1T = [cx + innerR * c1, yTop, cz + innerR * s1];
 
-      const treadW = outerR - innerR;
-      const arcOut = Math.abs(da) * outerR;
       const prio = opts.priority ?? 0.9;
       const aMid = 0.5 * (a0 + a1);
       const rMid = 0.5 * (innerR + outerR);
       const stepCenter = [cx + rMid * Math.cos(aMid), 0.5 * (yBot + yTop), cz + rMid * Math.sin(aMid)];
 
-      const emitOut = (q0, q1, q2, q3, u1, v0, v1) => {
+      const emitOut = (q0, q1, q2, q3, u0, u1, v0, v1) => {
         const n = cross3(sub3(q1, q0), sub3(q3, q0));
         const qc = [
           0.25 * (q0[0] + q1[0] + q2[0] + q3[0]),
@@ -1080,37 +1124,54 @@ export class MapBuilder {
         ];
         const out = sub3(qc, stepCenter);
         if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] >= 0) {
-          this.addQuad(q0, q1, q2, q3, matSpec, { u0: 0, v0, u1, v1, priority: prio });
+          this.addQuad(q0, q1, q2, q3, matSpec, { u0, v0, u1, v1, priority: prio });
         } else {
-          this.addQuad(q0, q3, q2, q1, matSpec, { u0: 0, v0, u1, v1, priority: prio });
+          this.addQuad(q0, q3, q2, q1, matSpec, { u0, v0, u1, v1, priority: prio });
         }
       };
 
-      // Top tread, bottom soffit, outer arc riser, and front/back step risers — all guaranteed outward!
-      emitOut(in0T, out0T, out1T, in1T, treadW, 0, arcOut);
-      emitOut(in0B, in1B, out1B, out0B, arcOut, 0, treadW);
-      emitOut(out0B, out1B, out1T, out0T, arcOut, yBot, yTop);
-      emitOut(in0B, out0B, out0T, in0T, treadW, yBot, yTop);
-      emitOut(out1B, in1B, in1T, out1T, treadW, yBot, yTop);
+      // Top tread, bottom soffit, outer arc riser, and front/back step risers — zero Z-fighting!
+      emitOut(in0T, out0T, out1T, in1T, 0, treadTiles, 0, arcTiles);
+      emitOut(in0B, in1B, out1B, out0B, 0, arcTiles, 0, treadTiles);
+      emitOut(out0B, out1B, out1T, out0T, i * arcTiles, (i + 1) * arcTiles, yBot, yTop);
+      emitOut(in0B, out0B, out0T, in0T, 0, treadTiles, yBot, yTop);
+      emitOut(out1B, in1B, in1T, out1T, 0, treadTiles, yBot, yTop);
+
+      // Register collision on lower reachable steps so the player cannot clip through the staircase.
+      if (opts.solid !== false && yBot < y0 + 1.85) {
+        const colR = Math.min(treadW * 0.42, 0.45);
+        const rr = innerR + treadW * 0.55;
+        this.solids.push({
+          kind: "circle",
+          x: cx + rr * Math.cos(aMid),
+          z: cz + rr * Math.sin(aMid),
+          radius: colR,
+          minY: y0,
+          maxY: yTop,
+        });
+      }
     }
     return this;
   }
 
-  // Wall bay with backlit rounded-top pill-shaped frosted window (automatically adds area light!).
+  // Wall bay with backlit rounded-top/bottom pill frosted window, separate non-overlapping
+  // lightmap charts, symmetric arch/sill tile setting-out, and automatic area light.
   pillWindowBay(lo, hi, opts = {}) {
     const [x0, y0, z0] = lo;
     const [x1, y1, z1] = hi;
     const mat = opts.material ?? "tile_white";
     const glassMat = opts.glassMaterial ?? "frosted_window";
+    const tileMod = opts.tileModule ?? 0.20;
     const alongX = x1 - x0 >= z1 - z0;
     const sMin = alongX ? x0 : z0;
     const sMax = alongX ? x1 : z1;
     const t0 = alongX ? z0 : x0;
     const t1 = alongX ? z1 : x1;
     const thick = t1 - t0;
+    const thickTiles = Math.max(1, Math.round(thick / tileMod)) * tileMod;
     const wWidth = opts.windowWidth ?? (sMax - sMin) * 0.44;
-    const wSill = opts.sillY ?? y0 + 0.55;
-    const wHead = opts.headY ?? y1 - 0.55;
+    const wSill = opts.sillY ?? y0 + 0.60;
+    const wHead = opts.headY ?? y1 - 0.60;
     const radius = wWidth * 0.5;
     const midS = (sMin + sMax) * 0.5;
     const a = midS - radius;
@@ -1118,55 +1179,74 @@ export class MapBuilder {
     const springTop = Math.max(wSill + 0.1, wHead - radius);
     const springBot = Math.min(springTop - 0.05, wSill + radius);
     const facePos = opts.facing !== "-";
+    const internalSkip = alongX ? ["nx", "px"] : ["nz", "pz"];
 
-    // Left & right full-height wall piers
+    // Left & right full-height wall piers + flush sill & lintel (skipping hidden internal faces)
     if (alongX) {
       if (a > sMin + 0.01) this.box([sMin, y0, t0], [a, y1, t1], mat, { solid: opts.solid !== false });
       if (sMax > b + 0.01) this.box([b, y0, t0], [sMax, y1, t1], mat, { solid: opts.solid !== false });
-      // Sill below window & lintel above window
-      if (springBot > y0 + 0.01) this.box([a, y0, t0], [b, wSill, t1], mat, { solid: opts.solid !== false });
-      if (y1 > wHead + 0.01) this.box([a, wHead, t0], [b, y1, t1], mat, { solid: opts.solid !== false });
+      if (wSill > y0 + 0.01) this.box([a, y0, t0], [b, wSill, t1], mat, { solid: opts.solid !== false, skipFaces: internalSkip });
+      if (y1 > wHead + 0.01) this.box([a, wHead, t0], [b, y1, t1], mat, { solid: opts.solid !== false, skipFaces: internalSkip });
     } else {
       if (a > sMin + 0.01) this.box([t0, y0, sMin], [t1, y1, a], mat, { solid: opts.solid !== false });
       if (sMax > b + 0.01) this.box([t0, y0, b], [t1, y1, sMax], mat, { solid: opts.solid !== false });
-      if (springBot > y0 + 0.01) this.box([t0, y0, a], [t1, wSill, b], mat, { solid: opts.solid !== false });
-      if (y1 > wHead + 0.01) this.box([t0, wHead, a], [t1, y1, b], mat, { solid: opts.solid !== false });
+      if (wSill > y0 + 0.01) this.box([t0, y0, a], [t1, wSill, b], mat, { solid: opts.solid !== false, skipFaces: internalSkip });
+      if (y1 > wHead + 0.01) this.box([t0, wHead, a], [t1, y1, b], mat, { solid: opts.solid !== false, skipFaces: internalSkip });
     }
 
-    // Semicircular upper arch header inside [a, b] x [springTop, wHead]
+    // Semicircular upper head & lower sill spandrels + reveals (each with its own lightmap chart!)
     const segs = 12;
     const pt = (s, y, t) => (alongX ? [s, y, t] : [t, y, s]);
-    const spChart = this._beginChart(wWidth, radius, 0.9);
-    const revChart = this._beginChart(Math.PI * radius, thick, 0.9);
+    const halfCourses = Math.max(2, Math.round((Math.PI * radius * 0.5) / tileMod));
+    const archTileSpan = halfCourses * 2 * tileMod;
+
+    const spTopFront = this._beginChart(wWidth, radius, 0.9);
+    const spTopBack = this._beginChart(wWidth, radius, 0.4);
+    const spBotFront = this._beginChart(wWidth, radius, 0.9);
+    const spBotBack = this._beginChart(wWidth, radius, 0.4);
+    const revTopChart = this._beginChart(Math.PI * radius, thick, 0.95);
+    const revBotChart = this._beginChart(Math.PI * radius, thick, 0.95);
+
     for (let i = 0; i < segs; i++) {
       const f0 = i / segs, f1 = (i + 1) / segs;
       const ang0 = Math.PI * (1 - f0), ang1 = Math.PI * (1 - f1);
       const s0 = midS + radius * Math.cos(ang0), s1 = midS + radius * Math.cos(ang1);
       const ay0 = springTop + radius * Math.sin(ang0), ay1 = springTop + radius * Math.sin(ang1);
       const by0 = springBot - radius * Math.sin(ang0), by1 = springBot - radius * Math.sin(ang1);
+      const lu0 = (s0 - a) / wWidth, lu1 = (s1 - a) / wWidth;
+      const lvTop0 = (ay0 - springTop) / radius, lvTop1 = (ay1 - springTop) / radius;
+      const lvBot0 = (by0 - wSill) / radius, lvBot1 = (by1 - wSill) / radius;
+
       if (alongX) {
+        // Upper spandrel front (+Z) & back (-Z)
         this.addQuad(pt(s0, ay0, t1), pt(s1, ay1, t1), pt(s1, wHead, t1), pt(s0, wHead, t1), mat, {
-          uvs: [[s0, ay0], [s1, ay1], [s1, wHead], [s0, wHead]], chart: spChart,
-          luvs: [[f0, 0], [f1, 0], [f1, 1], [f0, 1]],
+          uvs: [[s0, ay0], [s1, ay1], [s1, wHead], [s0, wHead]], chart: spTopFront,
+          luvs: [[lu0, lvTop0], [lu1, lvTop1], [lu1, 1], [lu0, 1]],
         });
         this.addQuad(pt(s1, ay1, t0), pt(s0, ay0, t0), pt(s0, wHead, t0), pt(s1, wHead, t0), mat, {
-          uvs: [[-s1, ay1], [-s0, ay0], [-s0, wHead], [-s1, wHead]], chart: spChart,
-          luvs: [[1 - f1, 0], [1 - f0, 0], [1 - f0, 1], [1 - f1, 1]],
+          uvs: [[-s1, ay1], [-s0, ay0], [-s0, wHead], [-s1, wHead]], chart: spTopBack,
+          luvs: [[1 - lu1, lvTop1], [1 - lu0, lvTop0], [1 - lu0, 1], [1 - lu1, 1]],
         });
+        // Upper semicircular reveal
         const n0 = [-Math.cos(ang0), -Math.sin(ang0), 0], n1 = [-Math.cos(ang1), -Math.sin(ang1), 0];
         this.addQuad(pt(s0, ay0, t0), pt(s1, ay1, t0), pt(s1, ay1, t1), pt(s0, ay0, t1), mat, {
-          u0: f0 * Math.PI * radius, v0: t0, u1: f1 * Math.PI * radius, v1: t1,
-          normals: [n0, n1, n1, n0], chart: revChart, lu0: f0, lv0: 0, lu1: f1, lv1: 1,
+          u0: f0 * archTileSpan, v0: 0, u1: f1 * archTileSpan, v1: thickTiles,
+          normals: [n0, n1, n1, n0], chart: revTopChart, lu0: f0, lv0: 0, lu1: f1, lv1: 1,
         });
-        // Lower semicircular pill sill
+        // Lower spandrel front (+Z) & back (-Z)
         this.addQuad(pt(s0, wSill, t1), pt(s1, wSill, t1), pt(s1, by1, t1), pt(s0, by0, t1), mat, {
-          uvs: [[s0, wSill], [s1, wSill], [s1, by1], [s0, by0]], chart: spChart,
-          luvs: [[f0, 0], [f1, 0], [f1, 1], [f0, 1]],
+          uvs: [[s0, wSill], [s1, wSill], [s1, by1], [s0, by0]], chart: spBotFront,
+          luvs: [[lu0, 0], [lu1, 0], [lu1, lvBot1], [lu0, lvBot0]],
         });
+        this.addQuad(pt(s1, wSill, t0), pt(s0, wSill, t0), pt(s0, by0, t0), pt(s1, by1, t0), mat, {
+          uvs: [[-s1, wSill], [-s0, wSill], [-s0, by0], [-s1, by1]], chart: spBotBack,
+          luvs: [[1 - lu1, 0], [1 - lu0, 0], [1 - lu0, lvBot0], [1 - lu1, lvBot1]],
+        });
+        // Lower semicircular reveal
         const nb0 = [-Math.cos(ang0), Math.sin(ang0), 0], nb1 = [-Math.cos(ang1), Math.sin(ang1), 0];
         this.addQuad(pt(s0, by0, t1), pt(s1, by1, t1), pt(s1, by1, t0), pt(s0, by0, t0), mat, {
-          u0: f0 * Math.PI * radius, v0: t1, u1: f1 * Math.PI * radius, v1: t0,
-          normals: [nb0, nb1, nb1, nb0], chart: revChart, lu0: f0, lv0: 0, lu1: f1, lv1: 1,
+          u0: f0 * archTileSpan, v0: 0, u1: f1 * archTileSpan, v1: thickTiles,
+          normals: [nb0, nb1, nb1, nb0], chart: revBotChart, lu0: f0, lv0: 0, lu1: f1, lv1: 1,
         });
       }
     }
@@ -1278,6 +1358,16 @@ export class MapBuilder {
           normals: [nA0, nA1, nB1, nB0],
           chart, lu0: u0, lv0, lu1: u1, lv1,
         });
+      }
+    }
+
+    if (opts.solid) {
+      let lastCol = null;
+      for (const p of pts) {
+        if (p[1] - radius > 2.2) continue;
+        if (lastCol && Math.hypot(p[0] - lastCol[0], p[2] - lastCol[2]) < radius * 0.65) continue;
+        this.solids.push({ kind: "circle", x: p[0], z: p[2], radius, minY: 0, maxY: p[1] + radius });
+        lastCol = p;
       }
     }
     return this;

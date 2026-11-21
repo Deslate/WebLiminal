@@ -324,6 +324,7 @@ export async function createWaterModule(
         { binding: 0, resource: { buffer: frameUniformBuffer } },
         { binding: 1, resource: { buffer: renderUniformBuf } },
         { binding: 2, resource: { buffer: combinedWaveBuf } },
+        { binding: 3, resource: sceneDepthView },
         { binding: 4, resource: linSampler },
         { binding: 5, resource: { buffer: sceneBindings.bvhNodeBuf } },
         { binding: 6, resource: { buffer: sceneBindings.bvhTriBuf } },

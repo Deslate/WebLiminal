@@ -34,12 +34,15 @@ struct WaterRenderUniform {
 @group(0) @binding(0) var<uniform> frame: FrameUniform;
 @group(0) @binding(1) var<uniform> water: WaterRenderUniform;
 @group(0) @binding(2) var<storage, read> waveState: array<vec2f>;
+@group(0) @binding(3) var sceneDepthTex: texture_depth_2d;
 @group(0) @binding(4) var linSampler: sampler;
 @group(0) @binding(5) var<storage, read> bvhNodes: array<BVHNode>;
 @group(0) @binding(6) var<storage, read> bvhTris: array<BVHTri>;
 @group(0) @binding(7) var<storage, read> materials: array<MaterialGPU>;
 @group(0) @binding(8) var lmIrradTex: texture_2d<f32>;
 @group(0) @binding(9) var causticTex: texture_2d<f32>;
+
+const WATER_ENV_MARGIN: f32 = 0.085;
 
 struct VSOut {
   @builtin(position) clipPos: vec4f,
@@ -50,7 +53,9 @@ struct VSOut {
 fn vsWater(@location(0) xz: vec2f) -> VSOut {
   let wx = water.mapDomain.x + xz.x * water.mapDomain.z;
   let wz = water.mapDomain.y + xz.y * water.mapDomain.w;
-  let wp = vec3f(wx, water.surface.x, wz);
+  // Tight upper bounding envelope above maximum wave crest: hardware Early-Z culls walls
+  // cleanly while fsWater resolves exact undulating wave-wall contact below!
+  let wp = vec3f(wx, water.surface.x + WATER_ENV_MARGIN, wz);
   var o: VSOut;
   o.worldPos = wp;
   o.clipPos = frame.viewProj * vec4f(wp, 1.0);
@@ -329,36 +334,91 @@ fn shadeSurfaceHit(hit: RayHit, hitPos: vec3f, rayDir: vec3f, rayDist: f32, isSu
 
 @fragment
 fn fsWater(i: VSOut) -> @location(0) vec4f {
-  let baseP = i.worldPos;
-  let toCam0 = frame.cameraPos.xyz - baseP;
-  let camDist0 = length(toCam0);
-  let V0 = toCam0 / max(camDist0, 1e-4);
+  let ro = frame.cameraPos.xyz;
+  let toEnv = i.worldPos - ro;
+  let envDist = length(toEnv);
+  let rd = toEnv / max(envDist, 1e-4);
+  if (rd.y >= -1e-4) { discard; }
 
-  // One-step parallax refinement onto actual displaced physical wave height y = waterLevel + h(x, z).
-  let w0 = waterBicubicSample(baseP.x, baseP.z);
-  let tShift = clamp(w0.x / max(abs(V0.y), 0.18), -0.18, 0.18);
-  let evalXZ = baseP.xz + V0.xz * tShift;
-  let w = waterBicubicSample(evalXZ.x, evalXZ.y);
-  let wp = vec3f(evalXZ.x, water.surface.x + w.x, evalXZ.y);
-  let N = normalize(vec3f(-w.y, 1.0, -w.z));
+  let fullDims = vec2i(textureDimensions(sceneDepthTex));
+  let px = clamp(vec2i(i.clipPos.xy), vec2i(0), fullDims - vec2i(1));
+  let sceneDepth = textureLoad(sceneDepthTex, px, 0);
 
-  let toCam = frame.cameraPos.xyz - wp;
-  let camDist = length(toCam);
-  let V = toCam / max(camDist, 1e-4);
+  var tScene = 140.0;
+  var scenePos = ro + rd * tScene;
+  if (sceneDepth < 0.9999) {
+    let uv = (vec2f(px) + 0.5) / vec2f(fullDims);
+    let ndc = vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, sceneDepth, 1.0);
+    let sp4 = frame.invViewProj * ndc;
+    scenePos = sp4.xyz / sp4.w;
+    tScene = length(scenePos - ro);
+  }
+
+  let wl = water.surface.x;
+  let tSlabTop = max(0.05, (wl + WATER_ENV_MARGIN - ro.y) / rd.y);
+  let tSlabBot = max(tSlabTop + 0.002, (wl - WATER_ENV_MARGIN - ro.y) / rd.y);
+  if (tSlabTop >= tScene) { discard; }
+
+  // Exact 4-step damped Newton ray-heightfield intersection solving ro.y + rd.y * t = wl + h(x, z).
+  // Produces an organically undulating wave-wall contact line (zero straight-line ruler seams!)
+  // and guarantees wp always lies strictly on the wet camera-facing side of walls & steps.
+  let tMaxEval = min(tSlabBot, tScene + 0.03);
+  let maxStep = max(0.04, (tSlabBot - tSlabTop) * 0.28);
+  var tW = clamp((wl - ro.y) / rd.y, tSlabTop, tMaxEval);
+  var w = vec3f(0.0);
+  for (var iter = 0; iter < 4; iter++) {
+    let p = ro + rd * tW;
+    w = waterBicubicSample(p.x, p.z);
+    let fVal = p.y - (wl + w.x);
+    let dfdt = min(rd.y - w.y * rd.x - w.z * rd.z, rd.y * 0.45 - 0.04);
+    let delta = clamp(fVal / dfdt, -maxStep, maxStep);
+    tW = clamp(tW - delta, tSlabTop, tMaxEval + 0.04);
+  }
+
+  // Re-evaluate final wave height & gradient at converged hit; discard if behind wall/deck/step!
+  let hitCheck = ro + rd * tW;
+  w = waterBicubicSample(hitCheck.x, hitCheck.z);
+  let clearRay = tScene - tW;
+  if (clearRay <= 0.001) { discard; }
+
+  let wp = vec3f(hitCheck.x, wl + w.x, hitCheck.z);
+  let V = -rd;
+  let camDist = tW;
+
+  // Gentle Neumann slope relaxation + physical capillary meniscus curl right along wall contact (< 4.5 cm).
+  let contactCalm = mix(0.45, 1.0, smoothstep(0.0, 0.045, clearRay));
+  let clampedSlope = clamp(vec2f(w.y, w.z) * contactCalm, vec2f(-0.72), vec2f(0.72));
+  var N = normalize(vec3f(-clampedSlope.x, 1.0, -clampedSlope.y));
+
+  let meniscus = exp(-clearRay * 55.0) * 0.14;
+  let horizV = vec3f(V.x, 0.0, V.z);
+  let horizLen = length(horizV);
+  if (meniscus > 0.002 && horizLen > 1e-4) {
+    N = normalize(N + (horizV / horizLen) * meniscus);
+  }
+
+  // Guarantee camera-facing normal hemisphere: prevents Snell refraction inversion and
+  // bogus 99% dark grazing mirrors on steep wading bow waves and wall-hugging ripples!
+  let rawNdv = dot(N, V);
+  if (rawNdv < 0.08) {
+    N = normalize(N + V * (0.08 - rawNdv));
+  }
 
   // 1. Exact unpolarized dielectric Fresnel (air -> water, IOR = 1.333)
-  let ndv = max(dot(N, V), 0.002);
+  let ndv = max(dot(N, V), 0.08);
   let fresnel = exactDielectricFresnel(ndv, 1.333);
 
+  // Safe wet-side ray origin backed slightly along +V so rays NEVER start inside solid walls/steps!
+  let safeP = ro + rd * max(0.05, tW - min(0.008, clearRay * 0.35));
+
   // 2. TRUE Snell-Refracted BVH Transmission Ray!
-  // Intersects actual submerged floor tiles, steps & columns with exact geometric refraction!
   var T = refract(-V, N, 1.0 / 1.333);
-  if (dot(T, T) < 1e-4) { T = -V; }
+  if (dot(T, T) < 1e-4 || T.y > -0.02) { T = -V; }
   T = normalize(T);
 
-  let refrOrigin = wp + vec3f(0.0, -0.004, 0.0);
+  let refrOrigin = safeP;
   let subHit = traceClosestWater(refrOrigin, T, 24.0);
-  var underwater = vec3f(0.0);
+  var underwater = frame.fogColorDens.rgb + vec3f(0.012, 0.042, 0.032);
   if (subHit.hit) {
     let subLen = subHit.t;
     let subPos = refrOrigin + T * subHit.t;
@@ -373,10 +433,10 @@ fn fsWater(i: VSOut) -> @location(0) vec4f {
 
   // 3. TRUE Full-Scene BVH Mirror Reflection Ray!
   var R = reflect(-V, N);
-  if (R.y < 0.005) {
-    R = normalize(vec3f(R.x, 0.008, R.z));
+  if (R.y < 0.03) {
+    R = normalize(vec3f(R.x, 0.03, R.z));
   }
-  let reflOrigin = wp + vec3f(0.0, 0.010, 0.0);
+  let reflOrigin = safeP + vec3f(0.0, 0.005, 0.0);
   let reflHit = traceClosestWater(reflOrigin, R, 90.0);
   var reflCol: vec3f;
   if (reflHit.hit) {

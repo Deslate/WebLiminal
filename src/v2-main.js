@@ -310,16 +310,24 @@ function tick(now) {
     walkBobPhase += dt * (inWater ? 5.6 : sprint ? 11.5 : 8.2);
   }
 
+  const movedDist = Math.hypot(pose.x - beforePose.x, pose.z - beforePose.z);
+  const actualSpeed = movedDist / Math.max(dt, 1e-4);
+
   if (water) {
     const nowInWater = pose.footY < water.level - 0.04;
     renderer.setBody(nowInWater ? pose : null);
     const contact = wakeTrail.advance(beforePose, pose, elapsed, water.level);
     if (contact) {
       renderer.addFootstep(contact);
+      audio.playFootstep({
+        inWater: true,
+        speed: actualSpeed,
+        side: contact.step % 2 ? 1 : -1,
+      });
     }
   }
 
-  audio.update(elapsed, len > 0, inWater);
+  audio.update(elapsed, actualSpeed, inWater);
 
   // Subtle vertical walking head-bob (zero when standing still)
   const bob = len > 0 ? Math.sin(walkBobPhase) * 0.020 : 0;

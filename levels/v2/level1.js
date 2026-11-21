@@ -80,8 +80,8 @@ export default {
     for (const x of [-2.2, -1.85, 2.1]) {
       m.pipe([x, H - 0.72, -15.8], [x, H - 0.72, 13.8], 0.075, steel);
     }
-    m.box([-10.98, 2.6, 2.0], [-10.90, 3.3, 3.6], "vent_grate", { solid: false, priority: 0.3 });
-    m.box([-10.98, 2.6, -5.0], [-10.90, 3.3, -3.4], "vent_grate", { solid: false, priority: 0.3 });
+    m.box([-11.0, 2.6, 2.0], [-10.94, 3.3, 3.6], "vent_grate", { solid: false, skipFaces: ["nx"], priority: 0.3 });
+    m.box([-11.0, 2.6, -5.0], [-10.94, 3.3, -3.4], "vent_grate", { solid: false, skipFaces: ["nx"], priority: 0.3 });
 
     // Alternating cool industrial fluorescent & warm sodium aisle lights
     m.tubeLight(0.0, H - 0.62, 8.2, 2.4, "x", { color: [0.80, 0.93, 1.0], intensity: 22.0, material: tubeCool });

@@ -96,8 +96,9 @@ export default {
       openings: [{ pos: -0.6, width: 2.6, top: 2.6 }],
     });
 
-    m.box([4.2, 0, -9.8], [4.52, H, -5.2], wallpaperAlt);
-    m.box([-9.2, 0, 6.2], [-8.88, H, 10.6], wallpaper);
+    m.box([4.2, 0, -9.8], [4.52, H, -7.8], wallpaperAlt, { skipFaces: ["pz", "ny", "py"] });
+    m.box([4.2, 0, -7.48], [4.52, H, -5.2], wallpaperAlt, { skipFaces: ["nz", "ny", "py"] });
+    m.box([-9.2, 0, 6.2], [-8.88, H, 10.6], wallpaper, { skipFaces: ["ny", "py"] });
 
     const pillars = [
       [-3.1, 8.2],
@@ -111,12 +112,12 @@ export default {
     ];
     for (const [px, pz] of pillars) {
       const r = 0.34;
-      m.box([px - r, 0, pz - r], [px + r, H, pz + r], wallpaper);
-      m.box([px - r - 0.02, 0, pz - r - 0.02], [px + r + 0.02, 0.13, pz + r + 0.02], trim, { solid: false, priority: 0.25 });
+      m.box([px - r, 0, pz - r], [px + r, H, pz + r], wallpaper, { skipFaces: ["ny", "py"] });
+      m.box([px - r - 0.02, 0, pz - r - 0.02], [px + r + 0.02, 0.13, pz + r + 0.02], trim, { solid: false, skipFaces: ["ny"], priority: 0.25 });
     }
 
-    m.box([-12.98, 2.45, 5.8], [-12.92, 2.82, 6.6], "vent_grate", { solid: false, priority: 0.3 });
-    m.box([5.45, 2.45, 9.2], [5.50, 2.82, 10.0], "vent_grate", { solid: false, priority: 0.3 });
+    m.box([-13.0, 2.45, 5.8], [-12.95, 2.82, 6.6], "vent_grate", { solid: false, skipFaces: ["nx"], priority: 0.3 });
+    m.box([5.45, 2.45, 9.2], [5.50, 2.82, 10.0], "vent_grate", { solid: false, skipFaces: ["px"], priority: 0.3 });
 
     const lightGrid = [
       { x: -0.4, z: 7.4, int: 15.0, col: [1.0, 0.93, 0.68], mat: lampBright },
