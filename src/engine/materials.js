@@ -250,6 +250,84 @@ export const MATERIAL_PRESETS = {
     wetness: 0.5,
     seed: 19.0,
   },
+  plaster_mud: {
+    presetId: 19,
+    albedo: [0.34, 0.26, 0.18], // rural aged ochre mud-plaster with lower damp flaking stucco
+    roughness: 0.91,
+    metallic: 0.0,
+    coat: 0.02,
+    tileScale: 0.5,
+    pomDepth: 0.006,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.85,
+    seed: 20.0,
+  },
+  stone_damp: {
+    presetId: 20,
+    albedo: [0.055, 0.048, 0.040], // dark gritty damp stone/concrete floor catching candle reflections
+    roughness: 0.62,
+    metallic: 0.0,
+    coat: 0.35,
+    tileScale: 0.85,
+    pomDepth: 0.008,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.82,
+    seed: 21.0,
+  },
+  wood_plank_aged: {
+    presetId: 21,
+    albedo: [0.075, 0.068, 0.060], // weathered charcoal-timber vertical double-door planks
+    roughness: 0.78,
+    metallic: 0.0,
+    coat: 0.05,
+    tileScale: 1.0,
+    pomDepth: 0.006,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.2,
+    seed: 22.0,
+  },
+  couplet_paper: {
+    presetId: 22,
+    albedo: [0.44, 0.055, 0.075], // sun-bleached crimson/magenta paper with SDF brush calligraphy
+    roughness: 0.88,
+    metallic: 0.0,
+    coat: 0.02,
+    tileScale: 1.0,
+    pomDepth: 0.0,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.0,
+    seed: 1.0, // 1=left(富贵由天), 2=right(平安是福), 3=horizontal scroll, 4=left talisman, 5=right talisman
+  },
+  candle_wax: {
+    presetId: 23,
+    albedo: [0.85, 0.73, 0.50], // warm translucent paraffin wax with subsurface wick glow
+    roughness: 0.42,
+    metallic: 0.0,
+    coat: 0.25,
+    tileScale: 1.0,
+    pomDepth: 0.0,
+    emissive: [1.0, 0.42, 0.08],
+    emissiveStrength: 2.2,
+    wetness: 0.0,
+    seed: 24.0,
+  },
+  candle_flame: {
+    presetId: 24,
+    albedo: [0.02, 0.02, 0.02], // incandescent candle flame / smoldering ember
+    roughness: 0.95,
+    metallic: 0.0,
+    coat: 0.0,
+    tileScale: 1.0,
+    pomDepth: 0.0,
+    emissive: [1.0, 0.62, 0.18],
+    emissiveStrength: 26.0,
+    wetness: 0.0,
+    seed: 25.0,
+  },
 };
 
 export const MATERIAL_STRIDE_FLOATS = 16; // 64 bytes per MaterialGPU struct

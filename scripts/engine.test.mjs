@@ -325,3 +325,34 @@ test("MapBuilder flaredCapital compiles 4 sloped outward-facing pyramid faces in
     assert(uv2x >= 0 && uv2x <= 1 && uv2y >= 0 && uv2y <= 1, "Invalid flaredCapital UV2");
   }
 });
+
+test("chinese-horror v2 compiles dry scene with point lights, SDF couplet presets, and unobstructed corridor path", () => {
+  const byId = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
+  assert(byId["chinese-horror"], "chinese-horror must be registered in levels/v2/index.js");
+
+  const m = createMap({ atlasSize: 512 });
+  byId["chinese-horror"].build(m);
+  const c = m.compile({ atlasSize: 512 });
+
+  assert.equal(c.water, null, "chinese-horror must be a dry level with zero water allocation");
+  assert.equal(c.bookmarks.length, 3);
+  assert(c.lightCount >= 3, `Expected candle, ember, and moonlight portal lights, got ${c.lightCount}`);
+  const pointLights = c.lights.filter((l) => l.kind === 2);
+  assert.equal(pointLights.length, 2, "Expected candle and vigil ember omnidirectional point lights (kind = 2)");
+  // Packed AreaLight buffer must preserve kind = 2 at float offset +11
+  for (let i = 0; i < c.lightCount; i++) {
+    assert.equal(c.lightData[i * 16 + 11], c.lights[i].kind);
+  }
+  // Every bookmark spawn must be unobstructed
+  for (const bm of c.bookmarks) {
+    assert.equal(canStand(bm.spawn.x, bm.spawn.z, c.collision, 0), true, `Bookmark '${bm.name}' is blocked`);
+  }
+  // Protruding left wall and dark offering bowl must block walk-through, while corridor center toward door is clear
+  assert.equal(canStand(-1.5, -0.15, c.collision), false, "Protruding mud-plaster wall must block walk-through");
+  assert.equal(canStand(-0.62, 0.50, c.collision), false, "Offering bowl must block walk-through");
+  assert.equal(canStand(0.42, -0.80, c.collision), true, "Corridor path toward double door must be walkable");
+  // Sightline from threshold down corridor to recessed double door hits door leaves near z = -2.34
+  const hitDoor = intersectBVH(c.bvh, [0.42, 1.2, 2.0], [0, 0, -1]);
+  assert(hitDoor && hitDoor.t > 4.2 && hitDoor.t < 4.5, `Expected door hit near t=4.34, got ${hitDoor?.t}`);
+});
+

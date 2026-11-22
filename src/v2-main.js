@@ -213,7 +213,7 @@ addEventListener("keydown", (e) => {
     if (len > 1) jumpToBookmark((activeBookmark + 1) % len);
     return;
   }
-  if (!e.repeat && ["Digit1", "Digit2", "Digit3"].includes(e.code)) {
+  if (!e.repeat && /^Digit[1-9]$/.test(e.code)) {
     const idx = Number(e.code.slice(-1)) - 1;
     if (LEVEL_LIST[idx]) loadLevel(LEVEL_LIST[idx].id);
     return;

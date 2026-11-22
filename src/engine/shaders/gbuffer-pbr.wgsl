@@ -395,6 +395,85 @@ fn fsMain(i: VSOut) -> GBufferOut {
     coat = mix(mix(0.02, 0.32, dampMargin), 1.0, puddle);
     nXY *= 1.0 - puddle * 0.98;
     texAO *= (1.0 - sawJoint * 0.55) * (1.0 - crack * 0.45);
+  } else if (preset == 19u) {
+    // Rural aged mud-plaster wall: smooth upper plaster, damp lower flaking stucco, ceiling soot, and optional vertical edge fissure.
+    let wUV = select(i.worldPos.xy, i.worldPos.zy, abs(Ngeom.x) > 0.7);
+    let broad = vFbm2(wUV * 0.92 + vec2f(2.3, 1.1));
+    let stain = vFbm2(vec2f(wUV.x * 2.2, wUV.y * 0.60) + vec2f(8.1, 4.7));
+    let fine = vFbm2(wUV * 11.5 - vec2f(3.7, 6.2));
+    albedo *= (0.76 + 0.42 * broad) * (1.0 - smoothstep(0.52, 0.82, stain) * 0.34);
+
+    let dampAmt = clamp(m.extra.y, 0.0, 1.0);
+    let lowMask = (1.0 - smoothstep(0.04, 0.54, i.worldPos.y + (broad - 0.5) * 0.16)) * dampAmt;
+    var peel = 0.0;
+    var peelSlope = vec2f(0.0);
+    if (lowMask > 0.005) {
+      let peelField = vFbm2(wUV * 6.8 + vec2f(11.4, 2.8)) + 0.32 * vFbm2(wUV * 22.0);
+      peel = smoothstep(0.47, 0.60, peelField) * lowMask;
+      let peelEdge = smoothstep(0.41, 0.49, peelField) * (1.0 - smoothstep(0.55, 0.65, peelField)) * lowMask;
+      let underCol = albedo * 0.48 * (0.72 + 0.52 * fine);
+      albedo = mix(albedo, underCol, peel * 0.82);
+      albedo = mix(albedo, albedo * 1.42 + vec3f(0.04, 0.03, 0.02), peelEdge * 0.45);
+      let e = 0.012;
+      let px = wUV + vec2f(e, 0.0);
+      let py = wUV + vec2f(0.0, e);
+      let peelX = smoothstep(0.47, 0.60, vFbm2(px * 6.8 + vec2f(11.4, 2.8)) + 0.32 * vFbm2(px * 22.0)) * lowMask;
+      let peelY = smoothstep(0.47, 0.60, vFbm2(py * 6.8 + vec2f(11.4, 2.8)) + 0.32 * vFbm2(py * 22.0)) * lowMask;
+      peelSlope = vec2f((peel - peelX) / e, (peel - peelY) / e) * 0.018;
+    }
+
+    // Optional weathered vertical plaster fissure (activated when seed > 100 encodes local U position + 200).
+    var crackBump = 0.0;
+    if (m.extra.z > 100.0) {
+      let uCrack = m.extra.z - 200.0;
+      let edgeCrack = exp(-abs(i.uv.x - uCrack) / 0.085)
+        * smoothstep(0.35, 0.72, i.worldPos.y)
+        * smoothstep(2.45, 1.85, i.worldPos.y);
+      if (edgeCrack > 0.01) {
+        let crackTex = smoothstep(0.24, 0.66, vFbm2(wUV * 12.0 + vec2f(0.0, 3.5)));
+        crackBump = edgeCrack * crackTex;
+        albedo *= 1.0 - crackBump * 0.62;
+      }
+    }
+
+    // Subtle upper ceiling soot patina.
+    let ceilSoot = smoothstep(1.90, 2.90, i.worldPos.y) * 0.68 * max(dampAmt, 0.5);
+    albedo *= 1.0 - ceilSoot;
+
+    nXY = clamp(nXY * 0.42 + peelSlope + vec2f(crackBump * 0.46, 0.0), vec2f(-0.78), vec2f(0.78));
+    rough = clamp(mix(rough, 0.96, peel), 0.78, 0.98);
+    texAO *= (1.0 - peel * 0.24) * (1.0 - crackBump * 0.45);
+  } else if (preset == 20u) {
+    // Dark gritty damp stone floor: broken rough-grit specular sparkles across dark damp stone (zero smooth plastic stripe!).
+    let pXZ = i.worldPos.xz;
+    let broad = vFbm2(pXZ * 1.25 + vec2f(4.2, 9.1));
+    let grit = vFbm2(pXZ * 10.5 - vec2f(1.9, 5.3));
+    let micro = vFbm2(pXZ * 34.0 + vec2f(6.7, 2.4));
+    let wetLvl = clamp(m.extra.y, 0.0, 1.0);
+    let wetRaw = vFbm2(pXZ * 2.15 + vec2f(7.3, -2.4)) + 0.34 * vFbm2(pXZ * 7.8);
+    let wet = smoothstep(0.44 - wetLvl * 0.05, 0.72 - wetLvl * 0.03, wetRaw) * wetLvl;
+    let ash = smoothstep(0.60, 0.85, micro) * (0.45 + 0.55 * broad);
+
+    albedo *= (0.72 + 0.56 * (broad * 0.55 + grit * 0.45));
+    albedo = mix(albedo, albedo * vec3f(0.50, 0.50, 0.50), wet * 0.72);
+    albedo = mix(albedo, vec3f(0.14, 0.11, 0.082), ash * 0.36 * (1.0 - wet * 0.45));
+
+    // Strong gritty micro-stone normal breakup so candlelight breaks into authentic sparkling grit!
+    let e = 0.008;
+    let amp = mix(0.024, 0.011, wet);
+    let h0 = vFbm2(pXZ * 20.0 + vec2f(2.1, 7.3)) * amp + vFbm2(pXZ * 52.0) * amp * 0.45;
+    let hx = vFbm2((pXZ + vec2f(e, 0.0)) * 20.0 + vec2f(2.1, 7.3)) * amp + vFbm2((pXZ + vec2f(e, 0.0)) * 52.0) * amp * 0.45;
+    let hy = vFbm2((pXZ + vec2f(0.0, e)) * 20.0 + vec2f(2.1, 7.3)) * amp + vFbm2((pXZ + vec2f(0.0, e)) * 52.0) * amp * 0.45;
+    nXY = clamp(nXY * mix(0.62, 0.32, wet) + vec2f((h0 - hx) / e, (h0 - hy) / e) * 0.34, vec2f(-0.72), vec2f(0.72));
+    rough = clamp(mix(0.60 + grit * 0.16, 0.16 + grit * 0.10, wet), 0.14, 0.92);
+    coat = mix(0.14, 0.82, wet);
+  } else if (preset == 21u) {
+    // Aged dark Chinese timber planks: dry pale ash weathering on lower/mid boards, deep soot near top.
+    let wUV = select(i.worldPos.xy, i.worldPos.zy, abs(Ngeom.x) > 0.7);
+    let wear = vFbm2(wUV * 3.6 + vec2f(9.1, 2.3));
+    let lowWear = smoothstep(0.40, 0.74, wear) * (1.0 - smoothstep(1.25, 2.05, i.worldPos.y));
+    albedo = mix(albedo, vec3f(0.21, 0.205, 0.195), lowWear * 0.54);
+    albedo *= 1.0 - smoothstep(1.30, 2.18, i.worldPos.y) * 0.74;
   }
 
   let nZ = sqrt(max(0.04, 1.0 - min(0.92, dot(nXY, nXY))));
@@ -459,36 +538,42 @@ fn fsMain(i: VSOut) -> GBufferOut {
     }
   }
 
-  // 3. Per-Pixel Rectangular Area-Light Illumination & Adaptive Quad Soft Shadows
-  //    - On indoor artificial-light levels (sun disabled: Level 0, Level 1): ranks all facing lights
+  // 3. Per-Pixel Rectangular Area-Light & Omnidirectional Point-Light Illumination with Adaptive Soft Shadows
+  //    - On indoor artificial-light levels (sun disabled: Level 0, Level 1, Chinese Horror): ranks all facing lights
   //      by unshadowed direct energy (zero rays), then evaluates the top 6 lights per pixel. The top 2
-  //      dominant fixtures trace 2 diagonal quad taps and adaptively refine to all 4 quad corners ONLY
-  //      when the two taps disagree (true shadow penumbra edges) — giving crisp photographic soft shadows
-  //      and fluorescent wall scallops at ~5-7 rays/pixel (60+ FPS on desktop GPUs, zero shimmer!).
+  //      dominant fixtures trace 2 opposite taps and adaptively refine to 8 stratified taps ONLY on true penumbra edges.
   //    - On sunlit levels (Poolrooms): evaluates early-culled BVH-shadowed area-light GGX specular.
   let lightCount = min(u32(frame.skyHorizon.w + 0.5), 32u);
   let shadowOrigin = i.worldPos + Ngeom * 0.014;
+  let ptShadowOrigin = i.worldPos + Ngeom * 0.006;
   let indoorDirect = frame.sunColorInt.w < 0.5;
 
   if (indoorDirect) {
     var topIdx = array<u32, 6>(0u, 0u, 0u, 0u, 0u, 0u);
     var topScore = array<f32, 6>(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
-    // Zero-ray ranking pass: select up to 6 strongest facing area lights at this surface point.
+    // Zero-ray ranking pass: select up to 6 strongest facing area/point lights at this surface point.
     for (var li = 0u; li < lightCount; li++) {
       let l = lights[li];
-      let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+      let isPoint = l.edgeVKind.w > 1.5;
+      let lCenter = select(l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz), l.originArea.xyz, isPoint);
       let toC = lCenter - i.worldPos;
       let cDist2 = dot(toC, toC);
-      if (cDist2 > 324.0 || cDist2 < 0.01) { continue; }
-      let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
-      let halfSpan = 0.5 * (length(l.edgeUPower.xyz) + length(l.edgeVKind.xyz));
-      if (dot(lNorm, -toC) <= -0.02 || dot(Ngeom, toC) + halfSpan <= 0.0) { continue; }
-      let invD = inverseSqrt(max(cDist2, 0.25));
+      if (cDist2 > 324.0 || cDist2 < select(0.01, 0.0004, isPoint)) { continue; }
+      var cL = 1.0;
+      if (!isPoint) {
+        let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+        let halfSpan = 0.5 * (length(l.edgeUPower.xyz) + length(l.edgeVKind.xyz));
+        if (dot(lNorm, -toC) <= -0.02 || dot(Ngeom, toC) + halfSpan <= 0.0) { continue; }
+        let invD = inverseSqrt(max(cDist2, 0.25));
+        cL = max(dot(lNorm, -(toC * invD)), 0.10);
+      } else {
+        if (dot(Ngeom, toC) + l.originArea.w <= 0.0) { continue; }
+      }
+      let invD = inverseSqrt(max(cDist2, select(0.25, 0.01, isPoint)));
       let dirC = toC * invD;
-      let cL = max(dot(lNorm, -dirC), 0.10);
       let cS = max(dot(Ngeom, dirC), 0.10);
-      let sc = (l.edgeUPower.w * cL * cS) / max(cDist2, 0.25);
+      let sc = (l.edgeUPower.w * cL * cS) / max(cDist2, select(0.25, 0.015, isPoint));
       if (sc <= topScore[5]) { continue; }
 
       // Insert into 6-element descending list
@@ -503,19 +588,85 @@ fn fsMain(i: VSOut) -> GBufferOut {
       topIdx[pos] = li;
     }
 
-    // Smooth 6-point interior complement (paired with diagonal probe pair -> 8-point stratified quad penumbra!)
+    // Smooth 6-point interior complement (paired with diagonal probe pair -> 8-point stratified penumbra!)
     var penumbraU = array<f32, 6>(0.76, 0.24, 0.50, 0.14, 0.86, 0.50);
     var penumbraV = array<f32, 6>(0.28, 0.72, 0.16, 0.50, 0.50, 0.84);
+    var diskOffX = array<f32, 6>(0.866, -0.866, 0.0, 0.5, -0.5, 0.0);
+    var diskOffY = array<f32, 6>(0.5, 0.5, 1.0, -0.866, -0.866, 0.0);
 
     for (var k = 0u; k < 6u; k++) {
       if (topScore[k] < 0.0004) { break; }
       let l = lights[topIdx[k]];
-      let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
-      let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+      let isPoint = l.edgeVKind.w > 1.5;
+      let lCenter = select(l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz), l.originArea.xyz, isPoint);
       let cDist2 = dot(lCenter - i.worldPos, lCenter - i.worldPos);
-      // Smooth physical distance + score roll-off guarantees ZERO circular culling arcs on walls!
       let lFade = smoothstep(324.0, 144.0, cDist2) * smoothstep(0.0004, 0.0035, topScore[k]);
       if (lFade <= 0.0) { continue; }
+
+      if (isPoint) {
+        // Omnidirectional spherical candle/ember point light with smooth organic flicker & adaptive disk penumbra.
+        let radius = max(l.originArea.w, 0.006);
+        let shadowOff = max(l.edgeUPower.x, radius * 1.6);
+        let flAmp = l.edgeUPower.y;
+        let flFreq = l.edgeUPower.z;
+        let flPh = l.edgeVKind.x;
+        let tNow = frame.cameraPos.w;
+        let flMul = 1.0 + flAmp * (
+          0.58 * sin(tNow * flFreq + flPh) +
+          0.28 * sin(tNow * flFreq * 2.17 + flPh * 1.7) +
+          0.14 * cos(tNow * flFreq * 4.09 + flPh * 0.6)
+        );
+        let lightCol = l.radianceCdf.rgb * flMul;
+        let toC = lCenter - i.worldPos;
+        let dist2 = max(dot(toC, toC), 0.002);
+        let dist = sqrt(dist2);
+        let wiC = toC / dist;
+        let cosS = max(dot(N, wiC), 0.0);
+        if (cosS <= 0.0 && dot(Ngeom, wiC) <= 0.0) { continue; }
+
+        var vis = 0.0;
+        if (k < 2u && dist < 8.0) {
+          let basis = orthoBasis(wiC);
+          let p0 = lCenter + basis[0] * radius;
+          let p1 = lCenter - basis[0] * radius;
+          let d0 = length(p0 - i.worldPos);
+          let w0 = (p0 - i.worldPos) / max(d0, 1e-4);
+          let d1 = length(p1 - i.worldPos);
+          let w1 = (p1 - i.worldPos) / max(d1, 1e-4);
+          let vis0 = (dot(Ngeom, w0) > 0.0) && !traceShadowPBR(ptShadowOrigin, w0, max(0.01, d0 - shadowOff));
+          let vis1 = (dot(Ngeom, w1) > 0.0) && !traceShadowPBR(ptShadowOrigin, w1, max(0.01, d1 - shadowOff));
+          if (vis0 != vis1) {
+            var hits = select(0.0, 1.0, vis0) + select(0.0, 1.0, vis1);
+            for (var pi = 0u; pi < 6u; pi++) {
+              let lp = lCenter + (basis[0] * diskOffX[pi] + basis[1] * diskOffY[pi]) * radius;
+              let toP = lp - i.worldPos;
+              let dP = length(toP);
+              let wiP = toP / max(dP, 1e-4);
+              if (dot(Ngeom, wiP) > 0.0 && !traceShadowPBR(ptShadowOrigin, wiP, max(0.01, dP - shadowOff))) {
+                hits += 1.0;
+              }
+            }
+            vis = hits * 0.125;
+          } else if (vis0) {
+            vis = 1.0;
+          }
+        } else {
+          if (dot(Ngeom, wiC) > 0.0 && !traceShadowPBR(ptShadowOrigin, wiC, max(0.01, dist - shadowOff))) {
+            vis = 1.0;
+          }
+        }
+
+        if (vis > 0.0 && cosS > 0.0) {
+          let atten = (vis * lFade) / max(dist2, 0.008);
+          let fIn = fresnelSchlick(cosS, f0);
+          diffuse += kD * (vec3f(1.0) - fIn) * albedo * lightCol * (cosS * atten * INV_PI) * mix(0.72, 1.0, texAO);
+          let ptSpecR = clamp(rough + radius * 0.55 / max(dist, 0.12), 0.045, 0.94);
+          specular += evalGGXSpec(N, V, wiC, ptSpecR, f0) * lightCol * (atten * 0.85);
+        }
+        continue;
+      }
+
+      let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
       let sqrtArea = sqrt(l.originArea.w);
 
       if (k < 2u && cDist2 < 160.0) {
@@ -625,9 +776,23 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let isReflCandidate = max(metallic, coat) > 0.12 && rough <= 0.52;
   let envSpec = select(Fv * irrad * 0.12 * ao * (1.0 - rough * 0.65), vec3f(0.0), isReflCandidate);
 
-  // Emissive contribution (with optional fluorescent ballast flicker).
-  let flk = fluorescentFlicker(frame.cameraPos.w, m.extra.z, m.extra.w);
-  let emissive = m.emissive.rgb * m.emissive.w * emissiveMask * flk;
+  // Emissive contribution (smooth organic flame/wax glow for presets 23-24; ballast flicker for fluorescent).
+  var emissive = vec3f(0.0);
+  if (preset == 23u) {
+    // Subsurface glow inside translucent paraffin wax right under the wick.
+    let fl = 1.0 + 0.055 * (0.58 * sin(frame.cameraPos.w * 7.3 + 0.4) + 0.28 * sin(frame.cameraPos.w * 15.84 + 0.69) + 0.14 * cos(frame.cameraPos.w * 29.85 + 0.24));
+    let glow = smoothstep(0.04, 0.155, i.worldPos.y);
+    emissive = m.emissive.rgb * m.emissive.w * (glow * glow) * fl;
+  } else if (preset == 24u) {
+    let fl = 1.0 + m.extra.w * (0.58 * sin(frame.cameraPos.w * 7.3 + m.extra.z) + 0.28 * sin(frame.cameraPos.w * 15.84 + m.extra.z * 1.7) + 0.14 * cos(frame.cameraPos.w * 29.85 + m.extra.z * 0.6));
+    let tFlame = clamp((i.worldPos.y - 0.158) / 0.058, 0.0, 1.0);
+    let coreBoost = 1.0 + 0.45 * exp(-pow((tFlame - 0.30) / 0.24, 2.0));
+    let tipTint = mix(vec3f(1.25, 1.05, 0.85), vec3f(0.95, 0.42, 0.16), pow(tFlame, 0.85));
+    emissive = m.emissive.rgb * m.emissive.w * emissiveMask * fl * select(1.0, coreBoost, m.emissive.w > 12.0) * select(vec3f(1.0), tipTint, m.emissive.w > 12.0);
+  } else {
+    let flk = fluorescentFlicker(frame.cameraPos.w, m.extra.z, m.extra.w);
+    emissive = m.emissive.rgb * m.emissive.w * emissiveMask * flk;
+  }
 
   var color = diffuse + specular + envSpec + emissive;
 

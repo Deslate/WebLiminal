@@ -486,6 +486,16 @@ export function createAudioEngine(statusEl) {
       oscs[0].o.frequency.setTargetAtTime(46, now, 0.2);
       oscs[1].o.frequency.setTargetAtTime(92.15, now, 0.2);
       oscs[2].o.frequency.setTargetAtTime(138.4, now, 0.2);
+    } else if (profile === "horror") {
+      // Hushed night courtyard corridor: low hollow air draft, deep quiet reverb, zero fluorescent hum
+      wet.gain.setTargetAtTime(0.46, now, 0.25);
+      airGain.gain.setTargetAtTime(0.034, now, 0.25);
+      airFilter.frequency.setTargetAtTime(210, now, 0.25);
+      humGain.gain.setTargetAtTime(0.004, now, 0.25);
+      humFilter.frequency.setTargetAtTime(110, now, 0.25);
+      oscs[0].o.frequency.setTargetAtTime(38, now, 0.2);
+      oscs[1].o.frequency.setTargetAtTime(57.2, now, 0.2);
+      oscs[2].o.frequency.setTargetAtTime(76.5, now, 0.2);
     } else {
       // Poolrooms hushed natatorium stillness (long warm tiled reverb, zero white-noise hiss!)
       wet.gain.setTargetAtTime(0.58, now, 0.25);
@@ -565,12 +575,12 @@ export function createAudioEngine(statusEl) {
         pan,
         reverbSend: 0.14,
       });
-    } else if (profile === "parking") {
+    } else if (profile === "parking" || profile === "horror") {
       playFoleyBuffer(pickVariation(concreteBank), {
-        gain: 0.26 * dryEnergy,
-        rate: sideRate,
+        gain: (profile === "horror" ? 0.21 : 0.26) * dryEnergy,
+        rate: sideRate * (profile === "horror" ? 0.92 : 1.0),
         pan,
-        reverbSend: 0.56,
+        reverbSend: profile === "horror" ? 0.44 : 0.56,
       });
     } else {
       playFoleyBuffer(pickVariation(tileBank), {

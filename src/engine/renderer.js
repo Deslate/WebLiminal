@@ -727,6 +727,7 @@ export async function createRenderer(canvas, options = {}) {
       aoRadius: atmosphere.aoRadius ?? 1.6,
     };
     settings.exposure = activeAtmosphere.exposure;
+    settings.fov = atmosphere.fov ?? 68;
 
     const atlasSize = compiled.atlas.atlasSize;
     const layerCount = Math.max(1, compiled.materials.length);

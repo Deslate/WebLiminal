@@ -192,18 +192,22 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
     var bestSc = array<f32, 3>(0.0, 0.0, 0.0);
     for (var li = 0u; li < lc; li++) {
       let l = lights[li];
-      let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+      let isPoint = l.edgeVKind.w > 1.5;
+      let lCenter = select(l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz), l.originArea.xyz, isPoint);
       let toL = lCenter - hitPos;
       let d2 = dot(toL, toL);
-      if (d2 > 140.0 || d2 < 0.04) { continue; }
+      if (d2 > 140.0 || d2 < select(0.04, 0.001, isPoint)) { continue; }
       let invD = inverseSqrt(d2);
       let wi = toL * invD;
       let cosS = dot(hit.n, wi);
       if (cosS <= 0.01) { continue; }
-      let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
-      let cosL = dot(lNorm, -wi);
-      if (cosL <= 0.02) { continue; }
-      let sc = (l.edgeUPower.w * cosS * cosL) / max(d2, 0.25);
+      var cosL = 1.0;
+      if (!isPoint) {
+        let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+        cosL = dot(lNorm, -wi);
+        if (cosL <= 0.02) { continue; }
+      }
+      let sc = (l.edgeUPower.w * cosS * cosL) / max(d2, select(0.25, 0.02, isPoint));
       if (sc <= bestSc[2]) { continue; }
       var pos = 2u;
       loop {
@@ -218,18 +222,26 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
     for (var k = 0u; k < 3u; k++) {
       if (bestSc[k] < 0.004) { break; }
       let l = lights[bestIdx[k]];
-      let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+      let isPoint = l.edgeVKind.w > 1.5;
+      let lCenter = select(l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz), l.originArea.xyz, isPoint);
       let toL = lCenter - hitPos;
-      let d2 = max(dot(toL, toL), 0.04);
+      let d2 = max(dot(toL, toL), select(0.04, 0.002, isPoint));
       let rFade = smoothstep(140.0, 64.0, d2) * smoothstep(0.004, 0.025, bestSc[k]);
       if (rFade <= 0.0) { continue; }
       let dist = sqrt(d2);
       let wi = toL / dist;
       let cosS = max(dot(hit.n, wi), 0.0);
-      let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
-      let cosL = max(dot(lNorm, -wi), 0.0);
-      if (!traceShadowRefl(roS, wi, max(0.02, dist - 0.06))) {
-        col += albedo * kD * l.radianceCdf.rgb * ((cosS * cosL * l.originArea.w * rFade) / max(d2, 0.18) * INV_PI);
+      if (isPoint) {
+        let shadowOff = max(l.edgeUPower.x, 0.03);
+        if (!traceShadowRefl(roS, wi, max(0.01, dist - shadowOff))) {
+          col += albedo * kD * l.radianceCdf.rgb * ((cosS * rFade) / max(d2, 0.012) * INV_PI);
+        }
+      } else {
+        let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+        let cosL = max(dot(lNorm, -wi), 0.0);
+        if (!traceShadowRefl(roS, wi, max(0.02, dist - 0.06))) {
+          col += albedo * kD * l.radianceCdf.rgb * ((cosS * cosL * l.originArea.w * rFade) / max(d2, 0.18) * INV_PI);
+        }
       }
     }
   }

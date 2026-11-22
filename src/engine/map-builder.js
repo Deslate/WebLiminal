@@ -1578,6 +1578,32 @@ export class MapBuilder {
     return this;
   }
 
+  // Registers an omnidirectional spherical point emitter (kind = 2) for candles, lanterns, and embers.
+  // Reuses the 64-byte AreaLight struct: originArea=(pos, radius), edgeUPower=(shadowOffset, flickerAmp, flickerFreq, power),
+  // edgeVKind=(flickerPhase, 0, 0, 2), radianceCdf=(intensityRGB, cdf).
+  pointLight(pos, opts = {}) {
+    const color = opts.color ?? [1.0, 0.65, 0.25];
+    const intensity = opts.intensity ?? 1.0;
+    const radius = opts.radius ?? 0.022;
+    const shadowOffset = opts.shadowOffset ?? Math.max(radius * 2.0, 0.042);
+    const flickerAmp = opts.flickerAmp ?? 0.0;
+    const flickerFreq = opts.flickerFreq ?? 7.3;
+    const flickerPhase = opts.flickerPhase ?? 0.4;
+    const rad = [color[0] * intensity, color[1] * intensity, color[2] * intensity];
+    const luma = 0.2126 * rad[0] + 0.7152 * rad[1] + 0.0722 * rad[2];
+    this.lights.push({
+      origin: [pos[0], pos[1], pos[2]],
+      edgeU: [shadowOffset, flickerAmp, flickerFreq],
+      edgeV: [flickerPhase, 0, 0],
+      area: radius,
+      radiance: rad,
+      power: luma * 4.0 * Math.PI,
+      kind: 2,
+      flicker: flickerAmp,
+    });
+    return this;
+  }
+
   // Declares an interactive water surface (optional — dry maps never call this).
   water(minX, minZ, maxX, maxZ, level = 0.42, opts = {}) {
     this.waters.push({

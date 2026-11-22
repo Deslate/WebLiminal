@@ -138,6 +138,21 @@ fn traceShadow(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
 }
 
 fn evalAreaLight(p: vec3f, n: vec3f, l: AreaLight, u1: f32, u2: f32, outDir: ptr<function, vec3f>) -> vec3f {
+  if (l.edgeVKind.w > 1.5) {
+    // Omnidirectional spherical point emitter (kind = 2): candles, lanterns, embers.
+    let lp = l.originArea.xyz;
+    let toL = lp - p;
+    let dist2 = dot(toL, toL);
+    if (dist2 < 1e-4) { return vec3f(0.0); }
+    let dist = sqrt(dist2);
+    let wi = toL / dist;
+    let cosSurf = dot(n, wi);
+    if (cosSurf <= 0.0) { return vec3f(0.0); }
+    let shadowOff = max(l.edgeUPower.x, 0.03);
+    if (traceShadow(p, wi, max(0.01, dist - shadowOff))) { return vec3f(0.0); }
+    *outDir = wi;
+    return l.radianceCdf.rgb * (cosSurf / max(dist2, 0.025));
+  }
   let lp = l.originArea.xyz + l.edgeUPower.xyz * u1 + l.edgeVKind.xyz * u2;
   let toL = lp - p;
   let dist2 = dot(toL, toL);

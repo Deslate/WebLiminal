@@ -9,7 +9,7 @@ export default {
   id: "my-corridor",
   title: "Level 4 · Abandoned Office",
   subtitle: "EMPTY CUBICLES",
-  audio: "backrooms", // "poolrooms" | "backrooms" | "parking"
+  audio: "backrooms", // "poolrooms" | "backrooms" | "parking" | "horror"
   spawn: { x: 0, y: 1.65, z: 6, yaw: 0, pitch: 0 },
   atmosphere: {
     fogColor: [0.02, 0.022, 0.02],
@@ -19,6 +19,7 @@ export default {
     skyHorizon: [0.04, 0.04, 0.04],
     sun: null, // or { direction: [x,y,z], color: [r,g,b], intensity: 22, angularRadius: 0.0085 }
     exposure: 1.1,
+    fov: 68, // optional per-level vertical FOV in degrees
     bloomStrength: 0.25,
     volumetricStrength: 0.35,
     ambientFloor: 0.002,
@@ -51,6 +52,12 @@ Pass any preset name string directly to geometry methods, or create a customized
 | `frosted_window` | Backlit frosted milk-glass pool window / porthole diffuser |
 | `fiberglass_slide` | Dark glossy molded fiberglass water slide surface |
 | `plaster_warm` | Matte architectural stucco/plaster |
+| `plaster_mud` | Rural aged mud-plaster with damp lower flaking stucco relief, ceiling soot, and optional vertical edge fissure |
+| `stone_damp` | Dark gritty uneven stone floor with patchy glossy wet reflections and micro-grit normal breakup |
+| `wood_plank_aged` | Aged charcoal-timber vertical planks with plank grooves and pale dry lower weathering |
+| `couplet_paper` | Weathered crimson/magenta Chinese Spring Festival couplet, horizontal scroll, or door talisman with procedural SDF brush calligraphy (`seed` 1–5) |
+| `candle_wax` | Warm translucent paraffin wax with height-graded subsurface wick glow |
+| `candle_flame` | Incandescent flickering candle flame or smoldering vigil ember |
 | `wallpaper_yellow` | Vintage mono-yellow damask/chevron Backrooms wallpaper with paper seams and damp blotches |
 | `carpet_damp` | Commercial woven loop-pile office carpet with damp moisture patches |
 | `ceiling_grid` | Suspended acoustic drop-ceiling panels with metallic T-bar grid and pinhole speckles |
@@ -86,6 +93,7 @@ All coordinates are meters, right-handed Y-up (`+X` right, `+Y` up, `-Z` forward
 - `m.handrail(p0, p1, yBase, height, opts)` — Sleek stainless-steel poolside railing with posts and mid-rail.
 - `m.poolLadder(x, z, yBottom, yTop, opts)` — Complete stainless-steel pool ladder with curved deck grips and rungs.
 - `m.panelLight(pos, width, depth, opts)` / `m.tubeLight(...)` / `m.signLight(...)` — Recessed troffers, industrial tubes, and backlit signs with automatic analytical area lights.
+- `m.pointLight(pos, opts)` — Omnidirectional spherical emitter (`color`, `intensity`, `radius`, `shadowOffset`, `flickerAmp`, `flickerFreq`, `flickerPhase`) with adaptive soft shadows, GGX specular, baked indirect GI, glossy reflections, and volumetric mist.
 - `m.skylight(minX, minZ, maxX, maxZ, y, opts)` — Sky portal opening for importance-sampled daylight GI and occluded volumetric mist.
 - `m.water(minX, minZ, maxX, maxZ, level, opts)` — Optional physical BVH water volume with live GPU photon caustics (`absorption`, `waveAmp`, `causticStrength`, `cellSize`). Omit for zero-cost dry maps.
 - `m.bookmark(name, { x, y, z, yaw, pitch })` — Registers a viewpoint bookmark accessible via key `B` or the Inspector.

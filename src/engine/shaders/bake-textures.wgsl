@@ -110,6 +110,109 @@ fn exitLetters(uv: vec2f) -> f32 {
   return 1.0 - smoothstep(th - 0.008, th + 0.008, d);
 }
 
+// Direct-evaluated SDF brush calligraphy for the 8 couplet glyphs (富贵由天平安是福).
+// Uses a static switch instead of dynamic const-array indexing so GPU/SwiftShader compilers
+// emit compact straight-line vector code with zero branch-table overhead.
+fn coupletGlyphDist(u: vec2f, id: u32) -> f32 {
+  var d = 10.0;
+  switch (id & 7u) {
+    case 0u: { // 富
+      d = min(d, sdSegment(u, vec2f(0.50, 0.93), vec2f(0.50, 0.85)));
+      d = min(d, sdSegment(u, vec2f(0.18, 0.83), vec2f(0.82, 0.83)));
+      d = min(d, sdSegment(u, vec2f(0.18, 0.83), vec2f(0.15, 0.72)));
+      d = min(d, sdSegment(u, vec2f(0.82, 0.83), vec2f(0.85, 0.73)));
+      d = min(d, sdSegment(u, vec2f(0.28, 0.72), vec2f(0.72, 0.72)));
+      d = min(d, sdSegment(u, vec2f(0.30, 0.62), vec2f(0.70, 0.62)));
+      d = min(d, sdSegment(u, vec2f(0.30, 0.48), vec2f(0.70, 0.48)));
+      d = min(d, sdSegment(u, vec2f(0.30, 0.62), vec2f(0.30, 0.48)));
+      d = min(d, sdSegment(u, vec2f(0.70, 0.62), vec2f(0.70, 0.48)));
+      d = min(d, sdSegment(u, vec2f(0.22, 0.39), vec2f(0.78, 0.39)));
+      d = min(d, sdSegment(u, vec2f(0.22, 0.10), vec2f(0.78, 0.10)));
+      d = min(d, sdSegment(u, vec2f(0.22, 0.39), vec2f(0.22, 0.10)));
+      d = min(d, sdSegment(u, vec2f(0.78, 0.39), vec2f(0.78, 0.10)));
+      d = min(d, sdSegment(u, vec2f(0.22, 0.25), vec2f(0.78, 0.25)));
+      d = min(d, sdSegment(u, vec2f(0.50, 0.39), vec2f(0.50, 0.10)));
+    }
+    case 1u: { // 贵
+      d = min(d, sdSegment(u, vec2f(0.26, 0.86), vec2f(0.74, 0.86)));
+      d = min(d, sdSegment(u, vec2f(0.26, 0.69), vec2f(0.74, 0.69)));
+      d = min(d, sdSegment(u, vec2f(0.26, 0.86), vec2f(0.26, 0.69)));
+      d = min(d, sdSegment(u, vec2f(0.74, 0.86), vec2f(0.74, 0.69)));
+      d = min(d, sdSegment(u, vec2f(0.50, 0.94), vec2f(0.50, 0.58)));
+      d = min(d, sdSegment(u, vec2f(0.14, 0.58), vec2f(0.86, 0.58)));
+      d = min(d, sdSegment(u, vec2f(0.26, 0.48), vec2f(0.74, 0.48)));
+      d = min(d, sdSegment(u, vec2f(0.26, 0.48), vec2f(0.26, 0.22)));
+      d = min(d, sdSegment(u, vec2f(0.74, 0.48), vec2f(0.74, 0.22)));
+      d = min(d, sdSegment(u, vec2f(0.50, 0.42), vec2f(0.47, 0.21)));
+      d = min(d, sdSegment(u, vec2f(0.44, 0.20), vec2f(0.20, 0.08)));
+      d = min(d, sdSegment(u, vec2f(0.56, 0.20), vec2f(0.82, 0.08)));
+    }
+    case 2u: { // 由
+      d = min(d, sdSegment(u, vec2f(0.50, 0.92), vec2f(0.50, 0.14)));
+      d = min(d, sdSegment(u, vec2f(0.20, 0.68), vec2f(0.80, 0.68)));
+      d = min(d, sdSegment(u, vec2f(0.20, 0.42), vec2f(0.80, 0.42)));
+      d = min(d, sdSegment(u, vec2f(0.20, 0.14), vec2f(0.80, 0.14)));
+      d = min(d, sdSegment(u, vec2f(0.20, 0.68), vec2f(0.20, 0.14)));
+      d = min(d, sdSegment(u, vec2f(0.80, 0.68), vec2f(0.80, 0.14)));
+    }
+    case 3u: { // 天
+      d = min(d, sdSegment(u, vec2f(0.22, 0.82), vec2f(0.78, 0.82)));
+      d = min(d, sdSegment(u, vec2f(0.16, 0.54), vec2f(0.84, 0.54)));
+      d = min(d, sdSegment(u, vec2f(0.50, 0.82), vec2f(0.48, 0.48)));
+      d = min(d, sdSegment(u, vec2f(0.48, 0.48), vec2f(0.18, 0.10)));
+      d = min(d, sdSegment(u, vec2f(0.48, 0.48), vec2f(0.84, 0.10)));
+    }
+    case 4u: { // 平
+      d = min(d, sdSegment(u, vec2f(0.22, 0.84), vec2f(0.78, 0.84)));
+      d = min(d, sdSegment(u, vec2f(0.14, 0.46), vec2f(0.86, 0.46)));
+      d = min(d, sdSegment(u, vec2f(0.50, 0.84), vec2f(0.50, 0.08)));
+      d = min(d, sdSegment(u, vec2f(0.26, 0.72), vec2f(0.34, 0.56)));
+      d = min(d, sdSegment(u, vec2f(0.74, 0.72), vec2f(0.66, 0.56)));
+    }
+    case 5u: { // 安
+      d = min(d, sdSegment(u, vec2f(0.50, 0.93), vec2f(0.50, 0.84)));
+      d = min(d, sdSegment(u, vec2f(0.18, 0.82), vec2f(0.82, 0.82)));
+      d = min(d, sdSegment(u, vec2f(0.18, 0.82), vec2f(0.15, 0.70)));
+      d = min(d, sdSegment(u, vec2f(0.82, 0.82), vec2f(0.85, 0.70)));
+      d = min(d, sdSegment(u, vec2f(0.48, 0.74), vec2f(0.34, 0.36)));
+      d = min(d, sdSegment(u, vec2f(0.34, 0.36), vec2f(0.74, 0.14)));
+      d = min(d, sdSegment(u, vec2f(0.66, 0.58), vec2f(0.22, 0.10)));
+      d = min(d, sdSegment(u, vec2f(0.14, 0.54), vec2f(0.86, 0.54)));
+    }
+    case 6u: { // 是
+      d = min(d, sdSegment(u, vec2f(0.28, 0.88), vec2f(0.72, 0.88)));
+      d = min(d, sdSegment(u, vec2f(0.28, 0.74), vec2f(0.72, 0.74)));
+      d = min(d, sdSegment(u, vec2f(0.28, 0.60), vec2f(0.72, 0.60)));
+      d = min(d, sdSegment(u, vec2f(0.28, 0.88), vec2f(0.28, 0.60)));
+      d = min(d, sdSegment(u, vec2f(0.72, 0.88), vec2f(0.72, 0.60)));
+      d = min(d, sdSegment(u, vec2f(0.14, 0.48), vec2f(0.86, 0.48)));
+      d = min(d, sdSegment(u, vec2f(0.50, 0.48), vec2f(0.50, 0.18)));
+      d = min(d, sdSegment(u, vec2f(0.50, 0.34), vec2f(0.76, 0.34)));
+      d = min(d, sdSegment(u, vec2f(0.30, 0.36), vec2f(0.18, 0.12)));
+      d = min(d, sdSegment(u, vec2f(0.28, 0.26), vec2f(0.84, 0.10)));
+    }
+    default: { // 7: 福
+      d = min(d, sdSegment(u, vec2f(0.24, 0.88), vec2f(0.28, 0.78)));
+      d = min(d, sdSegment(u, vec2f(0.12, 0.70), vec2f(0.34, 0.70)));
+      d = min(d, sdSegment(u, vec2f(0.34, 0.70), vec2f(0.12, 0.42)));
+      d = min(d, sdSegment(u, vec2f(0.24, 0.54), vec2f(0.24, 0.10)));
+      d = min(d, sdSegment(u, vec2f(0.24, 0.52), vec2f(0.36, 0.44)));
+      d = min(d, sdSegment(u, vec2f(0.44, 0.84), vec2f(0.86, 0.84)));
+      d = min(d, sdSegment(u, vec2f(0.48, 0.70), vec2f(0.82, 0.70)));
+      d = min(d, sdSegment(u, vec2f(0.48, 0.56), vec2f(0.82, 0.56)));
+      d = min(d, sdSegment(u, vec2f(0.48, 0.70), vec2f(0.48, 0.56)));
+      d = min(d, sdSegment(u, vec2f(0.82, 0.70), vec2f(0.82, 0.56)));
+      d = min(d, sdSegment(u, vec2f(0.44, 0.44), vec2f(0.86, 0.44)));
+      d = min(d, sdSegment(u, vec2f(0.44, 0.12), vec2f(0.86, 0.12)));
+      d = min(d, sdSegment(u, vec2f(0.44, 0.44), vec2f(0.44, 0.12)));
+      d = min(d, sdSegment(u, vec2f(0.86, 0.44), vec2f(0.86, 0.12)));
+      d = min(d, sdSegment(u, vec2f(0.44, 0.28), vec2f(0.86, 0.28)));
+      d = min(d, sdSegment(u, vec2f(0.65, 0.44), vec2f(0.65, 0.12)));
+    }
+  }
+  return d;
+}
+
 fn evalCeramicBase(uv: vec2f, m: MaterialGPU) -> Sample {
   let seed = m.extra.z;
   // Low-frequency organic ceramic glaze mottling, subtle mineral deposit, and gentle glaze undulation.
@@ -323,6 +426,98 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let rough = clamp(baseRough + (grain - 0.5) * 0.05 + seam * 0.10, 0.06, 0.55);
     return Sample(col, rough, h, 1.0 - seam * 0.2, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
+  // 19: plaster_mud (rural aged mud-plaster wall base; damp flaking stucco added analytically in world space)
+  if (preset == 19u) {
+    let trowel = pFbm(uv, vec2f(4.0), seed, 4);
+    let grit = pFbm(uv, vec2f(20.0), seed + 5.7, 3);
+    let h = 0.52 + (trowel - 0.5) * 0.22 + (grit - 0.5) * 0.12;
+    let col = baseCol * (0.88 + 0.22 * trowel) * (0.94 + 0.12 * grit);
+    return Sample(col, clamp(baseRough + (grit - 0.5) * 0.10, 0.72, 0.98), h, 0.90 + 0.10 * trowel, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
+  }
+  // 20: stone_damp (dark gritty uneven stone floor base; glossy wet puddles added analytically in world space)
+  if (preset == 20u) {
+    let broad = pFbm(uv, vec2f(4.0), seed, 4);
+    let grit = pFbm(uv, vec2f(18.0), seed + 3.1, 3);
+    let micro = pFbm(uv, vec2f(48.0), seed + 9.4, 2);
+    let pit = smoothstep(0.68, 0.90, pFbm(uv, vec2f(12.0), seed + 15.2, 3));
+    let h = clamp(0.55 + (broad - 0.5) * 0.24 + (grit - 0.5) * 0.22 + (micro - 0.5) * 0.12 - pit * 0.24, 0.0, 1.0);
+    let col = baseCol * (0.76 + 0.44 * broad) * (0.86 + 0.26 * grit) * (1.0 - pit * 0.30);
+    let rough = clamp(baseRough + (grit - 0.5) * 0.18 + pit * 0.16, 0.30, 0.96);
+    return Sample(col, rough, h, clamp(0.84 + 0.16 * broad - pit * 0.28, 0.35, 1.0), 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
+  }
+  // 21: wood_plank_aged (aged charcoal-timber vertical double-door planks with grain & plank joints)
+  if (preset == 21u) {
+    let grain = pFbm(uv, vec2f(28.0, 3.0), seed, 4);
+    let fine = pFbm(uv, vec2f(72.0, 8.0), seed + 6.3, 3);
+    let plankPhase = fract(uv.x * 7.8);
+    let edgeD = min(plankPhase, 1.0 - plankPhase);
+    let seam = 1.0 - smoothstep(0.0, 0.048, edgeD);
+    let plankId = hash21(vec2f(floor(uv.x * 7.8), seed));
+    let col = baseCol * (0.72 + 0.52 * grain) * (0.90 + 0.20 * fine) * (0.88 + 0.24 * plankId) * (1.0 - seam * 0.80);
+    let h = clamp(0.56 + (grain - 0.5) * 0.18 + (fine - 0.5) * 0.08 - seam * 0.46, 0.0, 1.0);
+    let rough = clamp(baseRough + (grain - 0.5) * 0.12 + seam * 0.18, 0.45, 0.96);
+    return Sample(col, rough, h, clamp(0.92 + 0.08 * grain - seam * 0.45, 0.28, 1.0), 0.0, m.pbr.z * (1.0 - seam), 0.0, m.extra.y, vec2f(0.0));
+  }
+  // 22: couplet_paper (weathered crimson/magenta Chinese Spring Festival couplets, scroll & door talismans)
+  // Variant selected by seed: 1=left(富贵由天), 2=right(平安是福), 3=horizontal scroll, 4=left talisman, 5=right talisman.
+  if (preset == 22u) {
+    let age = pFbm(uv, vec2f(4.0, 8.0), seed + 3.1, 4);
+    let fade = pFbm(uv, vec2f(12.0, 18.0), seed + 7.4, 3);
+    let isScroll = seed > 2.5 && seed < 3.5;
+    let isTalisman = seed > 3.5;
+    let aspectScale = select(select(vec2f(0.30, 1.54), vec2f(0.21, 0.48), isTalisman), vec2f(1.00, 0.35), isScroll);
+    let edgeM = min(min(uv.x, 1.0 - uv.x) * aspectScale.x, min(uv.y, 1.0 - uv.y) * aspectScale.y);
+    let frayed = smoothstep(0.0, 0.018, edgeM + (age - 0.5) * 0.012);
+    var paper = mix(vec3f(0.36, 0.045, 0.070), vec3f(0.64, 0.11, 0.15), age * 0.65 + 0.18);
+    paper = mix(paper, vec3f(0.72, 0.46, 0.50), smoothstep(0.48, 0.82, fade) * 0.54);
+    paper = mix(vec3f(0.20, 0.07, 0.08), paper, frayed);
+    let border = 1.0 - smoothstep(0.002, 0.006, abs(edgeM - 0.014));
+    paper = mix(paper, vec3f(0.50, 0.36, 0.16) * (0.72 + 0.28 * fade), border * 0.44);
+    if (isScroll) {
+      paper *= 0.64;
+    }
+    var d = 10.0;
+    if (!isScroll && !isTalisman) {
+      let row = clamp(floor((1.0 - uv.y) * 4.0), 0.0, 3.0);
+      let cell = vec2f((uv.x - 0.08) / 0.84, fract((1.0 - uv.y) * 4.0));
+      if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
+        let baseId = select(4u, 0u, seed < 1.5);
+        d = coupletGlyphDist(vec2f(cell.x, 1.0 - cell.y), baseId + u32(row));
+      }
+    } else if (isScroll) {
+      let colIdx = clamp(floor(uv.x * 4.0), 0.0, 3.0);
+      let cell = vec2f(fract(uv.x * 4.0), (uv.y - 0.10) / 0.80);
+      if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
+        d = coupletGlyphDist(cell, (u32(colIdx) * 2u + 1u) % 8u);
+      }
+    } else {
+      let innerB = 1.0 - smoothstep(0.002, 0.006, abs(edgeM - 0.024));
+      paper = mix(paper, vec3f(0.56, 0.42, 0.18), innerB * 0.56);
+      let row = clamp(floor((1.0 - uv.y) * 3.0), 0.0, 2.0);
+      let cell = vec2f((uv.x - 0.16) / 0.68, fract((1.0 - uv.y) * 3.0));
+      if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
+        let baseId = select(5u, 0u, seed < 4.5);
+        d = coupletGlyphDist(vec2f(cell.x, 1.0 - cell.y), (baseId + u32(row)) % 8u);
+      }
+    }
+    let brushN = (pFbm(uv, vec2f(24.0, 48.0), seed + 13.7, 2) - 0.5) * 0.022;
+    let ink = 1.0 - smoothstep(0.044, 0.072, d + brushN);
+    let inkCol = vec3f(0.020, 0.017, 0.019) * (0.80 + 0.40 * fade);
+    let col = mix(paper, inkCol, ink * 0.94);
+    let h = 0.52 + (age - 0.5) * 0.10 - ink * 0.04;
+    return Sample(col, clamp(baseRough + (age - 0.5) * 0.08, 0.72, 0.96), h, 0.94 + 0.06 * frayed, 0.0, m.pbr.z, 0.0, 0.0, vec2f(0.0));
+  }
+  // 23: candle_wax (warm paraffin wax cylinder & melted drip base)
+  if (preset == 23u) {
+    let drip = pFbm(uv, vec2f(6.0, 3.0), seed, 3);
+    let col = baseCol * (0.94 + 0.12 * drip);
+    return Sample(col, clamp(baseRough + (drip - 0.5) * 0.08, 0.25, 0.70), 0.52 + (drip - 0.5) * 0.12, 0.96, 0.0, m.pbr.z, 1.0, 0.0, vec2f(0.0));
+  }
+  // 24: candle_flame (incandescent candle flame & smoldering vigil ember)
+  if (preset == 24u) {
+    let pulse = pFbm(uv, vec2f(6.0), seed, 2);
+    return Sample(baseCol, 0.95, 0.5, 1.0, 0.0, 0.0, 0.88 + 0.12 * pulse, 0.0, vec2f(0.0));
+  }
   // 15: vent_grate (metallic louvered HVAC register)
   let edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
   let frame = 1.0 - smoothstep(0.05, 0.075, edge);
@@ -345,15 +540,18 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let eps = 1.0 / f32(size);
 
   let c = evalMaterial(uv, m);
-  let hx0 = evalMaterial(fract(uv - vec2f(eps, 0.0)), m).height;
-  let hx1 = evalMaterial(fract(uv + vec2f(eps, 0.0)), m).height;
-  let hy0 = evalMaterial(fract(uv - vec2f(0.0, eps)), m).height;
-  let hy1 = evalMaterial(fract(uv + vec2f(0.0, eps)), m).height;
-
-  // Height-to-slope strength scales cleanly with material relief depth.
-  let reliefScale = max(0.35, m.pbr.w * 260.0);
-  let dhdu = (hx1 - hx0) * 0.5 * reliefScale;
-  let dhdv = (hy1 - hy0) * 0.5 * reliefScale;
+  var dhdu = 0.0;
+  var dhdv = 0.0;
+  if (m.pbr.w > 0.0001) {
+    let hx0 = evalMaterial(fract(uv - vec2f(eps, 0.0)), m).height;
+    let hx1 = evalMaterial(fract(uv + vec2f(eps, 0.0)), m).height;
+    let hy0 = evalMaterial(fract(uv - vec2f(0.0, eps)), m).height;
+    let hy1 = evalMaterial(fract(uv + vec2f(0.0, eps)), m).height;
+    // Height-to-slope strength scales cleanly with material relief depth.
+    let reliefScale = max(0.35, m.pbr.w * 260.0);
+    dhdu = (hx1 - hx0) * 0.5 * reliefScale;
+    dhdv = (hy1 - hy0) * 0.5 * reliefScale;
+  }
   let n = normalize(vec3f(-dhdu + c.slopeBias.x, -dhdv + c.slopeBias.y, 1.0));
 
   textureStore(outAlbedoRough, vec2i(gid.xy), i32(layer), vec4f(clamp(c.albedo, vec3f(0.0), vec3f(1.0)), clamp(c.roughness, 0.04, 1.0)));
