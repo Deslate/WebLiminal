@@ -21,10 +21,15 @@ const audioStatus = document.getElementById("audio-status");
 const fatalEl = document.getElementById("fatal-error");
 
 const inspector = document.getElementById("inspector");
+const btnBgm = document.getElementById("btn-bgm");
 const btnInspector = document.getElementById("btn-inspector");
 const btnCloseInsp = document.getElementById("btn-close-insp");
 const levelButtonsEl = document.getElementById("level-buttons");
 const bookmarkButtonsEl = document.getElementById("bookmark-buttons");
+const bgmTrackEl = document.getElementById("bgm-track");
+const chkBgm = document.getElementById("chk-bgm");
+const rngBgmVol = document.getElementById("rng-bgm-vol");
+const outBgmVol = document.getElementById("out-bgm-vol");
 const selDebug = document.getElementById("sel-debug");
 const rngExposure = document.getElementById("rng-exposure");
 const outExposure = document.getElementById("out-exposure");
@@ -141,6 +146,21 @@ function jumpToBookmark(index) {
   renderBookmarkButtons();
 }
 
+function syncBgmUi() {
+  const b = audio.inspect().bgm;
+  if (!b) return;
+  if (btnBgm) {
+    btnBgm.textContent = b.enabled ? "♪ BGM: On (N)" : "♪ BGM: Off (N)";
+    btnBgm.classList.toggle("active", b.enabled);
+    btnBgm.setAttribute("aria-pressed", String(b.enabled));
+    btnBgm.title = b.track ? `${b.track} — ${b.style}` : "Toggle Procedural BGM";
+  }
+  if (chkBgm) chkBgm.checked = b.enabled;
+  if (bgmTrackEl && b.track) bgmTrackEl.textContent = `♪ ${b.track} · ${b.style}`;
+  if (rngBgmVol) rngBgmVol.value = String(b.volume);
+  if (outBgmVol) outBgmVol.textContent = `${Math.round(b.volume * 100)}%`;
+}
+
 async function loadLevel(levelId) {
   if (loadingLevel) return;
   loadingLevel = true;
@@ -163,6 +183,7 @@ async function loadLevel(levelId) {
     setPose(lvl.spawn);
 
     audio.setProfile(lvl.audio);
+    syncBgmUi();
     rngExposure.value = String(renderer.settings.exposure);
     outExposure.textContent = renderer.settings.exposure.toFixed(2);
     renderLevelButtons();
@@ -201,6 +222,11 @@ addEventListener("keydown", (e) => {
   }
   if (e.code === "KeyM" && !e.repeat) {
     audio.toggle();
+    return;
+  }
+  if (e.code === "KeyN" && !e.repeat) {
+    audio.toggleBgm();
+    syncBgmUi();
     return;
   }
   if (e.code === "KeyV" && !e.repeat) {
@@ -258,7 +284,19 @@ addEventListener("pointermove", (e) => {
   }
 });
 
-// Inspector UI hooks
+// Inspector & HUD Audio UI hooks
+btnBgm?.addEventListener("click", () => {
+  audio.toggleBgm();
+  syncBgmUi();
+});
+chkBgm?.addEventListener("change", () => {
+  audio.setBgmEnabled(chkBgm.checked);
+  syncBgmUi();
+});
+rngBgmVol?.addEventListener("input", () => {
+  audio.setBgmVolume(Number(rngBgmVol.value));
+  syncBgmUi();
+});
 btnInspector.addEventListener("click", () => {
   inspector.hidden = !inspector.hidden;
 });
@@ -457,6 +495,21 @@ window.__WEBLIMINAL__ = {
       errors: renderer.getErrors(),
     };
   },
+  audio: () => audio.inspect(),
+  toggleBgm: () => {
+    const on = audio.toggleBgm();
+    syncBgmUi();
+    return on;
+  },
+  setBgmEnabled: (v) => {
+    const on = audio.setBgmEnabled(v);
+    syncBgmUi();
+    return on;
+  },
+  setBgmVolume: (v) => {
+    audio.setBgmVolume(v);
+    syncBgmUi();
+  },
   snapshot: () => ({
     level: activeLevel?.id,
     pose: { ...pose },
@@ -466,5 +519,6 @@ window.__WEBLIMINAL__ = {
     bake: renderer.getBakeState(),
     errors: renderer.getErrors(),
     isSoftware: renderer.isSoftware,
+    audio: audio.inspect(),
   }),
 };

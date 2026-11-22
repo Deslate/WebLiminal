@@ -5,6 +5,7 @@ import { intersectBVH } from "../src/engine/bvh.js";
 import { canStand, movePlayer, sampleFloorHeight, PLAYER_EYE_HEIGHT } from "../src/engine/collision.js";
 import { MATERIAL_PRESETS } from "../src/engine/materials.js";
 import { LEVEL_LIST } from "../levels/v2/index.js";
+import { BGM_TRACKS, createBgmEngine, midiToHz } from "../src/engine/bgm.js";
 
 test("MapBuilder compiles room, arch, cylinder, stairs, and area lights into clean mesh + BVH", () => {
   const m = createMap({ atlasSize: 512 });
@@ -330,3 +331,107 @@ test("MapBuilder flaredCapital, trumpetColumn, and verticalTubeLight compile int
     assert(uv2x >= 0 && uv2x <= 1 && uv2y >= 0 && uv2y <= 1, "Invalid UV2");
   }
 });
+
+test("procedural liminal BGM tracks validate cleanly and schedule click-free Web Audio across all 3 realms", () => {
+  assert(Math.abs(midiToHz(69) - 440) < 1e-6);
+  assert(Math.abs(midiToHz(60) - 261.625565) < 1e-3);
+
+  // Every v2 level audio profile must map to a complete 16-bar procedural BGM track
+  for (const lvl of LEVEL_LIST) {
+    const tr = BGM_TRACKS[lvl.audio];
+    assert(tr, `Missing BGM track for level '${lvl.id}' profile '${lvl.audio}'`);
+    assert.equal(tr.chords.length, tr.bars, `Track '${tr.id}' chord count must match bars`);
+    assert(tr.melody.length >= 16, `Track '${tr.id}' should have an expressive multi-bar melody`);
+    const totalSteps = tr.bars * tr.stepsPerBar;
+    for (const c of tr.chords) {
+      assert(c.bass >= 24 && c.bass <= 60, `Bass note out of range in ${tr.id}`);
+      assert(c.notes.length >= 3, `Chord needs >=3 voices in ${tr.id}`);
+      for (const n of c.notes) assert(n >= 40 && n <= 88, `Chord note out of range in ${tr.id}`);
+    }
+    for (const m of tr.melody) {
+      assert(m.step >= 0 && m.step < totalSteps, `Melody step ${m.step} out of bounds in ${tr.id}`);
+      assert(m.midi >= 52 && m.midi <= 96 && m.dur > 0 && m.vel > 0 && m.vel <= 1);
+    }
+  }
+
+  // Strict Web Audio mock enforcing positive exponentialRampToValueAtTime values (catches bipolar zero-crossing bugs!)
+  let oscCount = 0;
+  let stoppedOscs = 0;
+  const mkParam = (init = 0) => {
+    let cur = init;
+    return {
+      get value() { return cur; },
+      set value(v) { assert(Number.isFinite(v)); cur = v; },
+      setValueAtTime(v, t) { assert(Number.isFinite(v) && Number.isFinite(t)); cur = v; },
+      linearRampToValueAtTime(v, t) { assert(Number.isFinite(v) && Number.isFinite(t)); cur = v; },
+      setTargetAtTime(v, t, tc) { assert(Number.isFinite(v) && Number.isFinite(t) && tc > 0); cur = v; },
+      exponentialRampToValueAtTime(v, t) {
+        assert(Number.isFinite(v) && Number.isFinite(t), "exponentialRamp needs finite args");
+        assert(v > 0 && cur > 0, `exponentialRamp cannot cross/hit zero (from ${cur} to ${v})`);
+        cur = v;
+      },
+    };
+  };
+  const mkNode = (extra = {}) => ({ connect() {}, disconnect() {}, ...extra });
+  const mockCtx = {
+    sampleRate: 48000,
+    state: "running",
+    currentTime: 0,
+    createGain: () => mkNode({ gain: mkParam(1) }),
+    createDynamicsCompressor: () => mkNode({ threshold: mkParam(-12), knee: mkParam(12), ratio: mkParam(3), attack: mkParam(0.01), release: mkParam(0.2) }),
+    createWaveShaper: () => mkNode({ curve: null, oversample: "none" }),
+    createBiquadFilter: () => mkNode({ type: "lowpass", frequency: mkParam(1000), Q: mkParam(1) }),
+    createConvolver: () => mkNode({ buffer: null }),
+    createDelay: () => mkNode({ delayTime: mkParam(0) }),
+    createStereoPanner: () => mkNode({ pan: mkParam(0) }),
+    createBuffer: (ch, len) => {
+      const chans = Array.from({ length: ch }, () => new Float32Array(len));
+      return { getChannelData: (i) => chans[i] };
+    },
+    createBufferSource: () => mkNode({ buffer: null, loop: false, start() {}, stop() {} }),
+    createOscillator: () => {
+      oscCount++;
+      const node = mkNode({
+        type: "sine",
+        frequency: mkParam(440),
+        detune: mkParam(0),
+        start(t) { assert(Number.isFinite(t) && t >= 0); },
+        stop(t) {
+          assert(Number.isFinite(t) && t > 0);
+          stoppedOscs++;
+          if (node.onended) node.onended();
+        },
+        onended: null,
+      });
+      return node;
+    },
+  };
+
+  const bgm = createBgmEngine(mockCtx, mkNode());
+  for (const prof of ["backrooms", "poolrooms", "parking"]) {
+    bgm.setProfile(prof);
+    assert.equal(bgm.inspect().profile, prof);
+    assert.equal(bgm.inspect().track, BGM_TRACKS[prof].title);
+    const before = oscCount;
+    // Step clock across 20 seconds of music to trigger every chord, pad, arpeggio, pulse & lead voice!
+    for (let s = 0; s < 100; s++) {
+      mockCtx.currentTime += 0.20;
+      bgm.update();
+    }
+    assert(oscCount > before + 40, `Expected procedural notes scheduled for '${prof}', got ${oscCount - before}`);
+  }
+  assert.equal(stoppedOscs, oscCount, "Every scheduled oscillator must have a clean stop() call");
+
+  // Disabling BGM must immediately stop scheduling new oscillators (0 CPU when toggled off!)
+  assert.equal(bgm.toggle(), false);
+  assert.equal(bgm.inspect().enabled, false);
+  const frozenCount = oscCount;
+  for (let s = 0; s < 20; s++) {
+    mockCtx.currentTime += 0.25;
+    bgm.update();
+  }
+  assert.equal(oscCount, frozenCount, "Disabled BGM should schedule zero new oscillators");
+  assert.equal(bgm.toggle(), true);
+  assert.equal(bgm.inspect().enabled, true);
+});
+

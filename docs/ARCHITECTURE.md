@@ -43,7 +43,7 @@ Per frame, the renderer executes six passes (internal resolution capped at `<= 1
 5. **HDR Bloom Halation (`postprocess.wgsl`)**: Half-res 2×2 box-prefiltered bright-pass extraction (`threshold = 2.35`) and continuous unit-stride 17-tap separable Gaussian blur preventing comb-striping on thin industrial fluorescent tubes while haloing emissive fixtures and lightwells.
 6. **Composite & AgX Present (`postprocess.wgsl`)**: Exponential extinction fog, volumetric mist, optical bloom halation, Troy Sobotka **AgX Filmic Tone Mapping** with v1-matched shadow-toe depth, vignette, clean static 8-bit de-banding dither (zero animated grain in clean mode), and optional Found-Footage camcorder mode.
 
-## 5. Motion-Driven Physical Procedural Audio (`src/engine/audio.js`)
+## 5. Motion-Driven Physical Procedural Audio & Liminal BGM (`src/engine/audio.js`, `src/engine/bgm.js`)
 
 Zero external audio files and zero continuous movement-volume noise loops. Movement strictly drives collision-resolved footsteps (`wakeTrail` in water and stride-distance tracking on dry floors, synced 1:1 with a smooth damped footstep head-bob dip), and footsteps strictly drive sound:
 
@@ -51,4 +51,9 @@ Zero external audio files and zero continuous movement-volume noise loops. Movem
   - **Wading bank (`6 × 0.68 s`)**: 4-phase stride (rear foot lift cavity bubbles -> 92+ Minnaert bubbles shin sweep & splash -> submerged floor plant -> 6–9 individual calf drips in the inter-step gap) with dry-forward clarity and alternating L/R panning.
   - **Dry-surface banks**: Damp commercial broadloom carpet (`6 × 0.24 s`), gritty/wet-puddle concrete (`6 × 0.34 s`), and wet porcelain tile (`6 × 0.20 s`).
   - **Ambient stillness**: Frequency-damped stereo convolution reverb (3.1 s IR), profile-tuned room air & 60/120 Hz ballast or 46 Hz ventilation hum, plus sparse echoing ceiling/pipe Minnaert droplets and gentle wall-lap bubble glugs.
+- **Pure-Code Procedural Liminal BGM (`src/engine/bgm.js`)**: Lookahead Web Audio clock scheduler with dedicated tape saturation, stereo ping-pong tape echo, 4.2 s dark hall convolution reverb, organic analog tape wow/flutter, and subtle shellac vinyl crackle bed — toggleable independently from SFX via key `N`, the top HUD button, or the Inspector panel (with live volume slider):
+  - **Level 0 (`backrooms`) — *Ballroom Tape Loop (1934)***: 72 BPM 3/4 haunted ballroom waltz in Eb major / C minor (`Abm6` minor-iv & `dom7b9` nostalgic turns) with muted 1930s horn lead, brushed vintage Rhodes accompaniment, hollow string pads, gramophone bandpass EQ, and vinyl crackle.
+  - **Poolrooms (`poolrooms`) — *Submerged Sunbeam***: 62 BPM 4/4 floating Db Maj9/Lydian dreamcore ambient with DX7 glassy FM electric piano arpeggios, sparse crystalline water-bells, tape-warbled Juno pads, and velvet sub-bass.
+  - **Level 1 (`parking`) — *Concrete Echoes***: 68 BPM 4/4 D Dorian / A minor9 VHS analog tape ambient with detuned cassette pads, echoing metallic kalimba/Rhodes ostinato, mournful analog lead, and soft subterranean pulse.
+
 

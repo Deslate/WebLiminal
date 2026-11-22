@@ -9,6 +9,8 @@
 //     damping, power-law bubble radius spectrum, and discrete micro-droplet surface clicks) into
 //     multi-variation stereo Foley AudioBuffers at startup.
 
+import { createBgmEngine } from "./bgm.js";
+
 export function createAudioEngine(statusEl) {
   const Context = window.AudioContext || window.webkitAudioContext;
   if (!Context) {
@@ -17,9 +19,17 @@ export function createAudioEngine(statusEl) {
       unlock() {},
       toggle() {},
       setPaused() {},
+      setBgmEnabled() { return false; },
+      toggleBgm() { return false; },
+      setBgmVolume() {},
       playFootstep() {},
       update() {},
-      inspect: () => ({ state: "unsupported", muted: true, profile: "none" }),
+      inspect: () => ({
+        state: "unsupported",
+        muted: true,
+        profile: "none",
+        bgm: { enabled: false, volume: 0, profile: "none", track: "", style: "", bpm: 0, bar: 1 },
+      }),
     };
   }
 
@@ -28,6 +38,7 @@ export function createAudioEngine(statusEl) {
   const master = ctx.createGain();
   master.gain.value = 0.62;
   master.connect(ctx.destination);
+  const bgm = createBgmEngine(ctx, master);
 
   let seed = 9137;
   const rand = () => {
@@ -497,6 +508,7 @@ export function createAudioEngine(statusEl) {
       oscs[1].o.frequency.setTargetAtTime(81.15, now, 0.2);
       oscs[2].o.frequency.setTargetAtTime(108.3, now, 0.2);
     }
+    bgm.setProfile(profile);
   }
 
   function pickVariation(bank) {
@@ -598,6 +610,18 @@ export function createAudioEngine(statusEl) {
       master.gain.setTargetAtTime(muted ? 0 : 0.62, ctx.currentTime, 0.06);
       refreshStatus();
     },
+    setBgmEnabled(v) {
+      if (v) this.unlock();
+      const next = bgm.setEnabled(v);
+      refreshStatus();
+      return next;
+    },
+    toggleBgm() {
+      return this.setBgmEnabled(!bgm.inspect().enabled);
+    },
+    setBgmVolume(v) {
+      bgm.setVolume(v);
+    },
     setPaused(v) {
       if (paused === v) return;
       paused = v;
@@ -606,9 +630,10 @@ export function createAudioEngine(statusEl) {
       refreshStatus();
     },
     playFootstep,
-    // Ambient room acoustics ONLY — zero continuous movement-volume loops!
+    // Ambient room acoustics & procedural BGM scheduler — zero continuous movement-volume loops!
     update(t) {
       if (ctx.state !== "running" || muted) return;
+      bgm.update();
 
       // Occasional distant echoing Minnaert ceiling/pipe water droplets (Poolrooms & Level 1)
       if ((profile === "poolrooms" || profile === "parking") && t >= nextDripTime) {
@@ -640,6 +665,6 @@ export function createAudioEngine(statusEl) {
         nextLapTime = t + randRange(3.4, 7.2);
       }
     },
-    inspect: () => ({ state: ctx.state, muted, profile }),
+    inspect: () => ({ state: ctx.state, muted, profile, bgm: bgm.inspect() }),
   };
 }
