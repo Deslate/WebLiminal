@@ -764,10 +764,11 @@ export function createAudioEngine(statusEl) {
     const sideRate = (side > 0 ? 1.03 : 0.96) * randRange(0.95, 1.05);
 
     if (inWater) {
-      const energy = Math.max(0.60, Math.min(1.36, speed / 0.85));
+      const normSpd = Math.max(0.25, Math.min(1.65, speed));
+      const energy = Math.max(0.45, Math.min(1.42, Math.pow(normSpd / 0.85, 0.85)));
       playFoleyBuffer(pickVariation(wadingBank), {
         gain: 0.34 * energy,
-        rate: sideRate * (0.93 + Math.min(0.16, speed * 0.08)),
+        rate: sideRate * (0.84 + Math.min(0.30, normSpd * 0.18)),
         pan,
         reverbSend: 0.72,
       });

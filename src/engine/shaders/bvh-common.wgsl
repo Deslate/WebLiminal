@@ -220,8 +220,9 @@ fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32, fwMax
   let bevel = 0.0032 + 0.0014 * r.y;
   let shoulder = smoothstep(0.0, bevel, edge);
 
-  // Subtle hand-laid mounting micro-tilt (v1 porcelain uses ~0.011 rad).
-  let tiltMag = select(0.013, 0.016, preset == 16u);
+  // Authentic hand-laid ceramic mounting micro-tilt (~±0.9 deg per tile) so specular reflections
+  // break subtly across individual tiles instead of forming a continuous flat bathroom-mirror sheet!
+  let tiltMag = select(0.032, 0.028, preset == 16u);
   let tilt = (r - 0.5) * tiltMag;
 
   // Outward-facing glazed shoulder gradient along the rounded ceramic lip, band-limited smoothly before Nyquist.
@@ -231,7 +232,7 @@ fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32, fwMax
   }
   let u = clamp(edge / bevel, 0.0, 1.0);
   let lipWeight = 1.0 - smoothstep(0.0035, 0.024, fwMax);
-  let lipSlope = ge * (0.46 * 4.0 * u * (1.0 - u) * lipWeight);
+  let lipSlope = ge * (0.48 * 4.0 * u * (1.0 - u) * lipWeight);
 
   // Band-limited kiln-fired glaze waviness & micro-texture: fade cleanly before Nyquist
   // (unresolved variance is analytically folded into GGX roughness in evalAnalyticCeramicFull).
@@ -240,7 +241,7 @@ fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32, fwMax
   let microWeight = 1.0 - smoothstep(0.0010, 0.0048, fwMax);
   let waviness = vec2f(vNoise2(uvM * 23.7 + tSeed), vNoise2(uvM * 27.1 - tSeed)) - 0.5;
   let micro = vec2f(vNoise2(uvM * 137.3 + tSeed), vNoise2(uvM * 143.7 - tSeed)) - 0.5;
-  let glaze = (waviness * (0.017 * waveWeight) + micro * (0.018 * microWeight)) * shoulder;
+  let glaze = (waviness * (0.028 * waveWeight) + micro * (0.022 * microWeight)) * shoulder;
 
   let totalSlope = (tilt * shoulder + lipSlope + glaze);
   return TileMetric(edge, bevel, id, totalSlope);
@@ -291,14 +292,14 @@ fn evalAnalyticCeramicFull(
   }
   let waveWeight = 1.0 - smoothstep(0.0045, 0.022, fwMax);
   let microWeight = 1.0 - smoothstep(0.0010, 0.0048, fwMax);
-  let fadedGlazeVar = (1.0 - microWeight * microWeight) * 0.000055 + (1.0 - waveWeight * waveWeight) * 0.000038;
+  let fadedGlazeVar = (1.0 - microWeight * microWeight) * 0.00008 + (1.0 - waveWeight * waveWeight) * 0.00009;
   let slopeVar = max(secondMoment - meanSlope * meanSlope, vec2f(0.0)) + vec2f(fadedGlazeVar);
   let slope = meanSlope * (1.0 - inGrout);
 
-  // Authentic architectural porcelain color & weathering (exact v1 Ring Passage neutral warm-ivory kiln palette!).
+  // Clean neutral architectural porcelain kiln batch variation (ZERO yellow-ochre cast!).
   let detail = 1.0 - smoothstep(0.0009, 0.006, fwMax);
-  let batchWarm = mix(vec3f(0.84, 0.83, 0.78), vec3f(1.09, 1.06, 0.99), t.id * 0.68 + 0.16);
-  var color = baseAlbedo * batchWarm;
+  let batchNeutral = mix(vec3f(0.86, 0.87, 0.86), vec3f(1.06, 1.06, 1.04), t.id * 0.68 + 0.16);
+  var color = baseAlbedo * batchNeutral;
   if (preset == 1u) {
     // Exact v1 porcelain.wgsl material==2u crystal turquoise-emerald submerged pool tile palette!
     color = mix(vec3f(0.37, 0.56, 0.48), vec3f(0.54, 0.68, 0.59), t.id);
@@ -312,28 +313,28 @@ fn evalAnalyticCeramicFull(
   let mineral = smoothstep(0.43, 0.70, vFbm2(uv * 4.7 + tSeed)) * exp(-max(0.0, t.edge) / 0.025);
   let streak = pow(vNoise2(vec2f(uv.x * 39.0, uv.y * 2.3) + tSeed), 3.0);
   let waterline = select(0.0, exp(-abs(worldY - waterLevel - 0.045) / 0.08), hasWater);
-  color *= 1.0 - mineral * 0.11 - streak * 0.055 - waterline * 0.18;
+  color *= 1.0 - mineral * 0.10 - streak * 0.05 - waterline * 0.18;
 
   // Subtle fired edge micro-chips & mineral scale deposits (close-up realism).
   let chip = (1.0 - smoothstep(0.001, 0.008, t.edge)) * smoothstep(0.60, 0.84, vNoise2(uv * 217.0 + tSeed));
-  color = mix(color, color * 0.48, chip * 0.28 * detail);
+  color = mix(color, color * 0.48, chip * 0.25 * detail);
   let scaleDeposit = smoothstep(0.58, 0.79, vNoise2(uv * 17.3 + tSeed) + vNoise2(uv * 61.7 - tSeed) * 0.14) * (0.18 + 0.62 * mineral);
-  color = mix(color, mix(color, vec3f(0.72, 0.71, 0.64), 0.5), scaleDeposit * 0.20);
+  color = mix(color, mix(color, vec3f(0.72, 0.73, 0.71), 0.5), scaleDeposit * 0.18);
   color *= 1.0 + (vNoise2(uv * 491.3 + tSeed) - 0.5) * 0.030 * detail;
 
-  // Recessed warm cement mortar (matching v1 porcelain.wgsl natural mortar tone).
+  // Recessed neutral cement mortar (clean natural ceramic grout, zero yellow tint!).
   let dirt = vFbm2(uv * 71.9 + tSeed);
   let groutBase = select(
-    vec3f(0.165, 0.175, 0.148) * (0.70 + 0.30 * dirt) * (1.0 - waterline * 0.22),
+    vec3f(0.17, 0.18, 0.175) * (0.70 + 0.30 * dirt) * (1.0 - waterline * 0.22),
     vec3f(0.030, 0.078, 0.065) * (0.72 + 0.28 * dirt),
     preset == 16u,
   );
   let albedo = mix(color, groutBase, inGrout);
 
-  // Per-tile glaze roughness (0.09..0.22 like v1 porcelain!) + isotropic slope-moment NDF broadening.
-  let baseTileRough = clamp(baseRough + (t.id - 0.5) * 0.11 + scaleDeposit * 0.11 + mineral * 0.05, 0.065, 0.48);
+  // Per-tile satin-glazed porcelain roughness (~0.22..0.32 like v1 cleanPorcelain!) + slope-moment broadening.
+  let baseTileRough = clamp(baseRough + (t.id - 0.5) * 0.10 + scaleDeposit * 0.10 + mineral * 0.05, 0.14, 0.54);
   let momentRough = min(0.92, pow(pow(baseTileRough, 4.0) + slopeVar.x + slopeVar.y, 0.25));
-  let rough = mix(momentRough, 0.88, inGrout);
+  let rough = mix(momentRough, 0.90, inGrout);
   let coat = mix(m.pbr.z, 0.0, inGrout);
   let ao = mix(1.0, 0.84, inGrout);
 
@@ -357,14 +358,14 @@ fn evalAnalyticCeramic(uv: vec2f, m: MaterialGPU, baseAlbedo: vec3f, baseRough: 
   let lineWFrac = (groutHalf * 2.0) * freq;
   let inGrout = filteredGridCoverage(g, fwUV * freq, lineWFrac);
 
-  let batchWarm = mix(vec3f(0.84, 0.83, 0.78), vec3f(1.09, 1.06, 0.99), id * 0.68 + 0.16);
-  var tileCol = baseAlbedo * batchWarm;
+  let batchNeutral = mix(vec3f(0.86, 0.87, 0.86), vec3f(1.06, 1.06, 1.04), id * 0.68 + 0.16);
+  var tileCol = baseAlbedo * batchNeutral;
   if (preset == 1u) {
     tileCol = mix(vec3f(0.37, 0.56, 0.48), vec3f(0.54, 0.68, 0.59), id);
   }
-  let groutBase = select(vec3f(0.155, 0.165, 0.140), vec3f(0.030, 0.078, 0.065), preset == 16u);
+  let groutBase = select(vec3f(0.16, 0.17, 0.165), vec3f(0.030, 0.078, 0.065), preset == 16u);
   let albedo = mix(tileCol, groutBase, inGrout);
-  let rough = mix(clamp(baseRough + (id - 0.5) * 0.10, 0.08, 0.52), 0.88, inGrout);
+  let rough = mix(clamp(baseRough + (id - 0.5) * 0.10, 0.14, 0.56), 0.90, inGrout);
   return CeramicEval(true, albedo, rough, mix(m.pbr.z, 0.0, inGrout), mix(1.0, 0.84, inGrout), vec2f(0.0), inGrout);
 }
 

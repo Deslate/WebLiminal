@@ -808,22 +808,62 @@ export class MapBuilder {
     const [x1, y1, z1] = hi;
     const count = Math.max(2, Math.round(steps));
     const dy = (y1 - y0) / count;
+    const isX = dir === "+x" || dir === "-x";
+    const span = isX ? x1 - x0 : z1 - z0;
+    const prio = opts.priority ?? 1.0;
 
     for (let i = 0; i < count; i++) {
       const f0 = i / count;
       const f1 = (i + 1) / count;
-      const bot = y0 + i * dy;
+      const prevTop = y0 + i * dy;
       const top = y0 + (i + 1) * dy;
       let sx0 = x0, sx1 = x1, sz0 = z0, sz1 = z1;
-      if (dir === "+x") { sx0 = x0 + f0 * (x1 - x0); sx1 = x1; }
-      if (dir === "-x") { sx0 = x0; sx1 = x1 - f0 * (x1 - x0); }
-      if (dir === "+z") { sz0 = z0 + f0 * (z1 - z0); sz1 = z1; }
-      if (dir === "-z") { sz0 = z0; sz1 = z1 - f0 * (z1 - z0); }
-      this.box([sx0, bot, sz0], [sx1, top, sz1], matSpec, {
+      if (dir === "+x") { sx0 = x0 + f0 * span; sx1 = x0 + f1 * span; }
+      if (dir === "-x") { sx0 = x1 - f1 * span; sx1 = x1 - f0 * span; }
+      if (dir === "+z") { sz0 = z0 + f0 * span; sz1 = z0 + f1 * span; }
+      if (dir === "-z") { sz0 = z1 - f1 * span; sz1 = z1 - f0 * span; }
+
+      // Emit each step as a solid vertical masonry column from y0 to top, skipping
+      // buried internal walls against adjacent steps so lightmap texels never bleed black seams.
+      const skip = ["ny"];
+      if (dir === "+x") {
+        skip.push("nx");
+        if (i < count - 1) skip.push("px");
+      } else if (dir === "-x") {
+        skip.push("px");
+        if (i < count - 1) skip.push("nx");
+      } else if (dir === "+z") {
+        skip.push("nz");
+        if (i < count - 1) skip.push("pz");
+      } else if (dir === "-z") {
+        skip.push("pz");
+        if (i < count - 1) skip.push("nz");
+      }
+
+      this.box([sx0, y0, sz0], [sx1, top, sz1], matSpec, {
         solid: false,
-        skipFaces: ["ny"],
-        priority: opts.priority ?? 1.0,
+        skipFaces: skip,
+        priority: prio,
       });
+
+      // Emit ONLY the exposed riser face [prevTop .. top] on the descending side.
+      if (dir === "+x") {
+        this.addQuad([sx0, prevTop, sz0], [sx0, prevTop, sz1], [sx0, top, sz1], [sx0, top, sz0], matSpec, {
+          u0: sz0, v0: prevTop, u1: sz1, v1: top, priority: prio,
+        });
+      } else if (dir === "-x") {
+        this.addQuad([sx1, prevTop, sz1], [sx1, prevTop, sz0], [sx1, top, sz0], [sx1, top, sz1], matSpec, {
+          u0: -sz1, v0: prevTop, u1: -sz0, v1: top, priority: prio,
+        });
+      } else if (dir === "+z") {
+        this.addQuad([sx1, prevTop, sz0], [sx0, prevTop, sz0], [sx0, top, sz0], [sx1, top, sz0], matSpec, {
+          u0: -sx1, v0: prevTop, u1: -sx0, v1: top, priority: prio,
+        });
+      } else if (dir === "-z") {
+        this.addQuad([sx0, prevTop, sz1], [sx1, prevTop, sz1], [sx1, top, sz1], [sx0, top, sz1], matSpec, {
+          u0: sx0, v0: prevTop, u1: sx1, v1: top, priority: prio,
+        });
+      }
     }
 
     if (opts.walkable !== false) {

@@ -35,16 +35,16 @@ export async function createWaterModule(
   const mapSizeZ = waterDesc.maxZ - waterDesc.minZ;
   const wl = waterDesc.level;
 
-  // Player-tracking local simulation window: 9.5 cm cell spacing resolves smooth 25-60 cm indoor pool
-  // ripples across a wide 21-24 m reach (covering all 3 receding Ring Passage caustic pools!).
-  const dx = 0.095;
-  const maxWinCells = isSoftware ? 224 : 256; // 21.28 m (software) or 24.32 m (hardware GPU)
+  // Player-tracking local simulation window: 8 cm cell spacing resolves lively 16-55 cm indoor pool
+  // ripples with active organic surface dynamics and fast Chebyshev propagation.
+  const dx = 0.08;
+  const maxWinCells = isSoftware ? 224 : 256; // 17.92 m (software) or 20.48 m (hardware GPU)
   const nx = Math.max(64, Math.min(maxWinCells, Math.ceil(mapSizeX / dx)));
   const nz = Math.max(64, Math.min(maxWinCells, Math.ceil(mapSizeZ / dx)));
   const winSizeX = nx * dx;
   const winSizeZ = nz * dx;
   const cellCount = nx * nz;
-  const pressurePasses = 5;
+  const pressurePasses = 2;
 
   // Caustic world-space grid spans the exact active local window (~9.8 cm photon density!).
   const causticSize = isSoftware ? 160 : 208;

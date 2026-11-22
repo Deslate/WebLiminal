@@ -21,9 +21,12 @@ export function createWakeTrail() {
       // Ignore dry floors, standstill, or teleports (> 0.4 m in a single tick).
       if (waterLevel <= footY + 0.04 || d < 1e-5 || d > 0.4) return null;
       distance += d;
-      const starting = foot === 0 || time - lastTime >= 0.9;
-      const reqDist = starting ? 0.18 : 0.55;
-      const reqInterval = starting ? 0.14 : 0.44;
+      const starting = foot === 0 || time - lastTime >= 1.25;
+      // Knee-deep water drag creates a long, heavy, speed-proportional stride (~0.82 m/step):
+      // ~0.96 s/step at normal 0.85 m/s wading, ~0.57 s/step when Shift-wading at 1.45 m/s,
+      // and ~1.8 s/step when creeping slowly — never matching rapid dry-land brisk steps!
+      const reqDist = starting ? 0.28 : 0.82;
+      const reqInterval = starting ? 0.18 : 0.52;
       if (distance < reqDist || time - lastTime < reqInterval) return null;
       distance = 0;
       lastTime = time;

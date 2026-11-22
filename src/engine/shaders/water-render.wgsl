@@ -140,7 +140,7 @@ fn waterBicubicSample(wx: f32, wz: f32) -> vec3f {
   }
 
   if (winMask < 0.999) {
-    let farSlope = evalFarCapillarySlope(vec2f(wx, wz), frame.cameraPos.w, max(water.surface.x, 0.35), 0.014);
+    let farSlope = evalFarCapillarySlope(vec2f(wx, wz), frame.cameraPos.w, max(water.surface.x, 0.35), 0.038);
     dhdx = mix(farSlope.x, dhdx, winMask);
     dhdz = mix(farSlope.y, dhdz, winMask);
     hVal *= winMask;
@@ -393,8 +393,8 @@ fn fsWater(i: VSOut) -> @location(0) vec4f {
   let camDist = tW;
 
   // Gentle Neumann slope relaxation near wall/step contact (zero artificial dark meniscus rim!).
-  let contactCalm = mix(0.25, 1.0, smoothstep(0.0, 0.08, clearRay));
-  let clampedSlope = clamp(vec2f(w.y, w.z) * contactCalm, vec2f(-0.48), vec2f(0.48));
+  let contactCalm = mix(0.28, 1.0, smoothstep(0.0, 0.075, clearRay));
+  let clampedSlope = clamp(vec2f(w.y, w.z) * contactCalm, vec2f(-0.62), vec2f(0.62));
   var N = normalize(vec3f(-clampedSlope.x, 1.0, -clampedSlope.y));
 
   // Guarantee camera-facing normal hemisphere: prevents Snell refraction inversion and

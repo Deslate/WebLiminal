@@ -426,8 +426,8 @@ fn fsMain(i: VSOut) -> GBufferOut {
     } else {
       albedo *= 1.0 - wetZone * 0.05;
     }
-    rough = mix(rough, min(rough, 0.075), wetZone * 0.60 * (1.0 - cer.inGrout * 0.8));
-    coat = mix(coat, max(coat, 0.94), wetZone * 0.55 * (1.0 - cer.inGrout * 0.8));
+    rough = mix(rough, min(rough, 0.16), wetZone * 0.45 * (1.0 - cer.inGrout * 0.85));
+    coat = mix(coat, max(coat, 0.88), wetZone * 0.45 * (1.0 - cer.inGrout * 0.85));
   }
 
   // Sample baked Directional Indirect GI + Area-Light Lightmap (last implicit-derivative textureSample calls!).

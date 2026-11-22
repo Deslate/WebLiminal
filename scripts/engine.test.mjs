@@ -197,27 +197,45 @@ test("v2 water window planner never spams resets near map edges, shifts smoothly
   }
 });
 
-test("v2 wading wake trail fires alternating footsteps in water and generates ballistic kick splashes", () => {
+test("v2 wading wake trail fires alternating footsteps in water and scales cadence with speed", () => {
   const trail = createWakeTrail();
-  const contacts = [];
+  const fastContacts = [];
   let x = 0, z = 0;
   for (let i = 1; i <= 45; i++) {
     const prev = { x, z, footY: 0 };
-    z -= 0.05; // 1.5 m/s at 30 Hz
+    z -= 0.05; // 1.5 m/s fast Shift-wading at 30 Hz (1.5 s)
     const next = { x, z, footY: 0 };
-    const c = trail.advance(prev, next, i / 30, 0.52);
-    if (c) contacts.push(c);
+    const c = trail.advance(prev, next, i / 30, 0.44);
+    if (c) fastContacts.push(c);
   }
-  assert(contacts.length >= 3, `Expected >= 3 wading footsteps, got ${contacts.length}`);
-  assert(Math.sign(contacts[0].x) === -Math.sign(contacts[1].x), "Footsteps should alternate left and right");
-  const splashes = kickImpacts(contacts[0]);
+  assert(fastContacts.length >= 3, `Expected >= 3 fast wading footsteps, got ${fastContacts.length}`);
+  assert(Math.sign(fastContacts[0].x) === -Math.sign(fastContacts[1].x), "Footsteps should alternate left and right");
+
+  // Slower normal wading (0.85 m/s over 3.0 s) must have a noticeably slower, heavier step interval (~0.96 s/step)
+  trail.reset();
+  const normalContacts = [];
+  z = 0;
+  for (let i = 1; i <= 90; i++) {
+    const prev = { x: 0, z, footY: 0 };
+    z -= 0.85 / 30;
+    const next = { x: 0, z, footY: 0 };
+    const c = trail.advance(prev, next, i / 30, 0.44);
+    if (c) normalContacts.push(c);
+  }
+  assert(normalContacts.length >= 3, `Expected >= 3 normal wading footsteps in 3s, got ${normalContacts.length}`);
+  const normalGap = normalContacts[2].time - normalContacts[1].time;
+  const fastGap = fastContacts[2].time - fastContacts[1].time;
+  assert(normalGap > 0.85 && normalGap < 1.15, `Normal wading cadence should be ~0.96 s/step, got ${normalGap.toFixed(2)}s`);
+  assert(normalGap > fastGap * 1.4, `Normal wading (${normalGap.toFixed(2)}s) must be much slower than fast wading (${fastGap.toFixed(2)}s)`);
+
+  const splashes = kickImpacts(fastContacts[0]);
   assert.equal(splashes.length, 6);
   for (const sp of splashes) {
-    assert(sp.time > contacts[0].time && sp.momentum > 0);
+    assert(sp.time > fastContacts[0].time && sp.momentum > 0);
   }
   // Dry floor must never fire wading footsteps
   trail.reset();
-  assert.equal(trail.advance({ x: 0, z: 0, footY: 0.64 }, { x: 0, z: -0.2, footY: 0.64 }, 1.0, 0.52), null);
+  assert.equal(trail.advance({ x: 0, z: 0, footY: 0.64 }, { x: 0, z: -0.2, footY: 0.64 }, 1.0, 0.44), null);
 });
 
 test("v2 MapBuilder snaps arch, ring, and cylinder UVs cleanly to symmetric tile courses with zero slivers", () => {

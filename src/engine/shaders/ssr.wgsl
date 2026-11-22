@@ -341,14 +341,17 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
   // Soft highlight knee keeps bright fluorescent tubes & windows luminous without single-pixel fireflies.
   sCol = min(sCol, vec3f(18.0));
 
-  // Physical Fresnel: glazed porcelain / water puddle dielectric (IOR 1.52 / 1.333) vs stainless metal.
+  // Physical Fresnel with GGX rough-surface grazing attenuation:
+  // Smooth glossy materials keep full Fresnel; satin-glazed ceramic (rough ~0.24..0.34) disperses
+  // grazing reflections across a wide microfacet cone instead of mirroring corridors like glass!
   let isMetal = step(0.85, reflMask) * step(0.02, length(ar.rgb - vec3f(1.0)));
-  let dielecF = exactDielectricFresnel(nv, 1.52);
+  let rawDielecF = exactDielectricFresnel(nv, 1.52);
+  let roughDielecF = mix(rawDielecF, min(rawDielecF, 0.042), smoothstep(0.10, 0.26, rough));
   let metalF = 0.74 + 0.26 * pow(1.0 - nv, 5.0);
-  let F = mix(dielecF, metalF, isMetal);
+  let F = mix(roughDielecF, metalF, isMetal);
 
-  // Energy-conserving grazing-roughness roll-off (matches GGX directional specular albedo).
-  let roughFade = (1.0 - smoothstep(0.26, 0.56, rough)) * (1.0 - rough * 0.32);
+  // Energy-conserving GGX single-ray specular peak roll-off (strong on glossy glass/steel, subtle satin sheen on tile).
+  let roughFade = pow(1.0 - smoothstep(0.08, 0.44, rough), 1.65);
   let reflRad = sCol * F * reflMask * roughFade;
 
   // Store hit distance in .a for physical roughness cone projection in filterSSRH/V!
@@ -356,8 +359,8 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
 }
 
 // Shared separable 1D roughness- & hit-distance-adaptive bilateral filter (half-res).
-// Projects the GGX angular lobe radius into half-res pixels so mirror wet puddles stay razor-sharp
-// while glazed ceramic tiles receive silky, view-coherent soft glossy reflections with zero noise.
+// Projects the GGX angular lobe radius into half-res pixels so glazed ceramic tiles receive soft,
+// satin-diffused porcelain sheen while breaking cleanly across individual tile tilts & mortar lines.
 fn filterSSR1D(gid: vec3u, axis: vec2i) {
   let dims = textureDimensions(outSSR);
   if (gid.x >= dims.x || gid.y >= dims.y) { return; }
@@ -382,14 +385,14 @@ fn filterSSR1D(gid: vec3u, axis: vec2i) {
   let cRough = cNR.w;
   let cLinD = linearDepthSSR(cD);
 
-  // Physical GGX cone blur sigma in half-res pixels; a gentle 0.58 px AA floor smooths
-  // half-res stair-stepping on thin reflected fluorescent tubes inside mirror-glossy wet puddles!
+  // Physical GGX cone blur sigma in half-res pixels: broad soft blur for satin glazed tiles (~0.25 rough)
+  // so reflections read as soft ceramic glaze sheen rather than sharp flat mirror cutouts!
   let alpha = cRough * cRough;
   let focalHalfPx = f32(dims.y) * 0.74;
   let coneFrac = min(center.a, 35.0) / max(cLinD + min(center.a, 35.0), 0.25);
-  let sigma = clamp(max(0.58, alpha * focalHalfPx * coneFrac * 0.72), 0.58, 5.0);
+  let sigma = clamp(max(0.65, alpha * focalHalfPx * coneFrac * 1.65), 0.65, 7.5);
 
-  let radius = min(5, i32(ceil(sigma * 2.1)));
+  let radius = min(7, i32(ceil(sigma * 2.0)));
   let inv2Sig2 = 0.5 / (sigma * sigma);
   let invDepthScale = 1.0 / max(cLinD * 0.06, 0.08);
 
@@ -409,12 +412,11 @@ fn filterSSR1D(gid: vec3u, axis: vec2i) {
     let sNR = textureLoad(normalRoughTex, spx, 0);
     let sN = normalize(sNR.xyz);
     let nDot = dot(cN, sN);
-    // Stop cleanly at architectural corners/walls while integrating smoothly across flat tile faces!
-    if (nDot < 0.72) { continue; }
+    if (nDot < 0.80) { continue; }
     let relD = abs(linearDepthSSR(sD) - cLinD) * invDepthScale;
     let wDepth = exp(-relD * relD * 2.2);
-    let wNorm = pow(nDot, 8.0);
-    let wRough = exp(-abs(sNR.w - cRough) * 9.0);
+    let wNorm = pow(nDot, 14.0);
+    let wRough = exp(-abs(sNR.w - cRough) * 10.0);
     let wSpatial = exp(-f32(k * k) * inv2Sig2);
     let w = wDepth * wNorm * wRough * wSpatial;
 
@@ -557,7 +559,8 @@ fn compositeSSR(@builtin(global_invocation_id) gid: vec3u) {
     }
 
     let refl = select(vec3f(0.0), colSum / max(wSum, 1e-4), wSum > 1e-4);
-    finalCol += refl * ar.rgb;
+    // Multiply by full-res ar.a (1 - inGrout) so reflections stop dead on every matte mortar seam!
+    finalCol += refl * ar.rgb * ar.a;
   }
 
   // 3. Deterministic Zero-Noise World-Space Contact GTAO (6 fixed directions x 3 radial steps, 0.42 m radius)

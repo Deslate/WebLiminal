@@ -386,8 +386,8 @@ function tick(now) {
   if (!nowInWater && movedDist > 1e-5 && movedDist < 0.4) {
     dryStrideDist += movedDist;
     const starting = dryFootCount === 0 || elapsed - lastDryStepTime >= 0.75;
-    const reqDist = starting ? 0.24 : 0.72;
-    const reqInterval = starting ? 0.12 : 0.28;
+    const reqDist = starting ? 0.28 : 0.86;
+    const reqInterval = starting ? 0.14 : 0.30;
     if (dryStrideDist >= reqDist && elapsed - lastDryStepTime >= reqInterval) {
       dryStrideDist = 0;
       lastDryStepTime = elapsed;
@@ -405,9 +405,10 @@ function tick(now) {
 
   audio.update(elapsed);
 
-  // Smooth damped footstep weight-shift dip (100% step-driven, zero jitter when standing still)
-  walkBobPhase = Math.max(0, walkBobPhase - dt * (nowInWater ? 2.4 : 3.8));
-  const bobAmp = nowInWater ? 0.026 : 0.014;
+  // Smooth damped footstep weight-shift dip (100% step-driven, scaled to wading vs dry speed)
+  const bobRate = nowInWater ? (1.35 + Math.min(1.2, actualSpeed * 0.65)) : 3.6;
+  walkBobPhase = Math.max(0, walkBobPhase - dt * bobRate);
+  const bobAmp = nowInWater ? 0.024 : 0.014;
   const bob = -Math.sin(walkBobPhase * Math.PI) * bobAmp;
   const renderPose = { ...pose, y: pose.y + bob };
   renderer.render(renderPose, elapsed, dt);

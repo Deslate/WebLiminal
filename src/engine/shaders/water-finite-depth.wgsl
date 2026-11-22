@@ -129,7 +129,7 @@ fn prepare(@builtin(global_invocation_id) id: vec3u) {
   // Spatially homogeneous band-limited stochastic pressure fluctuations (white in time).
   let dtSafe = max(P.clock.y, 1e-4);
   let invDx2 = max(P.gridF.y, 1.0);
-  let p = 0.0030 * (P.settings.x / 0.018) * P.settings.w / sqrt(dtSafe) * (lapNoise(i).x / invDx2);
+  let p = 0.0040 * (P.settings.x / 0.018) * P.settings.w / sqrt(dtSafe) * (lapNoise(i).x / invDx2);
   potential[i] = 9.81 * state[i].x + 0.000073 * lapState(i).x + p;
 }
 
@@ -191,8 +191,8 @@ fn initializeState(@builtin(global_invocation_id) id: vec3u) {
     return;
   }
   let invDx2 = max(P.gridF.y, 1.0);
-  let q = (lapNoise(i) / invDx2) * (0.0115 * P.settings.x / 0.018);
-  next[i] = vec2f(q.x, 13.5 * q.y);
+  let q = (lapNoise(i) / invDx2) * (0.0135 * P.settings.x / 0.018);
+  next[i] = vec2f(q.x, 15.5 * q.y);
 }
 
 // Seamlessly translates wave height/velocity state when the local simulation window follows the player.
