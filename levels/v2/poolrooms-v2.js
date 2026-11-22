@@ -204,7 +204,15 @@ export default {
     // =========================================================================
     const H4 = 5.80;
     const deckY = 0.80;
-    m.ceiling(-19.40, -16.00, -5.80, -3.60, H4, plasterMat);
+    // Recessed south-bay architectural skylight well (clears the slide entry at z <= -7.78 cleanly)
+    // pouring crisp overhead daylight & angled sunbeams onto the wet walkway deck, emerald dado & columns!
+    const c4Sky = [-14.80, -7.40, -7.80, -4.00];
+    m.ceiling(-19.40, -16.00, -5.80, -3.60, H4, plasterMat, { holes: [c4Sky] });
+    m.box([-15.20, H4, -7.40], [-14.80, H4 + 0.85, -4.00], whiteTile, { solid: false, priority: 0.4 });
+    m.box([-7.80, H4, -7.40], [-7.40, H4 + 0.85, -4.00], whiteTile, { solid: false, priority: 0.4 });
+    m.box([-15.20, H4, -7.80], [-7.40, H4 + 0.85, -7.40], whiteTile, { solid: false, priority: 0.4 });
+    m.box([-15.20, H4, -4.00], [-7.40, H4 + 0.85, -3.60], whiteTile, { solid: false, priority: 0.4 });
+    m.skylight(-14.80, -7.40, -7.80, -4.00, H4 + 0.80, { color: [0.95, 0.98, 1.00], intensity: 4.6 });
     m.box([-19.80, 0, -3.60], [-5.80, H4, -3.00], whiteTile, { skipFaces: ["ny"] });
     m.box([-5.80, H1, -16.60], [-5.40, H4, -3.00], whiteTile, { solid: false, skipFaces: ["ny"] });
     m.wallWithArch([-19.80, 0, -16.00], [-19.40, H4, -3.60], {
@@ -244,7 +252,7 @@ export default {
         facing: "+",
         tileModule: 0.18,
         lightColor: [0.96, 0.98, 1.00],
-        lightIntensity: 6.2,
+        lightIntensity: 14.5,
       });
       m.ringWall([wx - 1.20, 3.60, -16.60], [wx + 1.20, H4, -16.00], {
         material: whiteTile,
@@ -256,7 +264,7 @@ export default {
         glassMaterial: frostedWin,
         glassFacing: "+",
         lightColor: [0.96, 0.98, 1.00],
-        lightIntensity: 4.6,
+        lightIntensity: 11.5,
       });
     }
 
