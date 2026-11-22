@@ -32,8 +32,16 @@ struct FrameUniform {
 fn bloomExtract(@builtin(global_invocation_id) gid: vec3u) {
   let dims = textureDimensions(bloomDst);
   if (gid.x >= dims.x || gid.y >= dims.y) { return; }
-  let uv = (vec2f(gid.xy) + 0.5) / vec2f(dims);
-  let col = textureSampleLevel(bloomSrc, linSampler, uv, 0.0).rgb;
+  let invD = 1.0 / vec2f(dims);
+  let uv = (vec2f(gid.xy) + 0.5) * invD;
+  // 2x2 pre-filter downsample prevents thin 1-pixel fluorescent tubes from undersampling or strobing!
+  let o = invD * 0.25;
+  let col = 0.25 * (
+    textureSampleLevel(bloomSrc, linSampler, uv + vec2f(-o.x, -o.y), 0.0).rgb +
+    textureSampleLevel(bloomSrc, linSampler, uv + vec2f( o.x, -o.y), 0.0).rgb +
+    textureSampleLevel(bloomSrc, linSampler, uv + vec2f(-o.x,  o.y), 0.0).rgb +
+    textureSampleLevel(bloomSrc, linSampler, uv + vec2f( o.x,  o.y), 0.0).rgb
+  );
   let luma = dot(col, vec3f(0.2126, 0.7152, 0.0722));
   let threshold = 2.35;
   let knee = 0.85;
@@ -47,14 +55,20 @@ fn gaussianBlur(gid: vec3u, dir: vec2f) {
   if (gid.x >= dims.x || gid.y >= dims.y) { return; }
   let uv = (vec2f(gid.xy) + 0.5) / vec2f(dims);
   let stepUV = dir / vec2f(dims);
-  let weights = array<f32, 5>(0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
-  var sum = textureSampleLevel(bloomSrc, linSampler, uv, 0.0).rgb * weights[0];
-  for (var i = 1; i < 5; i++) {
-    let off = stepUV * f32(i) * 2.25;
-    sum += textureSampleLevel(bloomSrc, linSampler, uv + off, 0.0).rgb * weights[i];
-    sum += textureSampleLevel(bloomSrc, linSampler, uv - off, 0.0).rgb * weights[i];
+  // Continuous unit-stride 17-tap Gaussian (sigma = 3.4 texels) — zero comb-striping on thin light tubes!
+  var sum = textureSampleLevel(bloomSrc, linSampler, uv, 0.0).rgb;
+  var wSum = 1.0;
+  for (var i = 1; i <= 8; i++) {
+    let fi = f32(i);
+    let w = exp(-(fi * fi) / (2.0 * 3.4 * 3.4));
+    let off = stepUV * fi;
+    sum += (
+      textureSampleLevel(bloomSrc, linSampler, uv + off, 0.0).rgb +
+      textureSampleLevel(bloomSrc, linSampler, uv - off, 0.0).rgb
+    ) * w;
+    wSum += 2.0 * w;
   }
-  textureStore(bloomDst, vec2i(gid.xy), vec4f(sum, 1.0));
+  textureStore(bloomDst, vec2i(gid.xy), vec4f(sum / wSum, 1.0));
 }
 
 @compute @workgroup_size(8, 8)

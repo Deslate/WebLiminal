@@ -32,6 +32,7 @@ struct FrameUniform {
 @group(0) @binding(8) var<storage, read> bvhTris: array<BVHTri>;
 @group(0) @binding(9) var<storage, read> materials: array<MaterialGPU>;
 @group(0) @binding(10) var lmIrradTex: texture_2d<f32>;
+@group(0) @binding(11) var<storage, read> lights: array<AreaLight>;
 
 @group(1) @binding(0) var ssrTex: texture_2d<f32>;
 @group(1) @binding(1) var outHdr: texture_storage_2d<rgba16float, write>;
@@ -176,12 +177,60 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
   let kD = 1.0 - m.pbr.y * 0.85;
   var col = albedo * kD * lmI;
 
-  // Direct sunlight at the reflected hit point (crisp sunlit walls/columns reflected in glossy tiles!)
+  // Direct sunlight (Poolrooms) OR direct indoor area lights (Level 0 & Level 1) at reflected hit point
+  // so wet concrete puddles reflect brightly lit white columns, beams, and fluorescent light pools!
   if (frame.sunColorInt.w > 0.5) {
     let sunDir = frame.sunDirRad.xyz;
     let ndl = dot(hit.n, sunDir);
     if (ndl > 0.0 && !traceShadowRefl(hitPos + hit.n * 0.015, sunDir, 150.0)) {
       col += albedo * kD * frame.sunColorInt.rgb * ndl * INV_PI;
+    }
+  } else {
+    let lc = min(u32(frame.skyHorizon.w + 0.5), 32u);
+    let roS = hitPos + hit.n * 0.015;
+    var bestIdx = array<u32, 3>(0u, 0u, 0u);
+    var bestSc = array<f32, 3>(0.0, 0.0, 0.0);
+    for (var li = 0u; li < lc; li++) {
+      let l = lights[li];
+      let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+      let toL = lCenter - hitPos;
+      let d2 = dot(toL, toL);
+      if (d2 > 140.0 || d2 < 0.04) { continue; }
+      let invD = inverseSqrt(d2);
+      let wi = toL * invD;
+      let cosS = dot(hit.n, wi);
+      if (cosS <= 0.01) { continue; }
+      let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+      let cosL = dot(lNorm, -wi);
+      if (cosL <= 0.02) { continue; }
+      let sc = (l.edgeUPower.w * cosS * cosL) / max(d2, 0.25);
+      if (sc <= bestSc[2]) { continue; }
+      var pos = 2u;
+      loop {
+        if (pos == 0u || sc <= bestSc[pos - 1u]) { break; }
+        bestSc[pos] = bestSc[pos - 1u];
+        bestIdx[pos] = bestIdx[pos - 1u];
+        pos -= 1u;
+      }
+      bestSc[pos] = sc;
+      bestIdx[pos] = li;
+    }
+    for (var k = 0u; k < 3u; k++) {
+      if (bestSc[k] < 0.004) { break; }
+      let l = lights[bestIdx[k]];
+      let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+      let toL = lCenter - hitPos;
+      let d2 = max(dot(toL, toL), 0.04);
+      let rFade = smoothstep(140.0, 64.0, d2) * smoothstep(0.004, 0.025, bestSc[k]);
+      if (rFade <= 0.0) { continue; }
+      let dist = sqrt(d2);
+      let wi = toL / dist;
+      let cosS = max(dot(hit.n, wi), 0.0);
+      let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+      let cosL = max(dot(lNorm, -wi), 0.0);
+      if (!traceShadowRefl(roS, wi, max(0.02, dist - 0.06))) {
+        col += albedo * kD * l.radianceCdf.rgb * ((cosS * cosL * l.originArea.w * rFade) / max(d2, 0.18) * INV_PI);
+      }
     }
   }
 

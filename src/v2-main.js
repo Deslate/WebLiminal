@@ -61,6 +61,9 @@ let paused = false;
 const pose = { x: 0, y: PLAYER_EYE_HEIGHT, z: 0, yaw: 0, pitch: 0, footY: 0 };
 const wakeTrail = createWakeTrail();
 let walkBobPhase = 0;
+let dryStrideDist = 0;
+let dryFootCount = 0;
+let lastDryStepTime = -Infinity;
 
 function syncResize() {
   const rect = viewport.getBoundingClientRect();
@@ -125,6 +128,9 @@ function setPose(spawn) {
   pose.footY = floorY;
   pose.y = spawn.y ?? floorY + PLAYER_EYE_HEIGHT;
   wakeTrail.reset();
+  dryStrideDist = 0;
+  dryFootCount = 0;
+  lastDryStepTime = -Infinity;
 }
 
 function jumpToBookmark(index) {
@@ -307,14 +313,13 @@ function tick(now) {
     const dx = (-Math.sin(pose.yaw) * forward + Math.cos(pose.yaw) * strafe) * speed * dt;
     const dz = (-Math.cos(pose.yaw) * forward - Math.sin(pose.yaw) * strafe) * speed * dt;
     movePlayer(pose, dx, dz, compiledScene.collision, dt);
-    walkBobPhase += dt * (inWater ? 5.6 : sprint ? 11.5 : 8.2);
   }
 
   const movedDist = Math.hypot(pose.x - beforePose.x, pose.z - beforePose.z);
   const actualSpeed = movedDist / Math.max(dt, 1e-4);
+  const nowInWater = Boolean(water && pose.footY < water.level - 0.04);
 
   if (water) {
-    const nowInWater = pose.footY < water.level - 0.04;
     renderer.setBody(nowInWater ? pose : null);
     const contact = wakeTrail.advance(beforePose, pose, elapsed, water.level);
     if (contact) {
@@ -324,16 +329,38 @@ function tick(now) {
         speed: actualSpeed,
         side: contact.step % 2 ? 1 : -1,
       });
-      // Lock head-bob trough cleanly to each wading footstep plunge!
-      walkBobPhase = contact.step % 2 ? 0.35 : Math.PI + 0.35;
+      // Smooth weight-shift dip triggered 1:1 by each actual wading footstep
+      walkBobPhase = 1.0;
     }
   }
 
-  audio.update(elapsed, actualSpeed, inWater);
+  // Dry-surface footsteps are also driven 100% by actual collision-resolved stride distance!
+  if (!nowInWater && movedDist > 1e-5 && movedDist < 0.4) {
+    dryStrideDist += movedDist;
+    const starting = dryFootCount === 0 || elapsed - lastDryStepTime >= 0.75;
+    const reqDist = starting ? 0.24 : 0.72;
+    const reqInterval = starting ? 0.12 : 0.28;
+    if (dryStrideDist >= reqDist && elapsed - lastDryStepTime >= reqInterval) {
+      dryStrideDist = 0;
+      lastDryStepTime = elapsed;
+      dryFootCount++;
+      audio.playFootstep({
+        inWater: false,
+        speed: actualSpeed,
+        side: dryFootCount % 2 ? 1 : -1,
+      });
+      walkBobPhase = 1.0;
+    }
+  } else if (nowInWater) {
+    dryStrideDist = 0;
+  }
 
-  // Subtle vertical walking head-bob (zero when standing still; slightly heavier weight-shift when wading)
-  const bobAmp = inWater ? 0.026 : 0.018;
-  const bob = actualSpeed > 0.08 ? Math.sin(walkBobPhase) * bobAmp * Math.min(1, actualSpeed / 0.7) : 0;
+  audio.update(elapsed);
+
+  // Smooth damped footstep weight-shift dip (100% step-driven, zero jitter when standing still)
+  walkBobPhase = Math.max(0, walkBobPhase - dt * (nowInWater ? 2.4 : 3.8));
+  const bobAmp = nowInWater ? 0.026 : 0.014;
+  const bob = -Math.sin(walkBobPhase * Math.PI) * bobAmp;
   const renderPose = { ...pose, y: pose.y + bob };
   renderer.render(renderPose, elapsed, dt);
 

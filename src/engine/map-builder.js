@@ -673,6 +673,28 @@ export class MapBuilder {
     return this;
   }
 
+  // Flared 4-sided truncated-pyramid concrete column capital (brutalist parking mushroom capital).
+  flaredCapital(cx, cz, y0, y1, rBot, rTop, matSpec, opts = {}) {
+    const h = y1 - y0;
+    const slant = Math.hypot(h, rTop - rBot);
+    const prio = opts.priority ?? 0.6;
+    const b0 = [cx - rBot, y0, cz + rBot];
+    const b1 = [cx + rBot, y0, cz + rBot];
+    const b2 = [cx + rBot, y0, cz - rBot];
+    const b3 = [cx - rBot, y0, cz - rBot];
+    const t0 = [cx - rTop, y1, cz + rTop];
+    const t1 = [cx + rTop, y1, cz + rTop];
+    const t2 = [cx + rTop, y1, cz - rTop];
+    const t3 = [cx - rTop, y1, cz - rTop];
+
+    // +Z, -Z, +X, -X outward sloped faces (CCW outward winding, world-metric UVs)
+    this.addQuad(b0, b1, t1, t0, matSpec, { u0: -rBot, v0: 0, u1: rBot, v1: slant, priority: prio });
+    this.addQuad(b2, b3, t3, t2, matSpec, { u0: -rBot, v0: 0, u1: rBot, v1: slant, priority: prio });
+    this.addQuad(b1, b2, t2, t1, matSpec, { u0: -rBot, v0: 0, u1: rBot, v1: slant, priority: prio });
+    this.addQuad(b3, b0, t0, t3, matSpec, { u0: -rBot, v0: 0, u1: rBot, v1: slant, priority: prio });
+    return this;
+  }
+
   // Straight staircase ascending along '+x', '-x', '+z', or '-z'.
   // Emits solid step geometry + smooth walkable ramp zone for collision.
   stairs(lo, hi, dir, steps, matSpec, opts = {}) {

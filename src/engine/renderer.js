@@ -441,6 +441,7 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 8, resource: { buffer: sceneRes.bvhTriBuf } },
         { binding: 9, resource: { buffer: sceneRes.materialBuf } },
         { binding: 10, resource: sceneRes.lmIrradFinalView },
+        { binding: 11, resource: { buffer: sceneRes.lightBuf } },
       ],
     });
 

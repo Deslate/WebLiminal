@@ -57,38 +57,38 @@ export const MATERIAL_PRESETS = {
   },
   wallpaper_yellow: {
     presetId: 4,
-    albedo: [0.80, 0.72, 0.37],
-    roughness: 0.84,
+    albedo: [0.86, 0.83, 0.59], // authentic 2002 HobbyTown Oshkosh pale cream-yellow wallpaper
+    roughness: 0.82,
     metallic: 0.0,
     coat: 0.0,
-    tileScale: 0.833333, // 1.20 m pattern cycle (exact 2 x 0.60 m wallpaper rolls)
-    pomDepth: 0.003,
+    tileScale: 0.833333, // 1.20 m repeat (2 exact 0.60 m wallpaper rolls)
+    pomDepth: 0.0025,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
-    wetness: 0.05,
+    wetness: 0.04,
     seed: 5.0,
   },
   carpet_damp: {
     presetId: 5,
-    albedo: [0.48, 0.41, 0.22],
-    roughness: 0.92,
+    albedo: [0.49, 0.39, 0.22], // warm camel-tan / mocha commercial broadloom cut-pile carpet
+    roughness: 0.94,
     metallic: 0.0,
     coat: 0.0,
-    tileScale: 1.25,
-    pomDepth: 0.008,
+    tileScale: 1.4,
+    pomDepth: 0.009,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
-    wetness: 0.18,
+    wetness: 0.14,
     seed: 6.0,
   },
   ceiling_grid: {
     presetId: 6,
-    albedo: [0.82, 0.80, 0.72],
-    roughness: 0.86,
+    albedo: [0.88, 0.87, 0.78], // clean bright warm-ivory commercial acoustic mineral tiles
+    roughness: 0.88,
     metallic: 0.0,
     coat: 0.0,
     tileScale: 0.833333, // 1.20 m x 0.60 m commercial drop ceiling grid
-    pomDepth: 0.009,
+    pomDepth: 0.006,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
     wetness: 0.0,
@@ -96,12 +96,12 @@ export const MATERIAL_PRESETS = {
   },
   wood_trim: {
     presetId: 7,
-    albedo: [0.24, 0.17, 0.10],
-    roughness: 0.45,
+    albedo: [0.46, 0.37, 0.22], // commercial tan-oak baseboard & cove rail (matching original photo)
+    roughness: 0.54,
     metallic: 0.0,
-    coat: 0.22,
+    coat: 0.14,
     tileScale: 1.0,
-    pomDepth: 0.003,
+    pomDepth: 0.002,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
     wetness: 0.0,
@@ -109,41 +109,41 @@ export const MATERIAL_PRESETS = {
   },
   concrete_raw: {
     presetId: 8,
-    albedo: [0.47, 0.48, 0.46],
-    roughness: 0.82,
+    albedo: [0.54, 0.54, 0.50], // weathered warm-grey architectural poured concrete
+    roughness: 0.88,
     metallic: 0.0,
     coat: 0.0,
-    tileScale: 0.833333, // exact 1.20 m architectural formwork panel with centered tie cones
-    pomDepth: 0.007,
+    tileScale: 0.625, // 1.60 m poured formwork grain cycle (no uniform polka-dot tie holes)
+    pomDepth: 0.008,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
-    wetness: 0.24,
+    wetness: 0.26,
     seed: 9.0,
   },
   concrete_floor: {
     presetId: 9,
-    albedo: [0.36, 0.37, 0.36],
-    roughness: 0.56,
+    albedo: [0.31, 0.30, 0.27], // gritty dark oil-worn concrete parking deck slab
+    roughness: 0.84,
     metallic: 0.0,
-    coat: 0.35,
-    tileScale: 0.416667, // 2.40 m slab trowel variation matching 2.40 m saw-cut joints
-    pomDepth: 0.005,
+    coat: 0.04,
+    tileScale: 0.5, // 2.0 m rough concrete aggregate base
+    pomDepth: 0.007,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
-    wetness: 0.75,
+    wetness: 0.78,
     seed: 10.0,
   },
   concrete_painted: {
     presetId: 10,
-    albedo: [0.42, 0.44, 0.39],
-    roughness: 0.62,
+    albedo: [0.68, 0.69, 0.65], // weathered chalky off-white painted parking columns
+    roughness: 0.76,
     metallic: 0.0,
-    coat: 0.1,
-    tileScale: 0.5,
-    pomDepth: 0.005,
+    coat: 0.04,
+    tileScale: 0.55,
+    pomDepth: 0.006,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
-    wetness: 0.08,
+    wetness: 0.10,
     seed: 11.0,
   },
   stainless_steel: {

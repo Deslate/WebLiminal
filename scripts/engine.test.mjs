@@ -284,13 +284,13 @@ test("level0 and level1 bookmarks, doorways, stairs, and EXIT sub-tunnel are cle
     const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, c0.collision);
     assert.equal(canStand(bm.spawn.x, bm.spawn.z, c0.collision, fy), true, `Level 0 bookmark '${bm.name}' blocked`);
   }
-  assert.equal(canStand(-1.80, 4.32, c0.collision), true, "Level 0 main central doorway should be passable");
-  assert.equal(canStand(-9.60, 4.32, c0.collision), true, "Level 0 west soffit corridor doorway should be passable");
-  assert.equal(canStand(7.32, 1.20, c0.collision), true, "Level 0 east unlit wing doorway should be passable");
-  // Pass-through window sill (y=0..1.08) at x=-5.28, z=1.20 must block walking straight through
-  assert.equal(canStand(-5.28, 1.20, c0.collision), false, "Level 0 pass-through window sill should block walk-through");
+  assert.equal(canStand(-0.96, 7.50, c0.collision), true, "Level 0 iconic main foreground opening should be passable");
+  assert.equal(canStand(-5.31, 4.32, c0.collision), true, "Level 0 west soffit corridor doorway should be passable");
+  assert.equal(canStand(7.29, 3.60, c0.collision), true, "Level 0 east unlit wing doorway should be passable");
+  // Pass-through window sill (y=0..1.04) at x=-5.31, z=-1.80 must block walking straight through
+  assert.equal(canStand(-5.31, -1.80, c0.collision), false, "Level 0 pass-through window sill should block walk-through");
 
-  // Level 1 verification: 4 walkable bookmarks + EXIT portal into deep sub-tunnel + mezzanine stair climb
+  // Level 1 verification: 4 walkable bookmarks + EXIT portal into deep concrete hall + mezzanine stair climb
   const m1 = createMap({ atlasSize: 512 });
   byId.level1.build(m1);
   const c1 = m1.compile({ atlasSize: 512 });
@@ -299,15 +299,29 @@ test("level0 and level1 bookmarks, doorways, stairs, and EXIT sub-tunnel are cle
     const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, c1.collision);
     assert.equal(canStand(bm.spawn.x, bm.spawn.z, c1.collision, fy), true, `Level 1 bookmark '${bm.name}' blocked`);
   }
-  assert.equal(canStand(0.0, -9.90, c1.collision), true, "Level 1 EXIT portal into deep sub-tunnel should be passable");
-  assert.equal(canStand(-4.5, -16.0, c1.collision), true, "Level 1 deep sub-tunnel west turn should be walkable");
-  // Climb the 6-step loading mezzanine stairs smoothly from z=5.2 up onto DECK_Y=1.08
-  const pose = { x: 8.6, y: PLAYER_EYE_HEIGHT, z: 5.2, footY: 0 };
+  assert.equal(canStand(0.0, -9.90, c1.collision), true, "Level 1 EXIT portal into deep concrete hall should be passable");
+  assert.equal(canStand(-6.70, -15.0, c1.collision), true, "Level 1 deep concrete hall toward steel doors should be walkable");
+  // Climb the 6-step loading mezzanine stairs smoothly from z=5.2 up onto DECK_Y=0.96
+  const pose = { x: 8.7, y: PLAYER_EYE_HEIGHT, z: 5.2, footY: 0 };
   for (let i = 0; i < 65; i++) movePlayer(pose, 0, -0.09, c1.collision, 0.03);
-  assert(pose.z < 1.0 && Math.abs(sampleFloorHeight(pose.x, pose.z, c1.collision) - 1.08) < 1e-3,
+  assert(pose.z < 1.0 && Math.abs(sampleFloorHeight(pose.x, pose.z, c1.collision) - 0.96) < 1e-3,
     `Expected smooth climb onto Level 1 mezzanine (z=${pose.z}, floor=${sampleFloorHeight(pose.x, pose.z, c1.collision)})`);
 });
 
-
-
-
+test("MapBuilder flaredCapital compiles 4 sloped outward-facing pyramid faces into valid BVH", () => {
+  const m = createMap({ atlasSize: 256 });
+  m.flaredCapital(0, 0, 2.26, 2.94, 0.34, 0.78, "concrete_painted");
+  const c = m.compile({ atlasSize: 256 });
+  assert.equal(c.stats.triangles, 8, "4 trapezoidal side faces = 8 triangles");
+  assert(c.stats.bvhNodes >= 1);
+  // Every vertex must have finite outward-pointing normal with downward y-component (since top is wider than bottom)
+  const v = new Float32Array(c.vertexData);
+  for (let i = 0; i < c.vertexCount; i++) {
+    const base = i * 16;
+    const ny = v[base + 5];
+    assert(Number.isFinite(ny) && ny < -0.2 && ny > -0.95, `Expected sloped underside normal ny, got ${ny}`);
+    const uv2x = v[base + 14];
+    const uv2y = v[base + 15];
+    assert(uv2x >= 0 && uv2x <= 1 && uv2y >= 0 && uv2y <= 1, "Invalid flaredCapital UV2");
+  }
+});

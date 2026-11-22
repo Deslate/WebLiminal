@@ -253,10 +253,16 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let qHemi = fract(cpA + r2Alpha * gs);
     let qAO = fract(cpB + r2Alpha * gs);
 
-    // 1. Direct area lights & skylight portals at texel (stored as E / PI)
-    var directDir = vec3f(0.0);
-    irradSum += sampleDirectLighting(p0, n0, &rng, &directDir, false) * INV_PI;
-    dirSum += directDir * INV_PI;
+    // 1. Direct area lights & skylight portals at primary texel:
+    //    - On sunlit levels (Poolrooms): primary texels store smooth skylight/window fill while sun is per-pixel.
+    //    - On indoor artificial-light levels (Level 0 & Level 1): primary direct area lights are evaluated
+    //      per-pixel at full resolution with 4-point quad BVH soft shadows in gbuffer-pbr.wgsl so columns,
+    //      beams, soffits, and doorways have crisp photographic shadows instead of blurry lightmap smudges!
+    if (env.sunColorInt.w > 0.5) {
+      var directDir = vec3f(0.0);
+      irradSum += sampleDirectLighting(p0, n0, &rng, &directDir, false) * INV_PI;
+      dirSum += directDir * INV_PI;
+    }
 
     // 2. Short-range Ambient Occlusion ray (stratified R2 hemisphere for smooth crevice AO)
     let aoDir = sampleCosineHemisphere(n0, qAO.x, qAO.y);

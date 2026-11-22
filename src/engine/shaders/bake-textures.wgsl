@@ -146,110 +146,128 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let col = baseCol * (0.90 + 0.18 * n1) * (0.96 + 0.08 * n2);
     return Sample(col, clamp(baseRough + (n2 - 0.5) * 0.12, 0.4, 0.98), h, 0.92 + 0.08 * n1, 0.0, m.pbr.z, 0.0, 0.0, vec2f(0.0));
   }
-  // 4: wallpaper_yellow (iconic Backrooms Level 0 vintage patterned wallpaper)
+  // 4: wallpaper_yellow (3 authentic 2002 HobbyTown Oshkosh Backrooms vintage wallpaper patterns selected by seed!)
   if (preset == 4u) {
-    // Crisp repeating vertical damask stripe + iconic arrow/chevron motif (6 stripes / 1.20 m = 3 per 0.60 m roll)
-    let rep = vec2f(6.0, 4.0);
-    let cell = fract(uv * rep);
-    let dx = abs(cell.x - 0.5);
-    let stripe = 1.0 - smoothstep(0.09, 0.14, dx);
-    let cx = dx * 2.0;
-    let cy = cell.y;
-    // Crisp arrow/chevron & diamond ornament inside each stripe column
-    let chev1 = abs((cy - 0.24) - cx * 0.36);
-    let chev2 = abs((cy - 0.68) - cx * 0.36);
-    let motif = (1.0 - smoothstep(0.026, 0.056, min(chev1, chev2))) * (1.0 - smoothstep(0.50, 0.68, cx));
-    let dotMotif = 1.0 - smoothstep(0.048, 0.088, length(vec2f(cell.x - 0.5, fract(cell.y * 2.0) - 0.5) * vec2f(1.0, 0.72)));
-    let pattern = clamp(motif * 0.82 + dotMotif * 0.48 + stripe * 0.30, 0.0, 1.0);
+    var pattern = 0.0;
+    if (seed < 15.0) {
+      // Variant A: iconic fine 12 cm vertical chevron/arrow damask (10 stripes / 1.20 m = 5 per 0.60 m roll)
+      let rep = vec2f(10.0, 6.0);
+      let cell = fract(uv * rep);
+      let dx = abs(cell.x - 0.5);
+      let stripe = 1.0 - smoothstep(0.055, 0.095, dx);
+      let cx = dx * 2.0;
+      let cy = cell.y;
+      let chev1 = abs((cy - 0.25) - cx * 0.42);
+      let chev2 = abs((cy - 0.72) - cx * 0.42);
+      let motif = (1.0 - smoothstep(0.024, 0.052, min(chev1, chev2))) * (1.0 - smoothstep(0.42, 0.62, cx));
+      let stem = (1.0 - smoothstep(0.04, 0.075, abs(cell.x - 0.5))) * 0.35;
+      let dotRow = 1.0 - smoothstep(0.04, 0.075, length(vec2f(cell.x - 0.0, fract(cell.y * 3.0) - 0.5) * vec2f(1.2, 0.8)));
+      pattern = clamp(motif * 0.78 + stem + stripe * 0.22 + dotRow * 0.42, 0.0, 1.0);
+    } else if (seed < 30.0) {
+      // Variant B: fine vintage vertical micro-dot columns (left foreground wall in original Backrooms photo!)
+      let rep = vec2f(12.0, 12.0);
+      let cell = fract(uv * rep);
+      let dot1 = 1.0 - smoothstep(0.06, 0.12, length(cell - vec2f(0.5, 0.5)));
+      let dot2 = 1.0 - smoothstep(0.05, 0.10, length(cell - vec2f(0.0, 0.0)));
+      let faintStripe = 1.0 - smoothstep(0.06, 0.14, abs(cell.x - 0.5));
+      pattern = clamp(max(dot1, dot2) * 0.68 + faintStripe * 0.16, 0.0, 1.0);
+    } else {
+      // Variant C: fine repeating vertical beige-olive pinstripe wallpaper (midground partition in original photo!)
+      let rep = vec2f(16.0, 4.0);
+      let cell = fract(uv * rep);
+      let s1 = 1.0 - smoothstep(0.06, 0.12, abs(cell.x - 0.25));
+      let s2 = 1.0 - smoothstep(0.03, 0.07, abs(cell.x - 0.75));
+      pattern = clamp(s1 * 0.55 + s2 * 0.35, 0.0, 1.0);
+    }
 
-    // Subtle matte-paper micro-fiber & organic vintage mottling (macro dampness is world-space in gbuffer-pbr)
     let blotch = pFbm(uv, vec2f(2.0), seed + 2.0, 3);
-    let fiber = pFbm(uv, vec2f(32.0, 8.0), seed + 11.0, 3);
+    let fiber = pFbm(uv, vec2f(40.0, 10.0), seed + 11.0, 3);
 
-    var col = baseCol * mix(vec3f(1.03, 1.01, 0.96), vec3f(0.80, 0.74, 0.56), pattern);
-    col *= 0.92 + 0.14 * blotch;
-    col *= 0.96 + 0.08 * fiber;
+    // High-value pale cream-yellow ground with delicate olive-taupe print (NOT muddy dark mustard!)
+    var col = baseCol * mix(vec3f(1.03, 1.02, 0.98), vec3f(0.75, 0.72, 0.54), pattern);
+    col *= 0.95 + 0.09 * blotch;
+    col *= 0.97 + 0.06 * fiber;
 
-    let h = 0.54 + pattern * 0.08 + (fiber - 0.5) * 0.08;
-    // Subtle satin-ink vs matte-paper roughness contrast across the printed motif!
-    let rough = clamp(baseRough - pattern * 0.12 + (fiber - 0.5) * 0.06, 0.52, 0.95);
-    let ao = 0.94 + 0.06 * fiber;
-    return Sample(col, rough, clamp(h, 0.0, 1.0), ao, 0.0, pattern * 0.08, 0.0, 0.05, vec2f(0.0));
+    let h = 0.52 + pattern * 0.05 + (fiber - 0.5) * 0.07;
+    let rough = clamp(baseRough - pattern * 0.10 + (fiber - 0.5) * 0.06, 0.56, 0.94);
+    let ao = 0.95 + 0.05 * fiber;
+    return Sample(col, rough, clamp(h, 0.0, 1.0), ao, 0.0, pattern * 0.06, 0.0, 0.04, vec2f(0.0));
   }
-  // 5: carpet_damp (iconic Backrooms damp woven commercial loop carpet — no repeating fake square seams!)
+  // 5: carpet_damp (dense broadloom commercial cut-pile carpet — fine fibrous wool pile, zero grid seams!)
   if (preset == 5u) {
-    let rib = sin(uv.x * 6.2831853 * 48.0) * 0.5 + 0.5;
-    let loopPile = pNoise(uv, vec2f(48.0, 64.0), seed) * 0.58 + rib * pNoise(uv, vec2f(24.0, 48.0), seed + 2.0) * 0.42;
-    let wear = pFbm(uv, vec2f(4.0), seed + 3.0, 4);
-    let speck = pNoise(uv, vec2f(96.0, 96.0), seed + 11.0);
+    let finePile = pNoise(uv, vec2f(96.0, 96.0), seed) * 0.55 + pNoise(uv, vec2f(48.0, 64.0), seed + 4.0) * 0.45;
+    let tuft = pFbm(uv, vec2f(16.0, 16.0), seed + 9.0, 3);
+    let nap = pFbm(uv, vec2f(3.0, 5.0), seed + 14.0, 3);
 
-    var col = baseCol * (0.82 + 0.30 * loopPile) * (0.90 + 0.18 * wear) * (0.95 + 0.10 * speck);
-    let h = clamp(0.28 + loopPile * 0.52 + wear * 0.14, 0.0, 1.0);
-    let rough = clamp(baseRough + (1.0 - loopPile) * 0.06, 0.65, 0.99);
-    let ao = 0.78 + 0.22 * loopPile;
-    return Sample(col, rough, h, ao, 0.0, 0.0, 0.0, 0.18, vec2f(0.0));
+    var col = baseCol * (0.86 + 0.24 * finePile) * (0.91 + 0.16 * tuft) * (0.94 + 0.12 * nap);
+    let h = clamp(0.30 + finePile * 0.48 + tuft * 0.18, 0.0, 1.0);
+    let rough = clamp(baseRough + (1.0 - finePile) * 0.05, 0.78, 0.99);
+    let ao = 0.80 + 0.20 * finePile;
+    return Sample(col, rough, h, ao, 0.0, 0.0, 0.0, 0.12, vec2f(0.0));
   }
-  // 6: ceiling_grid (fissured mineral acoustic ceiling panel base — razor-sharp 1.2x0.6m T-bar grid evaluated analytically!)
+  // 6: ceiling_grid (clean bright ivory commercial fissured mineral acoustic tile; crisp T-bars analytic in gbuffer-pbr!)
   if (preset == 6u) {
-    let speck = pNoise(uv, vec2f(64.0), seed + 2.0);
-    // Authentic commercial acoustic ceiling wormhole fissures + fine pinholes
-    let fissure = smoothstep(0.76, 0.92, pFbm(uv * vec2f(1.0, 1.6), vec2f(24.0, 36.0), seed + 6.0, 2));
-    let pinhole = smoothstep(0.85, 0.95, pNoise(uv, vec2f(56.0), seed + 14.0));
-    let warmAge = pFbm(uv, vec2f(3.0), seed + 12.0, 3);
+    let speck = pNoise(uv, vec2f(72.0), seed + 2.0);
+    let fissure = smoothstep(0.81, 0.95, pFbm(uv * vec2f(1.0, 1.8), vec2f(28.0, 42.0), seed + 6.0, 2));
+    let pinhole = smoothstep(0.88, 0.97, pNoise(uv, vec2f(64.0), seed + 14.0));
+    let warmTone = pFbm(uv, vec2f(3.0), seed + 12.0, 3);
 
-    var panelCol = baseCol * (0.94 + 0.10 * speck) * (0.95 + 0.08 * warmAge);
-    panelCol *= 1.0 - max(fissure * 0.36, pinhole * 0.42);
-    let h = clamp(0.54 + speck * 0.10 - fissure * 0.24 - pinhole * 0.28, 0.0, 1.0);
-    let rough = clamp(baseRough + (1.0 - speck) * 0.05, 0.72, 0.97);
-    let ao = clamp((0.92 + 0.08 * speck) * (1.0 - fissure * 0.30) * (1.0 - pinhole * 0.35), 0.35, 1.0);
+    var panelCol = baseCol * (0.96 + 0.07 * speck) * (0.96 + 0.06 * warmTone);
+    panelCol *= 1.0 - max(fissure * 0.24, pinhole * 0.28);
+    let h = clamp(0.55 + speck * 0.08 - fissure * 0.20 - pinhole * 0.24, 0.0, 1.0);
+    let rough = clamp(baseRough + (1.0 - speck) * 0.04, 0.78, 0.97);
+    let ao = clamp((0.94 + 0.06 * speck) * (1.0 - fissure * 0.22) * (1.0 - pinhole * 0.26), 0.48, 1.0);
     return Sample(panelCol, rough, h, ao, 0.0, 0.0, 0.0, 0.0, vec2f(0.0));
   }
   // 7: wood_trim
   if (preset == 7u) {
-    let warp = pFbm(uv, vec2f(4.0, 16.0), seed, 3) * 0.25;
-    let grain = sin((uv.y * 24.0 + warp * 8.0) * 6.2831853) * 0.5 + 0.5;
+    let warp = pFbm(uv, vec2f(4.0, 16.0), seed, 3) * 0.20;
+    let grain = sin((uv.y * 20.0 + warp * 6.0) * 6.2831853) * 0.5 + 0.5;
     let fine = pNoise(uv, vec2f(8.0, 64.0), seed + 5.0);
-    let col = baseCol * (0.78 + 0.34 * grain) * (0.90 + 0.20 * fine);
-    let h = 0.5 + grain * 0.15 + fine * 0.08;
-    return Sample(col, clamp(baseRough + (1.0 - grain) * 0.12, 0.22, 0.78), h, 0.9 + 0.1 * grain, 0.0, m.pbr.z, 0.0, 0.0, vec2f(0.0));
+    let col = baseCol * (0.85 + 0.24 * grain) * (0.93 + 0.14 * fine);
+    let h = 0.5 + grain * 0.10 + fine * 0.06;
+    return Sample(col, clamp(baseRough + (1.0 - grain) * 0.10, 0.32, 0.80), h, 0.92 + 0.08 * grain, 0.0, m.pbr.z, 0.0, 0.0, vec2f(0.0));
   }
-  // 8: concrete_raw (architectural poured concrete grain & subtle tie-cone recesses; crisp 1.2 m panel seams evaluated analytically!)
+  // 8: concrete_raw (authentic rough poured board-formed architectural concrete — fine natural mineral aggregate!)
   if (preset == 8u) {
-    let f = fract(uv * 1.0);
-    let tie1 = 1.0 - smoothstep(0.015, 0.024, length(f - vec2f(0.25, 0.50)));
-    let tie2 = 1.0 - smoothstep(0.015, 0.024, length(f - vec2f(0.75, 0.50)));
-    let holes = max(tie1, tie2);
-
     let macroN = pFbm(uv, vec2f(3.0), seed, 4);
-    let grit = pFbm(uv, vec2f(24.0), seed + 5.0, 3);
-    let pores = smoothstep(0.80, 0.94, pNoise(uv, vec2f(48.0), seed + 13.0));
+    let boardGrain = pFbm(uv, vec2f(4.0, 24.0), seed + 3.0, 3);
+    let grit = pFbm(uv, vec2f(36.0), seed + 7.0, 3);
+    let microPores = smoothstep(0.86, 0.98, pNoise(uv, vec2f(96.0), seed + 13.0));
+    let efflor = smoothstep(0.68, 0.88, pFbm(uv, vec2f(4.0), seed + 19.0, 3));
 
-    var col = baseCol * (0.86 + 0.24 * macroN) * (0.92 + 0.16 * grit);
-    col = mix(col, col * 0.50, max(holes * 0.85, pores * 0.35));
-    let h = clamp(0.58 + (grit - 0.5) * 0.22 + (macroN - 0.5) * 0.10 - holes * 0.42 - pores * 0.18, 0.0, 1.0);
-    let rough = clamp(baseRough + (grit - 0.5) * 0.14, 0.45, 0.97);
-    let ao = (1.0 - holes * 0.55) * (1.0 - pores * 0.25) * (0.88 + 0.12 * grit);
+    var col = baseCol * (0.85 + 0.26 * macroN) * (0.93 + 0.14 * boardGrain) * (0.94 + 0.12 * grit);
+    col = mix(col, col * vec3f(1.10, 1.09, 1.05), efflor * 0.24);
+    col *= 1.0 - microPores * 0.14;
+    let h = clamp(0.54 + (grit - 0.5) * 0.24 + (boardGrain - 0.5) * 0.12 - microPores * 0.14, 0.0, 1.0);
+    let rough = clamp(baseRough + (grit - 0.5) * 0.12, 0.62, 0.98);
+    let ao = (1.0 - microPores * 0.14) * (0.90 + 0.10 * grit);
     return Sample(col, rough, h, ao, 0.0, 0.0, 0.0, m.extra.y, vec2f(0.0));
   }
-  // 9: concrete_floor (troweled concrete aggregate base; non-repeating world-space wet mirror puddles & 2.4 m saw-cuts evaluated analytically!)
+  // 9: concrete_floor (gritty rough troweled parking slab aggregate; puddles, cracks & worn yellow stripes analytic in gbuffer-pbr!)
   if (preset == 9u) {
-    let macroN = pFbm(uv, vec2f(2.0), seed, 4);
-    let trowel = pFbm(uv, vec2f(8.0), seed + 3.0, 4);
-    let grit = pFbm(uv, vec2f(32.0), seed + 7.0, 3);
+    let macroN = pFbm(uv, vec2f(3.0), seed, 4);
+    let trowel = pFbm(uv, vec2f(10.0), seed + 3.0, 4);
+    let grit = pFbm(uv, vec2f(48.0), seed + 7.0, 3);
+    let microPits = smoothstep(0.87, 0.98, pNoise(uv, vec2f(104.0), seed + 15.0));
 
-    let col = baseCol * (0.84 + 0.26 * macroN) * (0.90 + 0.18 * trowel) * (0.94 + 0.12 * grit);
-    let h = clamp(0.54 + (grit - 0.5) * 0.20 + (trowel - 0.5) * 0.12, 0.0, 1.0);
-    let rough = clamp(baseRough + 0.14 + (grit - 0.5) * 0.16, 0.45, 0.95);
-    let ao = 0.88 + 0.12 * grit;
-    return Sample(col, rough, h, ao, 0.0, 0.04, 0.0, m.extra.y, vec2f(0.0));
+    var col = baseCol * (0.80 + 0.32 * macroN) * (0.90 + 0.18 * trowel) * (0.93 + 0.14 * grit);
+    col *= 1.0 - microPits * 0.14;
+    let h = clamp(0.52 + (grit - 0.5) * 0.28 + (trowel - 0.5) * 0.14 - microPits * 0.14, 0.0, 1.0);
+    let rough = clamp(baseRough + (grit - 0.5) * 0.12, 0.74, 0.98);
+    let ao = (0.88 + 0.12 * grit) * (1.0 - microPits * 0.12);
+    return Sample(col, rough, h, ao, 0.0, 0.02, 0.0, m.extra.y, vec2f(0.0));
   }
-  // 10: concrete_painted
+  // 10: concrete_painted (weathered chalky off-white painted concrete columns with scuffs & subtle mineral texture)
   if (preset == 10u) {
     let n1 = pFbm(uv, vec2f(4.0), seed, 4);
-    let scuff = smoothstep(0.62, 0.84, pFbm(uv, vec2f(12.0), seed + 6.0, 3));
-    let col = mix(baseCol * (0.90 + 0.18 * n1), baseCol * 0.72, scuff * 0.45);
-    let h = 0.5 + (n1 - 0.5) * 0.16 - scuff * 0.08;
-    return Sample(col, clamp(baseRough + scuff * 0.22, 0.35, 0.95), h, 0.92 + 0.08 * n1, 0.0, m.pbr.z, 0.0, 0.0, vec2f(0.0));
+    let grit = pFbm(uv, vec2f(32.0), seed + 3.0, 3);
+    let scuff = smoothstep(0.62, 0.86, pFbm(uv, vec2f(10.0), seed + 6.0, 3));
+    let microPits = smoothstep(0.88, 0.98, pNoise(uv, vec2f(96.0), seed + 11.0));
+    var col = mix(baseCol * (0.91 + 0.15 * n1) * (0.95 + 0.10 * grit), baseCol * 0.74, scuff * 0.42);
+    col *= 1.0 - microPits * 0.12;
+    let h = clamp(0.54 + (grit - 0.5) * 0.18 - scuff * 0.08 - microPits * 0.12, 0.0, 1.0);
+    return Sample(col, clamp(baseRough + scuff * 0.15, 0.58, 0.96), h, (0.91 + 0.09 * grit) * (1.0 - microPits * 0.10), 0.0, m.pbr.z, 0.0, 0.0, vec2f(0.0));
   }
   // 11: stainless_steel & 12: dark_metal
   if (preset == 11u || preset == 12u) {

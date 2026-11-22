@@ -116,7 +116,7 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
 
   let hasSun = frame.sunColorInt.w > 0.5;
   let sunPhase = select(0.0, hgPhase(dot(rd, frame.sunDirRad.xyz), 0.62), hasSun);
-  let lightCount = min(u32(frame.skyHorizon.w + 0.5), 24u);
+  let lightCount = min(u32(frame.skyHorizon.w + 0.5), 32u);
   let fogDens = max(frame.fogColorDens.w, 0.012);
 
   var scatter = vec3f(0.0);
