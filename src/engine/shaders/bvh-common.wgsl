@@ -464,6 +464,269 @@ fn evalFoliageShadowAlpha(uv: vec2f) -> f32 {
   return select(0.0, 1.0, vNoise2(vec2f(uv.x * 5.6, uv.y * 8.2)) * edge > 0.34);
 }
 
+// =========================================================================
+// Shared Analytic Infinite-Resolution Level 0 Interior Surface Optics
+// Evaluated identically by gbuffer-pbr.wgsl (real-time) and reference-pt.wgsl (offline GTPT).
+// All fine detail smoothly band-limits via fwUV before Nyquist (zero camera-pan shimmer!).
+// =========================================================================
+struct InteriorEval {
+  handled: bool,
+  albedo: vec3f,
+  rough: f32,
+  coat: f32,
+  metallic: f32,
+  ao: f32,
+  slope: vec2f,
+  emissiveMask: f32,
+};
+
+fn evalAnalyticInterior(
+  uv: vec2f,
+  worldPos: vec3f,
+  m: MaterialGPU,
+  fwUV: vec2f,
+) -> InteriorEval {
+  let preset = u32(m.extra.x + 0.5);
+  let baseCol = m.albedoScale.rgb;
+  let baseRough = m.pbr.x;
+  let seed = m.extra.z;
+  let fwMax = max(max(fwUV.x, fwUV.y), 0.00025);
+
+  // --- Preset 4: Level 0 Vintage Commercial Wallpaper (4 crisp infinite-resolution patterns!) ---
+  if (preset == 4u) {
+    let aaDetail = 1.0 - smoothstep(0.009, 0.052, fwMax);
+    let microDetail = 1.0 - smoothstep(0.0012, 0.0085, fwMax);
+    var pat = 0.0;
+    var inkHeight = 0.0;
+
+    if (seed < 15.0) {
+      // Variant A (2002 HobbyTown right wall): crisp 11 x 16.5 cm vertical chevron-arrow damask
+      let rep = vec2f(9.0, 6.0);
+      let cell = fract(uv * rep);
+      let dx = abs(cell.x - 0.5);
+      let fwC = max(fwMax * 9.0, 0.012);
+      // Central narrow dotted rib + dual ascending V-chevrons + hairline vertical separator
+      let stem = 1.0 - smoothstep(0.025, 0.025 + fwC, dx);
+      let cx = dx * 2.0;
+      let chev1 = abs((cell.y - 0.24) - cx * 0.44);
+      let chev2 = abs((cell.y - 0.72) - cx * 0.44);
+      let chev = (1.0 - smoothstep(0.024, 0.024 + fwC, min(chev1, chev2))) * (1.0 - smoothstep(0.46, 0.58, cx));
+      let sepDot = 1.0 - smoothstep(0.048, 0.048 + fwC, length(vec2f(min(cell.x, 1.0 - cell.x) * 1.4, fract(cell.y * 3.0) - 0.5)));
+      let fineRule = 1.0 - smoothstep(0.016, 0.016 + fwC, min(cell.x, 1.0 - cell.x));
+      pat = clamp(chev * 0.76 + stem * 0.34 + sepDot * 0.46 + fineRule * 0.16, 0.0, 1.0);
+      inkHeight = pat;
+    } else if (seed < 30.0) {
+      // Variant B (2002 HobbyTown left wall): fine vertical micro-dot vine columns
+      let rep = vec2f(13.5, 13.5);
+      let cell = fract(uv * rep);
+      let fwC = max(fwMax * 13.5, 0.018);
+      let d1 = 1.0 - smoothstep(0.065, 0.065 + fwC, length(cell - vec2f(0.5, 0.5)));
+      let d2 = 1.0 - smoothstep(0.052, 0.052 + fwC, length(vec2f(min(cell.x, 1.0 - cell.x), min(cell.y, 1.0 - cell.y))));
+      let hair = 1.0 - smoothstep(0.022, 0.022 + fwC, abs(cell.x - 0.5));
+      pat = clamp(max(d1, d2) * 0.68 + hair * 0.14, 0.0, 1.0);
+      inkHeight = pat;
+    } else if (seed < 45.0) {
+      // Variant C (2002 HobbyTown midground partition): crisp fine double beige-olive pinstripes
+      let rep = vec2f(18.0, 4.0);
+      let cell = fract(uv * rep);
+      let fwC = max(fwMax * 18.0, 0.02);
+      let s1 = 1.0 - smoothstep(0.045, 0.045 + fwC, abs(cell.x - 0.25));
+      let s2 = 1.0 - smoothstep(0.024, 0.024 + fwC, abs(cell.x - 0.75));
+      pat = clamp(s1 * 0.56 + s2 * 0.34, 0.0, 1.0);
+      inkHeight = pat;
+    } else {
+      // Variant D (Kane Pixels Pier Hall & Corridor): crisp architectural Baroque ogee floral damask!
+      // Authentic ~26 x 31 cm wallpaper motif scale (never giant blurry blobs!)
+      let p = uv * vec2f(3.85, 3.20);
+      let row = floor(p.y);
+      let cell = fract(p + vec2f(0.5 * (row - 2.0 * floor(row * 0.5)), 0.0)) - 0.5;
+      let ax = abs(cell.x);
+      let ay = abs(cell.y);
+      let fwC = max(fwMax * 3.85, 0.008);
+
+      // Graceful curved S-ogee vine trellis framing each medallion
+      let ogeeX = 0.24 + 0.18 * cos(cell.y * 6.2831853);
+      let ogee = (1.0 - smoothstep(0.016, 0.016 + fwC, abs(ax - ogeeX))) * 0.52;
+      // Central pointed quatrefoil Baroque fleur-de-lis medallion with crisp hollow filigree rings
+      let q = cell * vec2f(1.32, 0.92);
+      let r = length(q);
+      let ang = atan2(q.y, q.x);
+      let petalR = 0.20 + 0.055 * cos(ang * 4.0) + 0.022 * cos(ang * 8.0);
+      let outerRing = (1.0 - smoothstep(0.018, 0.018 + fwC, abs(r - petalR))) * 0.78;
+      let innerFill = (1.0 - smoothstep(petalR * 0.58, petalR * 0.58 + fwC, r)) * smoothstep(0.028, 0.055, r) * 0.42;
+      let centerPip = (1.0 - smoothstep(0.022, 0.022 + fwC, r)) * 0.80;
+      // Delicate crown & side acanthus scroll leaves
+      let crown = (1.0 - smoothstep(0.026, 0.026 + fwC, length(vec2f(ax * 1.45, ay - 0.31)))) * 0.65;
+      let sideLeaf = (1.0 - smoothstep(0.022, 0.022 + fwC, length(vec2f(ax - 0.26, ay * 1.65)))) * 0.55;
+      pat = clamp(ogee + outerRing + innerFill + centerPip + crown + sideLeaf, 0.0, 1.0);
+      inkHeight = pat;
+    }
+
+    // Smoothly attenuate high-frequency ink contrast toward area average far away (anti-aliasing!)
+    let patFiltered = mix(0.24, pat, aaDetail);
+
+    // Exact 0.60 m wallpaper roll butt-seams + subtle roll-to-roll age & dye-lot shift
+    let rollIdx = floor(uv.x / 0.60);
+    let rollTint = 0.972 + 0.052 * vHash2(vec2f(rollIdx, seed + 3.1));
+    let rollSeam = filteredGridCoverage(vec2f(uv.x / 0.60, 0.25), vec2f(fwUV.x / 0.60, 0.001), 0.0038);
+
+    // Multi-scale real drywall backing wave + water-damage humidity blotches + baseboard wicking
+    let wallCoord = vec2f(worldPos.x + worldPos.z, worldPos.y);
+    let macroAge = vFbm2(wallCoord * vec2f(0.32, 0.42) + vec2f(seed * 1.3, 4.1));
+    let stain = smoothstep(0.58, 0.84, vFbm2(wallCoord * vec2f(0.55, 0.75) + vec2f(13.7, -6.2)));
+    let ceilLeak = smoothstep(2.15, 2.74, worldPos.y) * smoothstep(0.50, 0.82, vFbm2(vec2f((worldPos.x + worldPos.z) * 1.15, worldPos.y * 0.55)));
+    let dampBase = smoothstep(0.42, 0.08, worldPos.y) * (0.40 + 0.60 * vFbm2(vec2f((worldPos.x + worldPos.z) * 0.85, 2.1)));
+
+    // Fine vertical woven paper/vinyl linen micro-texture (band-limited before Nyquist)
+    let linen = (vNoise2(vec2f(uv.x * 165.0, uv.y * 42.0)) - 0.5) * microDetail;
+
+    var col = baseCol * rollTint * mix(vec3f(1.03, 1.02, 0.98), vec3f(0.70, 0.65, 0.44), patFiltered);
+    col *= (0.92 + 0.14 * macroAge);
+    col = mix(col, col * vec3f(0.84, 0.78, 0.56), (stain * 0.30 + ceilLeak * 0.42));
+    col *= (1.0 - dampBase * 0.13) * (1.0 - rollSeam * 0.15) * (1.0 + linen * 0.055);
+
+    // Realistic paper vs printed vinyl-ink roughness contrast (subtle grazing sheen catches fluorescent panels!)
+    let rough = clamp(mix(baseRough + 0.04, 0.54, patFiltered) - dampBase * 0.10 + (0.5 - macroAge) * 0.06, 0.46, 0.95);
+    let coat = mix(0.04, 0.18, patFiltered) + dampBase * 0.05;
+    let ao = (1.0 - rollSeam * 0.22) * (0.95 + 0.05 * macroAge);
+
+    // Subtle drywall joint undulation + fine embossed vinyl paper micro-normal
+    let eps = max(fwMax * 0.7, 0.002);
+    let gx = (vNoise2((uv + vec2f(eps, 0.0)) * vec2f(92.0, 28.0)) - vNoise2((uv - vec2f(eps, 0.0)) * vec2f(92.0, 28.0))) * 0.095 * microDetail;
+    let gy = (vNoise2((uv + vec2f(0.0, eps)) * vec2f(92.0, 28.0)) - vNoise2((uv - vec2f(0.0, eps)) * vec2f(92.0, 28.0))) * 0.065 * microDetail;
+    let plasterWave = (vec2f(vNoise2(wallCoord * 1.4), vNoise2(wallCoord * 1.4 + vec2f(7.1, 3.2))) - 0.5) * 0.028;
+    let seamSlope = vec2f(rollSeam * 0.14 * sign(fract(uv.x / 0.60) - 0.5), 0.0);
+    let slope = (vec2f(gx, gy) + plasterWave + seamSlope) * (1.0 - inkHeight * 0.15);
+
+    return InteriorEval(true, col, rough, coat, 0.0, ao, slope, 0.0);
+  }
+
+  // --- Preset 3: Painted Commercial Drywall / Matte Plaster (Pitfalls walls, pit shafts, trim) ---
+  if (preset == 3u) {
+    let microW = 1.0 - smoothstep(0.0018, 0.012, fwMax);
+    let medW = 1.0 - smoothstep(0.006, 0.036, fwMax);
+    let pW = vec2f(worldPos.x + worldPos.z, worldPos.y);
+    let macroTone = vFbm2(pW * 0.42 + vec2f(seed * 1.9, 3.7));
+    let roller = (vNoise2(uv * 28.0 + vec2f(seed, 5.1)) - 0.5) * medW;
+    let stipple = (vNoise2(uv * 115.0 + vec2f(4.2, seed)) - 0.5) * microW;
+    // Subtle downward moisture streaking inside deep negative-Y Pitfalls shafts
+    let pitDark = smoothstep(0.0, -3.5, worldPos.y);
+    let pitStreak = smoothstep(0.45, 0.82, vFbm2(vec2f((worldPos.x + worldPos.z) * 2.2, worldPos.y * 0.45))) * pitDark;
+
+    var col = baseCol * (0.92 + 0.14 * macroTone) * (1.0 + roller * 0.045 + stipple * 0.040);
+    col *= 1.0 - pitStreak * 0.28;
+    let eps = max(fwMax * 0.7, 0.002);
+    let sx = (vNoise2((uv + vec2f(eps, 0.0)) * 115.0) - vNoise2((uv - vec2f(eps, 0.0)) * 115.0)) * 0.12 * microW;
+    let sy = (vNoise2((uv + vec2f(0.0, eps)) * 115.0) - vNoise2((uv - vec2f(0.0, eps)) * 115.0)) * 0.12 * microW;
+    let rough = clamp(baseRough + (0.5 - macroTone) * 0.08 + pitStreak * 0.06, 0.22, 0.98);
+    return InteriorEval(true, col, rough, m.pbr.z, 0.0, 0.95 + 0.05 * macroTone, vec2f(sx, sy), 0.0);
+  }
+
+  // --- Preset 5: Level 0 Commercial Damp Broadloom Cut-Pile Carpet (seamless tactile wool pile, NEVER clay!) ---
+  if (preset == 5u) {
+    let pXZ = worldPos.xz;
+    let microW = 1.0 - smoothstep(0.0025, 0.018, fwMax);
+    let medW = 1.0 - smoothstep(0.007, 0.048, fwMax);
+    let broadW = 1.0 - smoothstep(0.018, 0.095, fwMax);
+
+    // Multi-scale woven commercial loop-pile tufts (7 mm, 18 mm, and 45 mm organic cut-pile clumping)
+    let tuftFine = (vNoise2(pXZ * 132.0 + vec2f(seed * 3.1, 1.7)) - 0.5) * microW;
+    let tuftMed = (vNoise2(pXZ * 54.0 + vec2f(-4.2, seed * 2.3)) - 0.5) * medW;
+    let tuftBroad = (vNoise2(pXZ * 20.0 + vec2f(8.1, -3.4)) - 0.5) * broadW;
+    let nap = vFbm2(pXZ * 0.85 + vec2f(3.1, 7.4));
+    let macroWear = vFbm2(pXZ * 0.24 + vec2f(-6.8, 2.5));
+    let dampPatch = smoothstep(0.50, 0.80, vFbm2(pXZ * 0.34 + vec2f(19.2, -5.8)));
+
+    var col = baseCol * (0.82 + 0.28 * macroWear) * (0.89 + 0.20 * nap);
+    col *= (1.0 + tuftFine * 0.26 + tuftMed * 0.20 + tuftBroad * 0.13);
+    col = mix(col, col * vec3f(0.68, 0.65, 0.56), dampPatch * 0.42);
+
+    // Band-limited fibrous pile normal perturbation (velvety tactile light catch at near AND mid-distance!)
+    let eps = max(fwMax * 0.65, 0.0025);
+    let hX = vNoise2((pXZ + vec2f(eps, 0.0)) * 132.0) - vNoise2((pXZ - vec2f(eps, 0.0)) * 132.0);
+    let hY = vNoise2((pXZ + vec2f(0.0, eps)) * 132.0) - vNoise2((pXZ - vec2f(0.0, eps)) * 132.0);
+    let mX = vNoise2((pXZ + vec2f(eps * 2.0, 0.0)) * 54.0) - vNoise2((pXZ - vec2f(eps * 2.0, 0.0)) * 54.0);
+    let mY = vNoise2((pXZ + vec2f(0.0, eps * 2.0)) * 54.0) - vNoise2((pXZ - vec2f(0.0, eps * 2.0)) * 54.0);
+    let bX = vNoise2((pXZ + vec2f(eps * 3.0, 0.0)) * 20.0) - vNoise2((pXZ - vec2f(eps * 3.0, 0.0)) * 20.0);
+    let bY = vNoise2((pXZ + vec2f(0.0, eps * 3.0)) * 20.0) - vNoise2((pXZ - vec2f(0.0, eps * 3.0)) * 20.0);
+    let slope = vec2f(hX, hY) * (0.38 * microW) + vec2f(mX, mY) * (0.26 * medW) + vec2f(bX, bY) * (0.14 * broadW);
+
+    let rough = clamp(mix(0.95, 0.78, dampPatch) - tuftMed * 0.06, 0.74, 0.99);
+    let ao = clamp(0.84 + 0.16 * (0.5 + tuftFine + tuftMed * 0.7 + tuftBroad * 0.4), 0.55, 1.0);
+    return InteriorEval(true, col, rough, dampPatch * 0.06, 0.0, ao, slope, 0.0);
+  }
+
+  // --- Preset 6: Level 0 Commercial Drop Ceiling (recessed 1.20 x 0.60 m glossy T-bars + fissured acoustic tiles!) ---
+  if (preset == 6u) {
+    let g = vec2f(uv.x / 1.20, uv.y / 0.60);
+    let fwG = vec2f(fwUV.x / 1.20, fwUV.y / 0.60);
+    let barX = filteredGridCoverage(vec2f(g.x, 0.25), vec2f(fwG.x, 0.001), 0.026 / 1.20);
+    let barY = filteredGridCoverage(vec2f(0.25, g.y), vec2f(0.001, fwG.y), 0.026 / 0.60);
+    let tBar = clamp(barX + barY - barX * barY, 0.0, 1.0);
+
+    // Crisp recessed tile-to-T-bar reveal shadow lip
+    let lipX = filteredGridCoverage(vec2f(g.x, 0.25), vec2f(fwG.x, 0.001), 0.048 / 1.20);
+    let lipY = filteredGridCoverage(vec2f(0.25, g.y), vec2f(0.001, fwG.y), 0.048 / 0.60);
+    let shadowLip = clamp(lipX + lipY - lipX * lipY, 0.0, 1.0) * (1.0 - tBar);
+
+    let cellId = vHash2(floor(g) + vec2f(7.3, 19.1));
+    let waterRing = smoothstep(0.62, 0.84, vFbm2(worldPos.xz * 0.36 + vec2f(5.4, 2.8)));
+    let microW = 1.0 - smoothstep(0.0020, 0.014, fwMax);
+
+    // Crisp analytic fissured mineral-wool acoustic tile pinholes & worm fissures!
+    let speck = vNoise2(uv * 85.0 + vec2f(cellId * 17.0, 3.1));
+    let pinhole = smoothstep(0.84, 0.95, vNoise2(uv * 54.0 + vec2f(11.2, cellId * 29.0))) * microW;
+    let fissure = smoothstep(0.76, 0.92, vFbm2(uv * vec2f(19.0, 32.0) + vec2f(cellId * 13.0, 5.7))) * microW;
+
+    var tileCol = baseCol * (0.94 + 0.09 * cellId) * (0.94 + 0.11 * speck);
+    tileCol = mix(tileCol, tileCol * vec3f(0.82, 0.75, 0.54), waterRing * 0.48);
+    tileCol *= 1.0 - max(fissure * 0.28, pinhole * 0.34);
+    tileCol *= 1.0 - shadowLip * 0.38;
+
+    // Bright off-white baked-enamel aluminum T-bar rails (catches real specular reflections of troffers!)
+    let barCol = vec3f(0.88, 0.86, 0.78);
+    let col = mix(tileCol, barCol, tBar);
+    let rough = mix(clamp(baseRough + (1.0 - speck) * 0.06, 0.80, 0.97), 0.24, tBar);
+    let coat = mix(0.0, 0.42, tBar);
+    let ao = mix((1.0 - shadowLip * 0.44) * (1.0 - max(fissure * 0.22, pinhole * 0.28)), 1.0, tBar);
+
+    let eps = max(fwMax * 0.65, 0.002);
+    let fX = (vNoise2((uv + vec2f(eps, 0.0)) * 54.0) - vNoise2((uv - vec2f(eps, 0.0)) * 54.0)) * 0.22 * microW;
+    let fY = (vNoise2((uv + vec2f(0.0, eps)) * 54.0) - vNoise2((uv - vec2f(0.0, eps)) * 54.0)) * 0.22 * microW;
+    let slope = vec2f(fX, fY) * (1.0 - tBar);
+
+    return InteriorEval(true, col, rough, coat, 0.0, ao, slope, 0.0);
+  }
+
+  // --- Preset 13: Commercial Recessed Prismatic Acrylic Troffer Diffuser (twin T8 tubes + micro-prism!) ---
+  if (preset == 13u) {
+    let u = clamp(uv.x, 0.0, 1.0);
+    let v = clamp(uv.y, 0.0, 1.0);
+    let edge = min(min(u, 1.0 - u), min(v, 1.0 - v));
+    let frame = 1.0 - smoothstep(0.018, 0.036, edge);
+    let microW = 1.0 - smoothstep(0.004, 0.025, fwMax);
+
+    let px = abs(fract(u * 52.0) - 0.5) * 2.0;
+    let py = abs(fract(v * 26.0) - 0.5) * 2.0;
+    let prism = mix(0.92, 0.84 + 0.16 * (1.0 - max(px, py)), microW);
+
+    // Two luminous internal T8 fluorescent tubes slightly dimmer near socket ends
+    let tube1 = exp(-pow((v - 0.30) / 0.17, 2.0));
+    let tube2 = exp(-pow((v - 0.70) / 0.17, 2.0));
+    let ends = smoothstep(0.02, 0.14, u) * smoothstep(0.02, 0.14, 1.0 - u);
+    let dust = 1.0 - 0.08 * vFbm2(uv * 6.0 + vec2f(seed, 2.1));
+    let glow = clamp((0.52 + 0.52 * max(tube1, tube2)) * (0.72 + 0.28 * ends) * prism * dust * (1.0 - frame), 0.0, 1.0);
+
+    let col = mix(baseCol * prism * dust, vec3f(0.55, 0.54, 0.48), frame);
+    let rough = mix(0.22, 0.32, frame);
+    let coat = mix(0.55, 0.20, frame);
+    return InteriorEval(true, col, rough, coat, frame * 0.45, 1.0 - frame * 0.15, vec2f(0.0), glow);
+  }
+
+  return InteriorEval(false, baseCol, baseRough, m.pbr.z, m.pbr.y, 1.0, vec2f(0.0), 0.0);
+}
+
+
 
 
 

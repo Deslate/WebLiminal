@@ -186,7 +186,9 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
   }
 
   // 2. Area Lights, Frosted Windows & Skylight Portals.
-  let lightCount = u32(env.skyHorizon.w + 0.5);
+  //    Uses exact local-importance discrete CDF (w_i = power_i * cosSurf * cosLight / max(dist2, 0.14))
+  //    so multi-chamber interiors like Level 0 (43 troffers) waste zero rays on lights in other rooms!
+  let lightCount = min(u32(env.skyHorizon.w + 0.5), 64u);
   if (lightCount > 0u) {
     if (!isBounce && lightCount <= 6u) {
       for (var li = 0u; li < lightCount; li++) {
@@ -197,28 +199,57 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
         *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
       }
     } else {
-      let pickSamples = select(min(lightCount, 4u), min(lightCount, select(2u, 3u, lightCount > 12u)), isBounce);
-      for (var s = 0u; s < pickSamples; s++) {
-        var li = 0u;
-        var pdf = 1.0;
-        if (lightCount <= 2u) {
-          li = s;
-        } else {
-          let xi = rand01(rng);
+      var weights: array<f32, 64>;
+      var sumW = 0.0;
+      let maxDist2 = select(324.0, 169.0, isBounce);
+      for (var li = 0u; li < lightCount; li++) {
+        let l = lights[li];
+        let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+        let toL = lCenter - p;
+        let d2 = dot(toL, toL);
+        if (d2 > maxDist2 || d2 < 0.002) {
+          weights[li] = 0.0;
+          continue;
+        }
+        let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+        let halfSpan = 0.5 * (length(l.edgeUPower.xyz) + length(l.edgeVKind.xyz));
+        if (dot(lNorm, -toL) <= -0.02 || dot(n, toL) + halfSpan <= 0.0) {
+          weights[li] = 0.0;
+          continue;
+        }
+        let invD = inverseSqrt(max(d2, 0.08));
+        let dirL = toL * invD;
+        let cL = max(dot(lNorm, -dirL), 0.06);
+        let cS = max(dot(n, dirL), 0.06);
+        let w = (l.edgeUPower.w * cL * cS) / max(d2, 0.14);
+        weights[li] = w;
+        sumW += w;
+      }
+
+      if (sumW > 1e-6) {
+        let pickSamples = select(2u, 1u, isBounce);
+        let invS = 1.0 / f32(pickSamples);
+        for (var s = 0u; s < pickSamples; s++) {
+          // Stratified discrete CDF pick across local visible lights (100% unbiased!)
+          let xi = ((f32(s) + rand01(rng)) * invS) * sumW;
+          var acc = 0.0;
+          var li = 0u;
           for (var k = 0u; k < lightCount; k++) {
-            if (xi <= lights[k].radianceCdf.w || k == lightCount - 1u) {
+            acc += weights[k];
+            if (acc >= xi) {
               li = k;
               break;
             }
           }
-          pdf = max(0.0001, lights[li].edgeUPower.w / max(env.extra.x, 0.001));
+          let wPick = weights[li];
+          if (wPick <= 1e-8) { continue; }
+          let pdf = wPick / sumW;
+          var wi = vec3f(0.0);
+          let contrib = evalAreaLight(p, n, lights[li], rand01(rng), rand01(rng), &wi) * (invS / pdf);
+          let clamped = min(contrib, select(vec3f(26.0), vec3f(12.0), isBounce));
+          total += clamped;
+          *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
         }
-        var wi = vec3f(0.0);
-        let scale = f32(select(pickSamples, 1u, lightCount <= 2u));
-        let contrib = evalAreaLight(p, n, lights[li], rand01(rng), rand01(rng), &wi) / (pdf * scale);
-        let clamped = min(contrib, select(vec3f(24.0), vec3f(10.0), isBounce));
-        total += clamped;
-        *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
       }
     }
   }

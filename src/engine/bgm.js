@@ -1,13 +1,12 @@
-// Pure-Code Procedural Backrooms / Liminal Space BGM Synthesizer (Web Audio API).
+// Pure-Code Classic Backrooms / Liminal Space BGM Synthesizer (Web Audio API).
 // Zero external audio files, zero dependencies.
 //
-// Three 16-bar original procedural compositions tailored to each liminal realm:
-//   - backrooms (Level 0)   : "Ballroom Tape Loop (1934)" — haunted 3/4 Caretaker-style waltz,
-//                             muted 1930s horn & Rhodes, vinyl crackle, tape wow/flutter, distant hall reverb.
-//   - poolrooms (Level 37)  : "Submerged Sunbeam" — dreamy floating Db Maj9/Lydian aquatic ambient,
-//                             DX7 glassy electric piano, crystalline water-bells, Juno pad, stereo tape echo.
-//   - parking   (Level 1)   : "Concrete Echoes" — dusty Boards-of-Canada / VHS D-Dorian tape synth,
-//                             detuned cassette pads, echoing kalimba/Rhodes ostinato, mournful analog lead.
+// Faithful pure-code Web Audio arrangements of iconic Backrooms classics:
+//   - poolrooms (default ON)  : "Hi — TEMPOREX" (76 BPM, warm lo-fi Dexed/DX7 FM electric piano
+//                                & dreamy organ pad on the iconic Fmaj7 -> Dmaj7 -> Dm7 -> Am7 -> D7 sway)
+//   - backrooms (default OFF) : "It's Just a Burning Memory (Heartaches, 1931)" (79 BPM Ab Major
+//                                1930s muted-horn ballroom arrangement, vinyl crackle, distant hall reverb;
+//                                Level 0 defaults to pure realistic fluorescent ballast ambience unless toggled ON)
 
 export function midiToHz(midi) {
   return 440 * Math.pow(2, (midi - 69) / 12);
@@ -16,208 +15,196 @@ export function midiToHz(midi) {
 // Pure declarative 16-bar track data (exported for deterministic validation in unit tests).
 export const BGM_TRACKS = {
   // =========================================================================
-  // LEVEL 0 · "Ballroom Tape Loop (1934)" — Haunted 3/4 Vintage Ballroom Waltz
-  // 72 BPM, 3/4 meter (stepsPerBar = 6 eighth-note slots, 16 bars = 96 steps = 40.0 s)
-  // Key: Eb Major / C Minor with bittersweet minor-iv (Abm6) & dom7b9 nostalgic turns.
-  // =========================================================================
-  backrooms: {
-    id: "backrooms",
-    title: "Ballroom Tape Loop (1934)",
-    style: "Haunted 3/4 Gramophone Waltz",
-    bpm: 72,
-    stepsPerBar: 6, // 3 beats x 2 eighth-note subdivisions
-    bars: 16,
-    filterLowHz: 155,
-    filterHighHz: 2150,
-    filterQ: 0.9,
-    wowDepthCents: 15,
-    wowRateHz: 0.34,
-    flutterDepthCents: 4.5,
-    vinylLevel: 0.036,
-    reverbSend: 0.78,
-    delaySend: 0.24,
-    baseGain: 0.44,
-    // 16-bar harmonic progression: bass root + warm close-voiced ballroom chords
-    chords: [
-      { bass: 39, notes: [55, 58, 62, 65] }, // 1:  Ebmaj9
-      { bass: 43, notes: [53, 59, 63, 67] }, // 2:  G7(b13)
-      { bass: 48, notes: [55, 58, 62, 63] }, // 3:  Cm9
-      { bass: 46, notes: [53, 56, 61, 63] }, // 4:  Bbm7 -> Eb7 color
-      { bass: 44, notes: [55, 56, 60, 63] }, // 5:  Abmaj7
-      { bass: 44, notes: [53, 56, 59, 63] }, // 6:  Abm6 (signature nostalgic heartache)
-      { bass: 43, notes: [55, 58, 62, 63] }, // 7:  Ebmaj7/G
-      { bass: 46, notes: [53, 56, 59, 62] }, // 8:  Bb7(b9)
-      { bass: 48, notes: [55, 58, 62, 63] }, // 9:  Cm9
-      { bass: 47, notes: [53, 55, 59, 62] }, // 10: G7/B
-      { bass: 46, notes: [53, 56, 60, 61] }, // 11: Bbm9
-      { bass: 41, notes: [51, 55, 57, 60] }, // 12: F9
-      { bass: 44, notes: [55, 56, 60, 63] }, // 13: Abmaj7
-      { bass: 44, notes: [53, 56, 59, 63] }, // 14: Abm6
-      { bass: 39, notes: [55, 58, 62, 63] }, // 15: Ebmaj7
-      { bass: 46, notes: [53, 56, 60, 62] }, // 16: Bb13sus4 -> gentle loop back to Eb
-    ],
-    // Expressive slow waltz melody (step index 0..95, midi pitch, durSteps, vel)
-    melody: [
-      // Section A: aching, half-remembered sighing ballroom motif
-      { step: 0, midi: 74, dur: 4, vel: 0.72 }, // D5
-      { step: 4, midi: 75, dur: 2, vel: 0.62 }, // Eb5
-      { step: 6, midi: 74, dur: 3, vel: 0.74 }, // D5
-      { step: 9, midi: 71, dur: 3, vel: 0.60 }, // B4 (G7 tension)
-      { step: 12, midi: 72, dur: 4, vel: 0.70 }, // C5
-      { step: 16, midi: 70, dur: 2, vel: 0.56 }, // Bb4
-      { step: 18, midi: 68, dur: 5, vel: 0.54 }, // Ab4 (breath)
-      // Section A': tender climb into heartbreaking Abm6 fall
-      { step: 24, midi: 75, dur: 4, vel: 0.76 }, // Eb5
-      { step: 28, midi: 77, dur: 2, vel: 0.66 }, // F5
-      { step: 30, midi: 75, dur: 3, vel: 0.74 }, // Eb5
-      { step: 33, midi: 71, dur: 3, vel: 0.62 }, // Cb5 / B4 (Abm6 sigh!)
-      { step: 36, midi: 70, dur: 4, vel: 0.68 }, // Bb4
-      { step: 40, midi: 67, dur: 2, vel: 0.54 }, // G4
-      { step: 42, midi: 65, dur: 5, vel: 0.56 }, // F4
-      // Section B: hazy upper-register recollection
-      { step: 48, midi: 79, dur: 4, vel: 0.74 }, // G5
-      { step: 52, midi: 77, dur: 2, vel: 0.64 }, // F5
-      { step: 54, midi: 74, dur: 4, vel: 0.68 }, // D5
-      { step: 58, midi: 72, dur: 2, vel: 0.58 }, // C5
-      { step: 60, midi: 73, dur: 4, vel: 0.66 }, // Db5
-      { step: 64, midi: 72, dur: 2, vel: 0.56 }, // C5
-      { step: 66, midi: 69, dur: 5, vel: 0.58 }, // A4 (F9 warm lift)
-      // Section A": dissolving homeward cadence
-      { step: 72, midi: 75, dur: 4, vel: 0.72 }, // Eb5
-      { step: 76, midi: 72, dur: 2, vel: 0.60 }, // C5
-      { step: 78, midi: 71, dur: 4, vel: 0.68 }, // Cb5 (Abm6 echo)
-      { step: 82, midi: 68, dur: 2, vel: 0.54 }, // Ab4
-      { step: 84, midi: 67, dur: 6, vel: 0.66 }, // G4 (resting on Ebmaj7)
-      { step: 90, midi: 70, dur: 4, vel: 0.48 }, // Bb4 (fading into tape echo)
-    ],
-  },
-
-  // =========================================================================
-  // POOLROOMS · "Submerged Sunbeam" — Dreamcore / Aquatic Ambience
-  // 62 BPM, 4/4 floating meter (stepsPerBar = 8 eighth-note slots, 16 bars = 128 steps = 61.9 s)
-  // Key: Db Major / Bb Minor9 — shimmering Lydian & Maj9 voicings in liquid reverb.
+  // POOLROOMS · "Hi" — TEMPOREX (Care, 2016) — Pure-Code DX7 / Dexed Lo-Fi Arrangement
+  // 76 BPM (152 BPM double-time), 4/4 dreamy swaying meter (8 eighth-note steps/bar, 16 bars = 50.5 s)
+  // Authentic Chordify harmonic progression: Fmaj7 -> Dmaj7 -> Dm7 -> Am7/Dm7 -> D7 -> Fmaj7/F7 -> D7
   // =========================================================================
   poolrooms: {
     id: "poolrooms",
-    title: "Submerged Sunbeam",
-    style: "Dreamcore · Aquatic Ambience",
-    bpm: 62,
-    stepsPerBar: 8,
+    title: "Hi — TEMPOREX",
+    style: "Classic Backrooms DX7 Lo-Fi",
+    defaultEnabled: true,
+    bpm: 76,
+    stepsPerBar: 8, // 4 quarter beats x 2 eighth subdivisions
     bars: 16,
-    filterLowHz: 52,
-    filterHighHz: 4600,
-    filterQ: 0.65,
-    wowDepthCents: 9,
-    wowRateHz: 0.22,
-    flutterDepthCents: 2.2,
-    vinylLevel: 0.0,
-    reverbSend: 0.88,
-    delaySend: 0.52,
-    baseGain: 0.34,
+    filterLowHz: 62,
+    filterHighHz: 3850,
+    filterQ: 0.7,
+    wowDepthCents: 12.5,
+    wowRateHz: 0.28,
+    flutterDepthCents: 3.4,
+    vinylLevel: 0.010, // subtle warm bedroom-cassette air
+    reverbSend: 0.80,
+    delaySend: 0.36,
+    baseGain: 0.38,
     chords: [
-      { bass: 37, notes: [56, 60, 61, 63, 65] }, // 1:  Dbmaj9
-      { bass: 41, notes: [56, 60, 63, 65, 68] }, // 2:  Fm11
-      { bass: 42, notes: [58, 60, 61, 65, 66] }, // 3:  Gbmaj9(#11)
-      { bass: 44, notes: [56, 60, 63, 65, 68] }, // 4:  Ab6/9
-      { bass: 46, notes: [56, 60, 61, 65, 68] }, // 5:  Bbm9
-      { bass: 41, notes: [55, 56, 60, 63, 68] }, // 6:  Fm9
-      { bass: 42, notes: [58, 61, 65, 68, 70] }, // 7:  Gbmaj9
-      { bass: 41, notes: [56, 60, 61, 63, 65] }, // 8:  Dbmaj9/F
-      { bass: 39, notes: [54, 58, 61, 65, 68] }, // 9:  Ebm9
-      { bass: 44, notes: [54, 58, 61, 65, 66] }, // 10: Ab13sus4
-      { bass: 37, notes: [56, 60, 61, 63, 65] }, // 11: Dbmaj9
-      { bass: 46, notes: [56, 60, 61, 65, 68] }, // 12: Bbm9
-      { bass: 42, notes: [58, 61, 65, 68, 70] }, // 13: Gbmaj9
-      { bass: 42, notes: [57, 61, 65, 66, 69] }, // 14: Gbm(maj7) dreamlike shimmer
-      { bass: 37, notes: [56, 60, 61, 63, 65] }, // 15: Dbmaj9
-      { bass: 44, notes: [56, 60, 63, 65, 68] }, // 16: Ab6/9
+      { bass: 41, notes: [57, 60, 64, 69] }, // 1:  Fmaj7 (A3 C4 E4 A4)
+      { bass: 41, notes: [57, 60, 64, 67] }, // 2:  Fmaj9 (A3 C4 E4 G4)
+      { bass: 38, notes: [54, 57, 61, 66] }, // 3:  Dmaj7 (F#3 A3 C#4 F#4) — iconic nostalgic major lift!
+      { bass: 38, notes: [54, 57, 60, 64] }, // 4:  D9    (F#3 A3 C4 E4)
+      { bass: 38, notes: [53, 57, 60, 65] }, // 5:  Dm7   (F3 A3 C4 F4)
+      { bass: 45, notes: [55, 60, 64, 67] }, // 6:  Am7   (G3 C4 E4 G4) -> softens into Dm7
+      { bass: 38, notes: [54, 57, 60, 66] }, // 7:  D7    (F#3 A3 C4 F#4)
+      { bass: 38, notes: [54, 57, 60, 64] }, // 8:  D9    (F#3 A3 C4 E4)
+      { bass: 41, notes: [57, 60, 64, 69] }, // 9:  Fmaj7
+      { bass: 41, notes: [57, 60, 63, 69] }, // 10: F7    (dreamy bluesy color turn from recording)
+      { bass: 38, notes: [54, 57, 60, 66] }, // 11: D7
+      { bass: 38, notes: [54, 57, 60, 64] }, // 12: D9
+      { bass: 41, notes: [57, 60, 64, 69] }, // 13: Fmaj7
+      { bass: 38, notes: [54, 57, 61, 66] }, // 14: Dmaj7
+      { bass: 38, notes: [53, 57, 60, 65] }, // 15: Dm7
+      { bass: 38, notes: [54, 57, 60, 64] }, // 16: D7(9) -> hypnotic loop back to Fmaj7
     ],
-    // Sparse glistening high water-bell / celesta melody floating over arpeggios
+    // Gentle, hypnotic, nostalgic high DX7 bell-keyboard motif floating over the Fmaj7 <-> Dmaj7 sway
     melody: [
-      { step: 0, midi: 77, dur: 6, vel: 0.64 },  // F5
-      { step: 6, midi: 80, dur: 4, vel: 0.58 },  // Ab5
-      { step: 10, midi: 75, dur: 6, vel: 0.56 }, // Eb5
-      { step: 16, midi: 77, dur: 5, vel: 0.66 }, // F5
-      { step: 21, midi: 82, dur: 5, vel: 0.60 }, // Bb5
-      { step: 26, midi: 80, dur: 6, vel: 0.54 }, // Ab5
-      { step: 32, midi: 73, dur: 6, vel: 0.62 }, // Db5
-      { step: 38, midi: 75, dur: 4, vel: 0.56 }, // Eb5
-      { step: 42, midi: 77, dur: 6, vel: 0.58 }, // F5
-      { step: 48, midi: 80, dur: 6, vel: 0.66 }, // Ab5
-      { step: 54, midi: 84, dur: 6, vel: 0.62 }, // C6 (sunbeam peak!)
-      { step: 60, midi: 80, dur: 4, vel: 0.50 }, // Ab5
-      { step: 64, midi: 78, dur: 6, vel: 0.64 }, // Gb5
-      { step: 70, midi: 77, dur: 4, vel: 0.56 }, // F5
-      { step: 74, midi: 75, dur: 6, vel: 0.58 }, // Eb5
-      { step: 80, midi: 73, dur: 6, vel: 0.62 }, // Db5
-      { step: 88, midi: 80, dur: 6, vel: 0.60 }, // Ab5
-      { step: 96, midi: 82, dur: 6, vel: 0.66 }, // Bb5
-      { step: 104, midi: 81, dur: 6, vel: 0.62 },// A5 (Gbm maj7 luminescence!)
-      { step: 112, midi: 80, dur: 8, vel: 0.64 },// Ab5
-      { step: 120, midi: 75, dur: 7, vel: 0.48 },// Eb5
+      // Bars 1-2 (Fmaj7): warm tender floating motif
+      { step: 0, midi: 76, dur: 3, vel: 0.68 },  // E5
+      { step: 3, midi: 72, dur: 2, vel: 0.56 },  // C5
+      { step: 5, midi: 69, dur: 3, vel: 0.62 },  // A4
+      { step: 8, midi: 76, dur: 3, vel: 0.66 },  // E5
+      { step: 11, midi: 74, dur: 2, vel: 0.56 }, // D5
+      { step: 13, midi: 72, dur: 3, vel: 0.60 }, // C5
+      // Bars 3-4 (Dmaj7 -> D9): unmistakable uncanny bright F#5 lift!
+      { step: 16, midi: 78, dur: 3, vel: 0.72 }, // F#5
+      { step: 19, midi: 74, dur: 2, vel: 0.58 }, // D5
+      { step: 21, midi: 73, dur: 3, vel: 0.64 }, // C#5
+      { step: 24, midi: 76, dur: 3, vel: 0.66 }, // E5
+      { step: 27, midi: 74, dur: 2, vel: 0.56 }, // D5
+      { step: 29, midi: 72, dur: 3, vel: 0.58 }, // C5
+      // Bars 5-6 (Dm7 -> Am7): bittersweet descending nostalgia
+      { step: 32, midi: 77, dur: 3, vel: 0.68 }, // F5
+      { step: 35, midi: 76, dur: 2, vel: 0.58 }, // E5
+      { step: 37, midi: 72, dur: 3, vel: 0.60 }, // C5
+      { step: 40, midi: 76, dur: 3, vel: 0.64 }, // E5
+      { step: 43, midi: 72, dur: 2, vel: 0.54 }, // C5
+      { step: 45, midi: 69, dur: 3, vel: 0.58 }, // A4
+      // Bars 7-8 (D7 -> D9): luminous floating suspension
+      { step: 48, midi: 78, dur: 4, vel: 0.70 }, // F#5
+      { step: 52, midi: 76, dur: 4, vel: 0.62 }, // E5
+      { step: 56, midi: 74, dur: 4, vel: 0.60 }, // D5
+      { step: 60, midi: 72, dur: 4, vel: 0.56 }, // C5
+      // Bars 9-10 (Fmaj7 -> F7): tender variation with Eb5 twist
+      { step: 64, midi: 81, dur: 3, vel: 0.70 }, // A5
+      { step: 67, midi: 76, dur: 2, vel: 0.60 }, // E5
+      { step: 69, midi: 72, dur: 3, vel: 0.62 }, // C5
+      { step: 72, midi: 75, dur: 3, vel: 0.68 }, // Eb5 (F7 color!)
+      { step: 75, midi: 74, dur: 2, vel: 0.58 }, // D5
+      { step: 77, midi: 72, dur: 3, vel: 0.60 }, // C5
+      // Bars 11-12 (D7 -> D9)
+      { step: 80, midi: 78, dur: 3, vel: 0.72 }, // F#5
+      { step: 83, midi: 76, dur: 2, vel: 0.60 }, // E5
+      { step: 85, midi: 74, dur: 3, vel: 0.62 }, // D5
+      { step: 88, midi: 72, dur: 4, vel: 0.58 }, // C5
+      { step: 92, midi: 69, dur: 4, vel: 0.54 }, // A4
+      // Bars 13-16 (Fmaj7 -> Dmaj7 -> Dm7 -> D7): dreamy farewell cadence
+      { step: 96, midi: 76, dur: 3, vel: 0.68 },  // E5
+      { step: 99, midi: 79, dur: 2, vel: 0.62 },  // G5
+      { step: 101, midi: 76, dur: 3, vel: 0.60 }, // E5
+      { step: 104, midi: 78, dur: 4, vel: 0.70 }, // F#5
+      { step: 108, midi: 73, dur: 4, vel: 0.58 }, // C#5
+      { step: 112, midi: 77, dur: 4, vel: 0.64 }, // F5
+      { step: 116, midi: 72, dur: 4, vel: 0.56 }, // C5
+      { step: 120, midi: 74, dur: 4, vel: 0.60 }, // D5
+      { step: 124, midi: 72, dur: 4, vel: 0.50 }, // C5
     ],
   },
 
   // =========================================================================
-  // LEVEL 1 · "Concrete Echoes" — Boards of Canada / Kane Pixels VHS Liminal Synth
-  // 68 BPM, 4/4 hypnotic meter (stepsPerBar = 8 eighth-note slots, 16 bars = 128 steps = 56.5 s)
-  // Key: D Dorian / A Minor9 — dusty analog cassette synths & echoing concrete ostinato.
+  // LEVEL 0 · "It's Just a Burning Memory" (Heartaches, 1931) — Optional Toggleable BGM
+  // Default OFF so Level 0 plays pure harsh iconic fluorescent ballast hum!
+  // 79 BPM, 4/4 ballroom slow foxtrot (8 eighth-note steps/bar, 16 bars = 48.6 s)
+  // Authentic Al Bowlly / Ray Noble Ab Major harmonic chart & unmistakable muted-brass melody.
   // =========================================================================
-  parking: {
-    id: "parking",
-    title: "Concrete Echoes",
-    style: "VHS Liminal Analog Ambient",
-    bpm: 68,
+  backrooms: {
+    id: "backrooms",
+    title: "It's Just a Burning Memory",
+    style: "1931 Ballroom Gramophone (Heartaches)",
+    defaultEnabled: false,
+    bpm: 79,
     stepsPerBar: 8,
     bars: 16,
-    filterLowHz: 68,
-    filterHighHz: 2550,
-    filterQ: 0.85,
-    wowDepthCents: 18,
-    wowRateHz: 0.27,
-    flutterDepthCents: 5.5,
-    vinylLevel: 0.018,
-    reverbSend: 0.84,
-    delaySend: 0.48,
-    baseGain: 0.34,
+    filterLowHz: 230,
+    filterHighHz: 2050,
+    filterQ: 1.05,
+    wowDepthCents: 16,
+    wowRateHz: 0.33,
+    flutterDepthCents: 4.8,
+    vinylLevel: 0.042,
+    reverbSend: 0.80,
+    delaySend: 0.20,
+    baseGain: 0.42,
+    // Authentic Ab Major "Heartaches" 16-bar verse chord progression
     chords: [
-      { bass: 38, notes: [53, 57, 60, 64] }, // 1:  Dm9
-      { bass: 40, notes: [52, 55, 59, 62] }, // 2:  Cmaj7/E (Em7 color)
-      { bass: 41, notes: [52, 57, 60, 64] }, // 3:  Fmaj7
-      { bass: 45, notes: [52, 55, 59, 60] }, // 4:  Am9
-      { bass: 38, notes: [53, 57, 60, 64] }, // 5:  Dm9
-      { bass: 43, notes: [52, 57, 59, 62] }, // 6:  G6/9 (Dorian melancholic lift)
-      { bass: 46, notes: [53, 57, 60, 62] }, // 7:  Bbmaj9
-      { bass: 45, notes: [52, 55, 57, 62] }, // 8:  A7sus4
-      { bass: 41, notes: [52, 57, 60, 64] }, // 9:  Fmaj9
-      { bass: 40, notes: [50, 55, 59, 62] }, // 10: Em7
-      { bass: 38, notes: [53, 57, 60, 64] }, // 11: Dm9
-      { bass: 36, notes: [52, 55, 59, 62] }, // 12: Cmaj9
-      { bass: 43, notes: [53, 57, 58, 62] }, // 13: Gm9
-      { bass: 41, notes: [53, 57, 60, 64] }, // 14: Dm9/F
-      { bass: 40, notes: [50, 55, 58, 62] }, // 15: Em7(b5)
-      { bass: 45, notes: [52, 57, 59, 64] }, // 16: Asus2
+      { bass: 44, notes: [56, 60, 63, 65] }, // 1:  Ab6
+      { bass: 43, notes: [53, 55, 59, 62] }, // 2:  G7
+      { bass: 44, notes: [56, 60, 63, 65] }, // 3:  Ab6
+      { bass: 41, notes: [53, 57, 60, 63] }, // 4:  Ebm7 -> F7
+      { bass: 46, notes: [53, 56, 58, 61] }, // 5:  Bbm7
+      { bass: 39, notes: [54, 58, 60, 63] }, // 6:  Ebm6 -> Eb7
+      { bass: 44, notes: [56, 60, 63, 65] }, // 7:  Ab6
+      { bass: 39, notes: [55, 58, 61, 63] }, // 8:  Bb7 -> Eb7
+      { bass: 44, notes: [56, 60, 63, 65] }, // 9:  Ab6
+      { bass: 43, notes: [53, 55, 59, 62] }, // 10: G7
+      { bass: 44, notes: [56, 60, 63, 65] }, // 11: Ab6
+      { bass: 41, notes: [53, 57, 60, 63] }, // 12: Gb7 -> F7
+      { bass: 46, notes: [53, 56, 58, 61] }, // 13: Bbm7
+      { bass: 46, notes: [52, 56, 58, 61] }, // 14: Bbm7b5 -> Ab6
+      { bass: 39, notes: [55, 58, 61, 63] }, // 15: Bbm7 -> Eb7
+      { bass: 44, notes: [56, 60, 63, 65] }, // 16: Ab6 (homeward sigh)
     ],
-    // Sparse mournful VHS analog synth lead entering over the echoing concrete ostinato
+    // Unmistakable "Heartaches" muted-horn melody in Ab Major (steps 0..127)
     melody: [
-      { step: 8, midi: 69, dur: 6, vel: 0.56 },  // A4
-      { step: 16, midi: 72, dur: 6, vel: 0.62 }, // C5
-      { step: 22, midi: 71, dur: 4, vel: 0.54 }, // B4
-      { step: 26, midi: 69, dur: 6, vel: 0.52 }, // A4
-      { step: 32, midi: 74, dur: 7, vel: 0.66 }, // D5
-      { step: 40, midi: 76, dur: 6, vel: 0.64 }, // E5 (G6/9 Dorian glow)
-      { step: 48, midi: 74, dur: 6, vel: 0.60 }, // D5
-      { step: 54, midi: 72, dur: 5, vel: 0.54 }, // C5
-      { step: 59, midi: 69, dur: 5, vel: 0.50 }, // A4
-      { step: 64, midi: 76, dur: 6, vel: 0.68 }, // E5
-      { step: 70, midi: 74, dur: 4, vel: 0.58 }, // D5
-      { step: 74, midi: 71, dur: 6, vel: 0.56 }, // B4
-      { step: 80, midi: 72, dur: 6, vel: 0.62 }, // C5
-      { step: 88, midi: 69, dur: 7, vel: 0.54 }, // A4
-      { step: 96, midi: 70, dur: 6, vel: 0.62 }, // Bb4 (Gm9 shadow)
-      { step: 104, midi: 69, dur: 6, vel: 0.58 },// A4
-      { step: 112, midi: 67, dur: 6, vel: 0.52 },// G4
-      { step: 120, midi: 64, dur: 7, vel: 0.48 },// E4 (fading into concrete vault)
+      // "Heart-aches..." (Ab6) / "heart-aches..." (G7)
+      { step: 0, midi: 72, dur: 4, vel: 0.78 },  // C5
+      { step: 4, midi: 75, dur: 4, vel: 0.72 },  // Eb5
+      { step: 8, midi: 71, dur: 4, vel: 0.76 },  // B4
+      { step: 12, midi: 74, dur: 4, vel: 0.70 }, // D5
+      // "My lo-ving you meant on-ly heart-aches"
+      { step: 16, midi: 72, dur: 3, vel: 0.74 }, // C5
+      { step: 19, midi: 75, dur: 2, vel: 0.70 }, // Eb5
+      { step: 21, midi: 77, dur: 3, vel: 0.76 }, // F5
+      { step: 24, midi: 75, dur: 2, vel: 0.68 }, // Eb5
+      { step: 26, midi: 72, dur: 2, vel: 0.66 }, // C5
+      { step: 28, midi: 70, dur: 2, vel: 0.64 }, // Bb4
+      { step: 30, midi: 68, dur: 2, vel: 0.62 }, // Ab4
+      { step: 32, midi: 65, dur: 6, vel: 0.68 }, // F4 (lands on Bbm)
+      // "Your kiss was such a sa-cred thing to me"
+      { step: 40, midi: 65, dur: 2, vel: 0.62 }, // F4
+      { step: 42, midi: 68, dur: 2, vel: 0.66 }, // Ab4
+      { step: 44, midi: 70, dur: 2, vel: 0.68 }, // Bb4
+      { step: 46, midi: 72, dur: 2, vel: 0.72 }, // C5
+      { step: 48, midi: 73, dur: 2, vel: 0.74 }, // Db5
+      { step: 50, midi: 72, dur: 2, vel: 0.68 }, // C5
+      { step: 52, midi: 70, dur: 2, vel: 0.66 }, // Bb4
+      { step: 54, midi: 75, dur: 4, vel: 0.74 }, // Eb5
+      // "I can't be-lieve it's just a bur-ning me-mo-ry"
+      { step: 58, midi: 74, dur: 2, vel: 0.66 }, // D5
+      { step: 60, midi: 72, dur: 2, vel: 0.64 }, // C5
+      { step: 62, midi: 70, dur: 2, vel: 0.62 }, // Bb4
+      // Verse 2: "Heart-aches, heart-aches"
+      { step: 64, midi: 72, dur: 4, vel: 0.78 }, // C5
+      { step: 68, midi: 75, dur: 4, vel: 0.72 }, // Eb5
+      { step: 72, midi: 71, dur: 4, vel: 0.76 }, // B4
+      { step: 76, midi: 74, dur: 4, vel: 0.70 }, // D5
+      // "What does it mat-ter how my heart breaks?"
+      { step: 80, midi: 72, dur: 3, vel: 0.74 }, // C5
+      { step: 83, midi: 75, dur: 2, vel: 0.70 }, // Eb5
+      { step: 85, midi: 77, dur: 3, vel: 0.76 }, // F5
+      { step: 88, midi: 75, dur: 2, vel: 0.68 }, // Eb5
+      { step: 90, midi: 73, dur: 2, vel: 0.68 }, // Db5
+      { step: 92, midi: 72, dur: 2, vel: 0.66 }, // C5
+      { step: 94, midi: 69, dur: 2, vel: 0.64 }, // A4 (F7!)
+      { step: 96, midi: 65, dur: 6, vel: 0.68 }, // F4 (Bbm)
+      // "I should be hap-py with some-one new / But my heart aches for you"
+      { step: 104, midi: 68, dur: 2, vel: 0.66 }, // Ab4
+      { step: 106, midi: 70, dur: 2, vel: 0.68 }, // Bb4
+      { step: 108, midi: 72, dur: 2, vel: 0.72 }, // C5
+      { step: 110, midi: 73, dur: 2, vel: 0.74 }, // Db5
+      { step: 112, midi: 75, dur: 3, vel: 0.74 }, // Eb5
+      { step: 115, midi: 73, dur: 2, vel: 0.66 }, // Db5
+      { step: 117, midi: 72, dur: 3, vel: 0.68 }, // C5
+      { step: 120, midi: 70, dur: 2, vel: 0.64 }, // Bb4
+      { step: 122, midi: 68, dur: 6, vel: 0.72 }, // Ab4 (resolves into fading hall echo)
     ],
   },
 };
@@ -232,7 +219,7 @@ export function createBgmEngine(ctx, destination) {
   };
 
   // =========================================================================
-  // 1. MASTER BGM TAPE & SPACE BUS (independent from SFX footstep wet level!)
+  // 1. MASTER BGM TAPE & SPACE BUS
   // =========================================================================
   const bgmMaster = ctx.createGain();
   bgmMaster.gain.value = 0;
@@ -240,32 +227,30 @@ export function createBgmEngine(ctx, destination) {
   const compressor = ctx.createDynamicsCompressor();
   compressor.threshold.value = -16;
   compressor.knee.value = 18;
-  compressor.ratio.value = 3.2;
+  compressor.ratio.value = 3.0;
   compressor.attack.value = 0.015;
   compressor.release.value = 0.28;
 
-  // Soft analog tape saturation curve (even warmth, zero harsh digital clipping)
+  // Warm analog tape saturation curve
   const shaper = ctx.createWaveShaper();
   const curveLen = 1024;
   const curve = new Float32Array(curveLen);
   for (let i = 0; i < curveLen; i++) {
     const x = (i * 2) / (curveLen - 1) - 1;
-    curve[i] = Math.tanh(x * 1.45) / Math.tanh(1.45);
+    curve[i] = Math.tanh(x * 1.38) / Math.tanh(1.38);
   }
   shaper.curve = curve;
   shaper.oversample = "2x";
 
-  // Profile-tuned tape / gramophone / VHS tone shaping filters
   const toneHP = ctx.createBiquadFilter();
   toneHP.type = "highpass";
-  toneHP.frequency.value = 120;
+  toneHP.frequency.value = 80;
 
   const toneLP = ctx.createBiquadFilter();
   toneLP.type = "lowpass";
-  toneLP.frequency.value = 2600;
-  toneLP.Q.value = 0.8;
+  toneLP.frequency.value = 3400;
+  toneLP.Q.value = 0.75;
 
-  // Voice summing bus -> tape saturation -> tone filters -> dry + delay + lush hall reverb
   const synthBus = ctx.createGain();
   synthBus.gain.value = 1.0;
   synthBus.connect(shaper);
@@ -273,25 +258,25 @@ export function createBgmEngine(ctx, destination) {
   toneHP.connect(toneLP);
 
   const dryGain = ctx.createGain();
-  dryGain.gain.value = 0.42;
+  dryGain.gain.value = 0.46;
   toneLP.connect(dryGain);
   dryGain.connect(compressor);
 
-  // Dedicated 4.2 s dark dreamcore / distant-ballroom stereo convolution reverb
+  // Lush 3.8 s natatorium / distant-ballroom stereo convolution reverb
   const bgmReverb = ctx.createConvolver();
-  const irLen = Math.floor(sr * 4.2);
+  const irLen = Math.floor(sr * 3.8);
   const irBuf = ctx.createBuffer(2, irLen, sr);
-  const preDelaySamples = Math.floor(sr * 0.028);
+  const preDelaySamples = Math.floor(sr * 0.024);
   for (let ch = 0; ch < 2; ch++) {
     const d = irBuf.getChannelData(ch);
     let lp = 0;
     for (let i = preDelaySamples; i < irLen; i++) {
       const t = (i - preDelaySamples) / sr;
-      const alpha = Math.max(0.032, 0.28 * Math.exp(-t * 0.62));
-      const w = (rand() * 2 - 1) * Math.exp(-t * 1.12);
+      const alpha = Math.max(0.036, 0.30 * Math.exp(-t * 0.65));
+      const w = (rand() * 2 - 1) * Math.exp(-t * 1.18);
       lp += (w - lp) * alpha;
-      const swell = Math.min(1, t / 0.085);
-      d[i] = lp * swell * 0.52;
+      const swell = Math.min(1, t / 0.065);
+      d[i] = lp * swell * 0.48;
     }
   }
   bgmReverb.buffer = irBuf;
@@ -302,34 +287,34 @@ export function createBgmEngine(ctx, destination) {
   reverbSend.connect(bgmReverb);
   bgmReverb.connect(compressor);
 
-  // Stereo dotted-eighth tape echo delay (L = 355 ms, R = 480 ms, warm 1850 Hz feedback damping)
+  // Warm stereo ping-pong tape echo (L = 395 ms, R = 525 ms — synced smoothly to ~76 BPM)
   const delaySend = ctx.createGain();
-  delaySend.gain.value = 0.35;
+  delaySend.gain.value = 0.32;
   const delayL = ctx.createDelay(1.0);
   const delayR = ctx.createDelay(1.0);
-  delayL.delayTime.value = 0.355;
-  delayR.delayTime.value = 0.480;
+  delayL.delayTime.value = 0.395;
+  delayR.delayTime.value = 0.525;
   const fbL = ctx.createGain();
   const fbR = ctx.createGain();
-  fbL.gain.value = 0.36;
-  fbR.gain.value = 0.36;
+  fbL.gain.value = 0.34;
+  fbR.gain.value = 0.34;
   const dlpL = ctx.createBiquadFilter();
   const dlpR = ctx.createBiquadFilter();
   dlpL.type = "lowpass";
   dlpR.type = "lowpass";
-  dlpL.frequency.value = 1850;
-  dlpR.frequency.value = 1850;
+  dlpL.frequency.value = 1950;
+  dlpR.frequency.value = 1950;
   const panL = ctx.createStereoPanner();
   const panR = ctx.createStereoPanner();
-  panL.pan.value = -0.62;
-  panR.pan.value = 0.62;
+  panL.pan.value = -0.58;
+  panR.pan.value = 0.58;
 
   toneLP.connect(delaySend);
   delaySend.connect(delayL);
   delaySend.connect(delayR);
   delayL.connect(dlpL);
   dlpL.connect(fbL);
-  fbL.connect(delayR); // ping-pong cross-feedback for spacious liquid stereo echoes!
+  fbL.connect(delayR);
   dlpL.connect(panL);
   panL.connect(compressor);
   panL.connect(bgmReverb);
@@ -345,7 +330,7 @@ export function createBgmEngine(ctx, destination) {
   bgmMaster.connect(destination);
 
   // =========================================================================
-  // 2. SUBTLE PROCEDURAL VINYL CRACKLE & WARM CASSETTE HISS BED (Level 0 / Level 1)
+  // 2. PROCEDURAL VINYL CRACKLE & WARM CASSETTE TAPE HISS
   // =========================================================================
   const vinylLen = Math.floor(sr * 6.0);
   const vinylBuf = ctx.createBuffer(2, vinylLen, sr);
@@ -355,14 +340,10 @@ export function createBgmEngine(ctx, destination) {
     for (let i = 0; i < vinylLen; i++) {
       const w = rand() * 2 - 1;
       pink = pink * 0.94 + w * 0.06;
-      let s = pink * 0.16;
-      // Sparse soft vinyl dust ticks & shellac crackles
+      let s = pink * 0.14;
       const r = rand();
-      if (r < 0.00028) {
-        s += (rand() * 2 - 1) * (0.28 + rand() * 0.55);
-      } else if (r < 0.0014) {
-        s += (rand() * 2 - 1) * 0.09;
-      }
+      if (r < 0.00026) s += (rand() * 2 - 1) * (0.28 + rand() * 0.52);
+      else if (r < 0.0012) s += (rand() * 2 - 1) * 0.08;
       d[i] = s;
     }
   }
@@ -371,8 +352,8 @@ export function createBgmEngine(ctx, destination) {
   vinylSrc.loop = true;
   const vinylBP = ctx.createBiquadFilter();
   vinylBP.type = "bandpass";
-  vinylBP.frequency.value = 2400;
-  vinylBP.Q.value = 0.6;
+  vinylBP.frequency.value = 2350;
+  vinylBP.Q.value = 0.65;
   const vinylGain = ctx.createGain();
   vinylGain.gain.value = 0;
   vinylSrc.connect(vinylBP);
@@ -394,7 +375,7 @@ export function createBgmEngine(ctx, destination) {
 
   function applyTrackTone(immediate = false) {
     const now = ctx.currentTime;
-    const tc = immediate ? 0.02 : 0.35;
+    const tc = immediate ? 0.02 : 0.32;
     toneHP.frequency.setTargetAtTime(activeTrack.filterLowHz, now, tc);
     toneLP.frequency.setTargetAtTime(activeTrack.filterHighHz, now, tc);
     toneLP.Q.setTargetAtTime(activeTrack.filterQ, now, tc);
@@ -404,167 +385,100 @@ export function createBgmEngine(ctx, destination) {
     bgmMaster.gain.setTargetAtTime(activeGainTarget(), now, tc);
   }
 
-  // Deterministic organic analog tape pitch drift (wow + flutter) in cents at time t
   function tapeDetuneCents(t) {
     const wow = Math.sin(t * activeTrack.wowRateHz * Math.PI * 2) * activeTrack.wowDepthCents
       + Math.sin(t * activeTrack.wowRateHz * 0.57 * Math.PI * 2 + 1.3) * (activeTrack.wowDepthCents * 0.45);
-    const flutter = Math.sin(t * 5.6 * Math.PI * 2 + 0.7) * activeTrack.flutterDepthCents;
+    const flutter = Math.sin(t * 5.4 * Math.PI * 2 + 0.7) * activeTrack.flutterDepthCents;
     return wow + flutter;
   }
 
   // =========================================================================
-  // 3. PURE-CODE ANALOG INSTRUMENT VOICES
+  // 3. PURE-CODE INSTRUMENTS (Dexed/DX7 FM E-Piano, Warm Organ, 1930s Muted Horn)
   // =========================================================================
 
-  // Soft 1930s muted ballroom horn / haunting tape lead (Level 0 & Level 1 lead)
-  function playTapeLead(midi, t0, dur, vel, opts = {}) {
-    const hz = midiToHz(midi);
-    const g = ctx.createGain();
-    const filt = ctx.createBiquadFilter();
-    filt.type = "lowpass";
-    filt.frequency.setValueAtTime(opts.cutoff ?? 1280, t0);
-    filt.frequency.exponentialRampToValueAtTime((opts.cutoff ?? 1280) * 0.62, t0 + dur);
-    filt.Q.value = opts.q ?? 1.4;
-
-    const panner = ctx.createStereoPanner();
-    panner.pan.value = opts.pan ?? 0;
-
-    const o1 = ctx.createOscillator();
-    const o2 = ctx.createOscillator();
-    o1.type = opts.wave1 ?? "triangle";
-    o2.type = opts.wave2 ?? "sawtooth";
-    o1.frequency.setValueAtTime(hz, t0);
-    o2.frequency.setValueAtTime(hz, t0);
-
-    // Subtle vintage tape sag pitch-in on note onset + analog wow/flutter (linear ramp handles bipolar detune safely!)
-    const baseDetune = tapeDetuneCents(t0);
-    o1.detune.setValueAtTime(baseDetune - 11, t0);
-    o1.detune.linearRampToValueAtTime(baseDetune, t0 + 0.16);
-    o1.detune.linearRampToValueAtTime(tapeDetuneCents(t0 + dur * 0.7), t0 + dur);
-    o2.detune.setValueAtTime(baseDetune + (opts.detuneSpread ?? 7), t0);
-    o2.detune.linearRampToValueAtTime(tapeDetuneCents(t0 + dur * 0.7) + (opts.detuneSpread ?? 7), t0 + dur);
-
-    // Delayed warm vocal vibrato
-    const vib = ctx.createOscillator();
-    const vibGain = ctx.createGain();
-    vib.frequency.value = opts.vibRate ?? 5.1;
-    vibGain.gain.setValueAtTime(0.0, t0);
-    vibGain.gain.linearRampToValueAtTime(opts.vibDepth ?? 11.0, t0 + Math.min(0.45, dur * 0.45));
-    vib.connect(vibGain);
-    vibGain.connect(o1.detune);
-    vibGain.connect(o2.detune);
-
-    const g1 = ctx.createGain();
-    const g2 = ctx.createGain();
-    g1.gain.value = 0.72;
-    g2.gain.value = opts.sawMix ?? 0.24;
-
-    const atk = opts.attack ?? 0.085;
-    const rel = opts.release ?? 0.42;
-    const peak = Math.max(0.002, vel * 0.22);
-    const holdEnd = t0 + Math.max(atk + 0.02, dur);
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.linearRampToValueAtTime(peak, t0 + atk);
-    g.gain.linearRampToValueAtTime(peak * 0.62, holdEnd);
-    g.gain.exponentialRampToValueAtTime(0.0001, holdEnd + rel);
-
-    o1.connect(g1);
-    o2.connect(g2);
-    g1.connect(filt);
-    g2.connect(filt);
-    filt.connect(g);
-    g.connect(panner);
-    panner.connect(synthBus);
-
-    const stopAt = holdEnd + rel + 0.04;
-    o1.start(t0);
-    o2.start(t0);
-    vib.start(t0);
-    o1.stop(stopAt);
-    o2.stop(stopAt);
-    vib.stop(stopAt);
-    o1.onended = () => {
-      o1.disconnect(); o2.disconnect(); vib.disconnect(); vibGain.disconnect();
-      g1.disconnect(); g2.disconnect(); filt.disconnect(); g.disconnect(); panner.disconnect();
-    };
-  }
-
-  // Warm vintage Rhodes / DX7 glassy electric piano (FM bell transient + warm sine fundamental)
-  function playElectricPiano(midi, t0, dur, vel, { bell = 0.9, cutoff = 2600, pan = 0, attack = 0.012 } = {}) {
+  // Authentic Yamaha DX7 / Dexed FM electric piano (signature Temporex "Hi" timbre!):
+  // Dual chorused sine carriers + 2x warm FM body modulator + 7x/14x subtle bell tine transient.
+  function playDx7Key(midi, t0, dur, vel, { tine = 1.0, cutoff = 3200, pan = 0, attack = 0.010, chorus = 5.5 } = {}) {
     const hz = midiToHz(midi);
     const det = tapeDetuneCents(t0);
 
-    const carrier = ctx.createOscillator();
-    carrier.type = "sine";
-    carrier.frequency.setValueAtTime(hz, t0);
-    carrier.detune.setValueAtTime(det, t0);
+    const c1 = ctx.createOscillator();
+    const c2 = ctx.createOscillator();
+    c1.type = "sine";
+    c2.type = "sine";
+    c1.frequency.setValueAtTime(hz, t0);
+    c2.frequency.setValueAtTime(hz, t0);
+    c1.detune.setValueAtTime(det - chorus, t0);
+    c2.detune.setValueAtTime(det + chorus, t0);
+    c1.detune.linearRampToValueAtTime(tapeDetuneCents(t0 + dur * 0.8) - chorus, t0 + dur);
+    c2.detune.linearRampToValueAtTime(tapeDetuneCents(t0 + dur * 0.8) + chorus, t0 + dur);
 
-    // Subtle 2x / 3x FM tine shimmer decaying rapidly into liquid sine sustain
-    const mod = ctx.createOscillator();
-    mod.type = "sine";
-    mod.frequency.setValueAtTime(hz * (bell > 1.2 ? 3.0 : 2.0), t0);
-    const modGain = ctx.createGain();
-    modGain.gain.setValueAtTime(hz * 0.42 * bell * vel, t0);
-    modGain.gain.exponentialRampToValueAtTime(0.01, t0 + Math.min(0.45, dur * 0.6));
-    mod.connect(modGain);
-    modGain.connect(carrier.frequency);
+    // Operator 2: warm 1x/2x FM electric piano bark decaying smoothly into pure round sustain
+    const modWarm = ctx.createOscillator();
+    modWarm.type = "sine";
+    modWarm.frequency.setValueAtTime(hz * 2.0, t0);
+    const modWarmG = ctx.createGain();
+    modWarmG.gain.setValueAtTime(Math.max(0.05, hz * 0.48 * vel), t0);
+    modWarmG.gain.exponentialRampToValueAtTime(Math.max(0.02, hz * 0.04), t0 + Math.min(0.65, dur * 0.75));
+    modWarm.connect(modWarmG);
+    modWarmG.connect(c1.frequency);
+    modWarmG.connect(c2.frequency);
 
-    // Warm subtle triangle undertone for body
-    const body = ctx.createOscillator();
-    body.type = "triangle";
-    body.frequency.setValueAtTime(hz, t0);
-    body.detune.setValueAtTime(det + 3.5, t0);
-    const bodyG = ctx.createGain();
-    bodyG.gain.value = 0.22;
+    // Operator 3: glassy DX7 tine bell chime transient (7x harmonic ratio -> signature dreamy sparkle!)
+    const modTine = ctx.createOscillator();
+    modTine.type = "sine";
+    modTine.frequency.setValueAtTime(hz * 7.0, t0);
+    const modTineG = ctx.createGain();
+    modTineG.gain.setValueAtTime(Math.max(0.05, hz * 0.32 * tine * vel), t0);
+    modTineG.gain.exponentialRampToValueAtTime(0.01, t0 + 0.14);
+    modTine.connect(modTineG);
+    modTineG.connect(c1.frequency);
 
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.setValueAtTime(cutoff, t0);
-    lp.frequency.exponentialRampToValueAtTime(Math.max(420, cutoff * 0.35), t0 + dur + 0.3);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(520, cutoff * 0.42), t0 + dur + 0.35);
 
     const env = ctx.createGain();
-    const peak = Math.max(0.002, vel * 0.16);
-    const rel = Math.max(0.35, Math.min(1.4, dur * 0.65));
+    const peak = Math.max(0.002, vel * 0.145);
+    const rel = Math.max(0.45, Math.min(1.6, dur * 0.7));
     env.gain.setValueAtTime(0.0001, t0);
     env.gain.linearRampToValueAtTime(peak, t0 + attack);
-    env.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * 0.22), t0 + dur);
+    env.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * 0.30), t0 + dur);
     env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + rel);
 
     const panner = ctx.createStereoPanner();
     panner.pan.value = pan;
 
-    carrier.connect(lp);
-    body.connect(bodyG);
-    bodyG.connect(lp);
+    c1.connect(lp);
+    c2.connect(lp);
     lp.connect(env);
     env.connect(panner);
     panner.connect(synthBus);
 
-    const stopAt = t0 + dur + rel + 0.04;
-    carrier.start(t0);
-    mod.start(t0);
-    body.start(t0);
-    carrier.stop(stopAt);
-    mod.stop(stopAt);
-    body.stop(stopAt);
-    carrier.onended = () => {
-      carrier.disconnect(); mod.disconnect(); modGain.disconnect();
-      body.disconnect(); bodyG.disconnect(); lp.disconnect(); env.disconnect(); panner.disconnect();
+    const stopAt = t0 + dur + rel + 0.05;
+    c1.start(t0); c2.start(t0); modWarm.start(t0); modTine.start(t0);
+    c1.stop(stopAt); c2.stop(stopAt); modWarm.stop(stopAt); modTine.stop(stopAt);
+    c1.onended = () => {
+      c1.disconnect(); c2.disconnect();
+      modWarm.disconnect(); modWarmG.disconnect();
+      modTine.disconnect(); modTineG.disconnect();
+      lp.disconnect(); env.disconnect(); panner.disconnect();
     };
   }
 
-  // Lush slow-breathing analog Juno / VHS tape chord pad (multi-note detuned warm voices)
-  function playAnalogPad(notes, t0, dur, vel, { cutoff = 1150, spread = 9, attack = 0.65, release = 1.1 } = {}) {
+  // Dreamy lo-fi DX7 / bedroom-pop sustained synth organ pad
+  function playWarmPad(notes, t0, dur, vel, { cutoff = 1280, spread = 8, attack = 0.55, release = 1.0 } = {}) {
     const det = tapeDetuneCents(t0);
     const filt = ctx.createBiquadFilter();
     filt.type = "lowpass";
-    filt.frequency.setValueAtTime(cutoff * 0.68, t0);
-    filt.frequency.linearRampToValueAtTime(cutoff * 1.18, t0 + dur * 0.55);
-    filt.frequency.linearRampToValueAtTime(cutoff * 0.72, t0 + dur + release);
-    filt.Q.value = 0.9;
+    filt.frequency.setValueAtTime(cutoff * 0.72, t0);
+    filt.frequency.linearRampToValueAtTime(cutoff * 1.12, t0 + dur * 0.55);
+    filt.frequency.linearRampToValueAtTime(cutoff * 0.75, t0 + dur + release);
+    filt.Q.value = 0.75;
 
     const env = ctx.createGain();
-    const peak = Math.max(0.002, (vel * 0.14) / Math.sqrt(Math.max(1, notes.length)));
+    const peak = Math.max(0.002, (vel * 0.13) / Math.sqrt(Math.max(1, notes.length)));
     env.gain.setValueAtTime(0.0001, t0);
     env.gain.linearRampToValueAtTime(peak, t0 + attack);
     env.gain.setValueAtTime(peak * 0.88, t0 + dur);
@@ -579,16 +493,12 @@ export function createBgmEngine(ctx, destination) {
       const hz = midiToHz(midi);
       for (const side of [-1, 1]) {
         const o = ctx.createOscillator();
-        o.type = side < 0 ? "sawtooth" : "triangle";
+        o.type = side < 0 ? "triangle" : "sine";
         o.frequency.setValueAtTime(hz, t0);
-        o.detune.setValueAtTime(det + side * spread + (idx - 1.5) * 1.6, t0);
-        // Gentle slow tape pitch drift across sustained pad duration
-        o.detune.linearRampToValueAtTime(
-          tapeDetuneCents(t0 + dur * 0.75) + side * spread,
-          t0 + dur,
-        );
+        o.detune.setValueAtTime(det + side * spread + (idx - 1.5) * 1.4, t0);
+        o.detune.linearRampToValueAtTime(tapeDetuneCents(t0 + dur * 0.75) + side * spread, t0 + dur);
         const og = ctx.createGain();
-        og.gain.value = side < 0 ? 0.36 : 0.64;
+        og.gain.value = side < 0 ? 0.45 : 0.55;
         o.connect(og);
         og.connect(filt);
         o.start(t0);
@@ -605,7 +515,70 @@ export function createBgmEngine(ctx, destination) {
     }
   }
 
-  // Deep warm velvet sub-bass / muted upright ballroom bass
+  // 1930s muted ballroom horn (Heartaches / It's Just a Burning Memory lead voice)
+  function playBallroomHorn(midi, t0, dur, vel, { cutoff = 1220, pan = 0.1 } = {}) {
+    const hz = midiToHz(midi);
+    const g = ctx.createGain();
+    const filt = ctx.createBiquadFilter();
+    filt.type = "lowpass";
+    filt.frequency.setValueAtTime(cutoff, t0);
+    filt.frequency.exponentialRampToValueAtTime(cutoff * 0.62, t0 + dur);
+    filt.Q.value = 1.6;
+
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+
+    const o1 = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    o1.type = "triangle";
+    o2.type = "sawtooth";
+    o1.frequency.setValueAtTime(hz, t0);
+    o2.frequency.setValueAtTime(hz, t0);
+
+    const baseDet = tapeDetuneCents(t0);
+    o1.detune.setValueAtTime(baseDet - 12, t0);
+    o1.detune.linearRampToValueAtTime(baseDet, t0 + 0.14);
+    o1.detune.linearRampToValueAtTime(tapeDetuneCents(t0 + dur * 0.7), t0 + dur);
+    o2.detune.setValueAtTime(baseDet + 7, t0);
+    o2.detune.linearRampToValueAtTime(tapeDetuneCents(t0 + dur * 0.7) + 7, t0 + dur);
+
+    const vib = ctx.createOscillator();
+    const vibG = ctx.createGain();
+    vib.frequency.value = 5.2;
+    vibG.gain.setValueAtTime(0, t0);
+    vibG.gain.linearRampToValueAtTime(12.5, t0 + Math.min(0.42, dur * 0.45));
+    vib.connect(vibG);
+    vibG.connect(o1.detune);
+    vibG.connect(o2.detune);
+
+    const g1 = ctx.createGain();
+    const g2 = ctx.createGain();
+    g1.gain.value = 0.68;
+    g2.gain.value = 0.28;
+
+    const atk = 0.085;
+    const rel = 0.40;
+    const peak = Math.max(0.002, vel * 0.22);
+    const holdEnd = t0 + Math.max(atk + 0.02, dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + atk);
+    g.gain.linearRampToValueAtTime(peak * 0.64, holdEnd);
+    g.gain.exponentialRampToValueAtTime(0.0001, holdEnd + rel);
+
+    o1.connect(g1); o2.connect(g2);
+    g1.connect(filt); g2.connect(filt);
+    filt.connect(g); g.connect(panner); panner.connect(synthBus);
+
+    const stopAt = holdEnd + rel + 0.04;
+    o1.start(t0); o2.start(t0); vib.start(t0);
+    o1.stop(stopAt); o2.stop(stopAt); vib.stop(stopAt);
+    o1.onended = () => {
+      o1.disconnect(); o2.disconnect(); vib.disconnect(); vibG.disconnect();
+      g1.disconnect(); g2.disconnect(); filt.disconnect(); g.disconnect(); panner.disconnect();
+    };
+  }
+
+  // Deep warm electric/upright bass
   function playBass(midi, t0, dur, vel, { plucked = false } = {}) {
     const hz = midiToHz(midi);
     const o = ctx.createOscillator();
@@ -615,203 +588,120 @@ export function createBgmEngine(ctx, destination) {
 
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
-    lp.frequency.setValueAtTime(plucked ? 340 : 210, t0);
+    lp.frequency.setValueAtTime(plucked ? 320 : 220, t0);
 
     const env = ctx.createGain();
-    const peak = Math.max(0.002, vel * 0.24);
-    const atk = plucked ? 0.022 : 0.14;
-    const rel = plucked ? 0.35 : 0.55;
+    const peak = Math.max(0.002, vel * 0.22);
+    const atk = plucked ? 0.020 : 0.12;
+    const rel = plucked ? 0.32 : 0.50;
     env.gain.setValueAtTime(0.0001, t0);
     env.gain.linearRampToValueAtTime(peak, t0 + atk);
     if (plucked) {
       env.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * 0.18), t0 + dur);
     } else {
-      env.gain.setValueAtTime(peak * 0.85, t0 + dur);
+      env.gain.setValueAtTime(peak * 0.86, t0 + dur);
     }
     env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + rel);
 
-    o.connect(lp);
-    lp.connect(env);
-    env.connect(synthBus);
-
+    o.connect(lp); lp.connect(env); env.connect(synthBus);
     const stopAt = t0 + dur + rel + 0.04;
-    o.start(t0);
-    o.stop(stopAt);
+    o.start(t0); o.stop(stopAt);
     o.onended = () => { o.disconnect(); lp.disconnect(); env.disconnect(); };
   }
 
-  // Crystalline high dreamcore water-bell / celesta droplet (Poolrooms)
-  function playWaterBell(midi, t0, dur, vel, pan = 0) {
-    const hz = midiToHz(midi);
-    const det = tapeDetuneCents(t0);
-    const o1 = ctx.createOscillator();
-    const o2 = ctx.createOscillator();
-    o1.type = "sine";
-    o2.type = "sine";
-    o1.frequency.setValueAtTime(hz, t0);
-    o2.frequency.setValueAtTime(hz * 2.0, t0);
-    o1.detune.setValueAtTime(det, t0);
-    o2.detune.setValueAtTime(det + 4, t0);
-
-    const g1 = ctx.createGain();
-    const g2 = ctx.createGain();
-    const peak = Math.max(0.002, vel * 0.12);
-    g1.gain.setValueAtTime(0.0001, t0);
-    g1.gain.linearRampToValueAtTime(peak, t0 + 0.014);
-    g1.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.9);
-    g2.gain.setValueAtTime(0.0001, t0);
-    g2.gain.linearRampToValueAtTime(peak * 0.34, t0 + 0.010);
-    g2.gain.exponentialRampToValueAtTime(0.0001, t0 + dur * 0.55 + 0.25);
-
-    const panner = ctx.createStereoPanner();
-    panner.pan.value = pan;
-
-    o1.connect(g1);
-    o2.connect(g2);
-    g1.connect(panner);
-    g2.connect(panner);
-    panner.connect(synthBus);
-
-    const stopAt = t0 + dur + 0.95;
-    o1.start(t0);
-    o2.start(t0);
-    o1.stop(stopAt);
-    o2.stop(stopAt);
-    o1.onended = () => { o1.disconnect(); o2.disconnect(); g1.disconnect(); g2.disconnect(); panner.disconnect(); };
-  }
-
-  // Soft muted subterranean lo-fi tape heartbeat pulse (Level 1)
-  function playSoftPulse(t0, vel) {
-    const o = ctx.createOscillator();
-    o.type = "sine";
-    o.frequency.setValueAtTime(84, t0);
-    o.frequency.exponentialRampToValueAtTime(42, t0 + 0.14);
-
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0.0001, t0);
-    env.gain.linearRampToValueAtTime(vel * 0.13, t0 + 0.008);
-    env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
-
-    o.connect(env);
-    env.connect(synthBus);
-    o.start(t0);
-    o.stop(t0 + 0.25);
-    o.onended = () => { o.disconnect(); env.disconnect(); };
-  }
-
   // =========================================================================
-  // 4. LOOKAHEAD STEP SCHEDULER (exact Web Audio clock, zero frame-rate jitter)
+  // 4. LOOKAHEAD STEP SCHEDULER
   // =========================================================================
   function scheduleStep(track, step, t) {
-    const stepDur = (60 / track.bpm) * 0.5; // eighth-note duration in seconds
+    const stepDur = (60 / track.bpm) * 0.5; // eighth-note duration
     const bar = Math.floor(step / track.stepsPerBar);
     const beatSlot = step % track.stepsPerBar;
     const chord = track.chords[bar % track.chords.length];
-    const humanize = (rand() - 0.5) * 0.014; // organic human / worn-tape micro-timing
+    const humanize = (rand() - 0.5) * 0.014;
     const t0 = Math.max(ctx.currentTime + 0.005, t + humanize);
 
-    if (track.id === "backrooms") {
-      // --- LEVEL 0: 3/4 HAUNTED BALLROOM WALTZ ("oom - pah - pah") ---
+    if (track.id === "poolrooms") {
+      // --- POOLROOMS: "Hi" — TEMPOREX (Warm swaying lo-fi DX7 electric piano!) ---
+      // Beat 1: warm rolling DX7 chord + soft bass root
       if (beatSlot === 0) {
-        // Beat 1: warm upright ballroom bass + ghostly hollow string pad swell every bar
-        playBass(chord.bass, t0, stepDur * 3.2, 0.78, { plucked: true });
-        if (bar % 2 === 0 || loopCycle > 0) {
-          playAnalogPad(chord.notes, t0, stepDur * 5.6, 0.44, {
-            cutoff: 920, spread: 12, attack: 0.45, release: 0.85,
-          });
-        }
-      } else if (beatSlot === 2 || beatSlot === 4) {
-        // Beats 2 & 3: tender brushed vintage ballroom Rhodes chord pulses
-        const vel = beatSlot === 2 ? 0.52 : 0.42;
+        playBass(chord.bass, t0, stepDur * 7.2, 0.68, { plucked: false });
         chord.notes.forEach((n, idx) => {
-          playElectricPiano(n, t0 + idx * 0.014, stepDur * 1.7, vel, {
-            bell: 0.55,
-            cutoff: 1650,
-            pan: -0.22 + idx * 0.14,
-            attack: 0.018,
+          playDx7Key(n, t0 + idx * 0.024, stepDur * 3.8, 0.52, {
+            tine: 0.72,
+            cutoff: 2750,
+            pan: -0.26 + idx * 0.17,
+            attack: 0.012,
+            chorus: 6.2,
           });
         });
-      }
-      // Expressive muted ballroom horn melody
-      for (const note of track.melody) {
-        if (note.step === step) {
-          // On repeat cycles, occasionally drop a grace note an octave for dreamy memory decay
-          const octaveShift = loopCycle > 0 && (bar === 14 || bar === 15) && rand() < 0.35 ? -12 : 0;
-          playTapeLead(note.midi + octaveShift, t0, stepDur * note.dur, note.vel, {
-            cutoff: 1250,
-            q: 1.5,
-            sawMix: 0.24,
-            vibRate: 5.0,
-            vibDepth: 12,
-            pan: 0.14,
+        // Dreamy organ swell entering softly on phrases (bars 8..15 or loopCycle > 0)
+        if (bar >= 8 || loopCycle > 0) {
+          playWarmPad(chord.notes, t0, stepDur * 7.6, 0.46, {
+            cutoff: 1220, spread: 9, attack: 0.65, release: 1.15,
           });
         }
-      }
-    } else if (track.id === "poolrooms") {
-      // --- POOLROOMS: FLOATING DREAMCORE / AQUATIC AMBIENCE ---
-      if (beatSlot === 0) {
-        // Warm sub-bass & wide lush Juno pad blooming at bar start
-        playBass(chord.bass, t0, stepDur * 7.5, 0.72, { plucked: false });
-        playAnalogPad(chord.notes.slice(0, 4), t0, stepDur * 7.6, 0.62, {
-          cutoff: 1450, spread: 8, attack: 0.85, release: 1.4,
+      } else if (beatSlot === 4) {
+        // Beat 3 gentle swaying re-articulation (that unmistakable Temporex rocking pulse!)
+        chord.notes.forEach((n, idx) => {
+          playDx7Key(n, t0 + idx * 0.018, stepDur * 3.6, 0.40, {
+            tine: 0.55,
+            cutoff: 2350,
+            pan: 0.24 - idx * 0.16,
+            attack: 0.016,
+            chorus: 5.4,
+          });
+        });
+      } else if (beatSlot === 2 || beatSlot === 6) {
+        // Delicate soft inner-voice DX7 shimmer
+        const inner = chord.notes[beatSlot === 2 ? 2 : 1];
+        playDx7Key(inner, t0, stepDur * 2.0, 0.28, {
+          tine: 0.85,
+          cutoff: 2900,
+          pan: beatSlot === 2 ? 0.32 : -0.32,
+          attack: 0.012,
+          chorus: 5.0,
         });
       }
-      // Liquid rising & falling DX7 glassy electric piano arpeggio droplets
-      const arpOrder = [0, 2, 1, 3, 4, 2, 3, 1];
-      const arpIdx = arpOrder[beatSlot % arpOrder.length];
-      if (beatSlot !== 6 || bar % 2 === 1) {
-        const arpNote = chord.notes[arpIdx % chord.notes.length] + (beatSlot === 4 ? 12 : 0);
-        playElectricPiano(arpNote, t0, stepDur * 2.4, 0.44 + (beatSlot === 0 ? 0.10 : 0), {
-          bell: 1.45,
-          cutoff: 3200,
-          pan: Math.sin(step * 0.65) * 0.48,
-          attack: 0.010,
-        });
-      }
-      // High crystalline sunlit water-bell melody
+
+      // Singing high nostalgic DX7 melody line
       for (const note of track.melody) {
         if (note.step === step) {
-          playWaterBell(note.midi, t0, stepDur * note.dur, note.vel, Math.cos(step * 0.4) * 0.36);
+          playDx7Key(note.midi, t0, stepDur * note.dur * 1.15, note.vel, {
+            tine: 1.25,
+            cutoff: 3450,
+            pan: Math.sin(step * 0.35) * 0.24,
+            attack: 0.010,
+            chorus: 6.5,
+          });
         }
       }
     } else {
-      // --- LEVEL 1: D-DORIAN VHS SUBTERRANEAN ANALOG AMBIENT ---
+      // --- LEVEL 0 (optional when toggled ON): "It's Just a Burning Memory" (Heartaches, 1931) ---
       if (beatSlot === 0) {
-        playBass(chord.bass, t0, stepDur * 7.4, 0.76, { plucked: false });
-        playAnalogPad(chord.notes, t0, stepDur * 7.6, 0.64, {
-          cutoff: 1020, spread: 14, attack: 0.65, release: 1.25,
+        playBass(chord.bass, t0, stepDur * 3.6, 0.76, { plucked: true });
+        playWarmPad(chord.notes, t0, stepDur * 7.4, 0.44, {
+          cutoff: 880, spread: 11, attack: 0.42, release: 0.85,
         });
-        playSoftPulse(t0, 0.62);
-      } else if (beatSlot === 5 && bar % 2 === 0) {
-        playSoftPulse(t0, 0.36);
+      } else if (beatSlot === 4) {
+        playBass(chord.bass + 7, t0, stepDur * 3.2, 0.56, { plucked: true });
       }
-      // Hypnotic echoing concrete kalimba / Rhodes ostinato (asymmetric 3-3-2 / sparse echoes)
-      if (beatSlot === 0 || beatSlot === 3 || beatSlot === 6) {
-        const ostMap = [0, 3, 2, 1];
-        const pick = chord.notes[ostMap[(bar + beatSlot) % ostMap.length]] + (beatSlot === 3 ? 12 : 0);
-        playElectricPiano(pick, t0, stepDur * 2.2, beatSlot === 0 ? 0.52 : 0.42, {
-          bell: 1.15,
-          cutoff: 2050,
-          pan: beatSlot === 3 ? 0.42 : -0.34,
-          attack: 0.008,
+      // Classic 1930s ballroom foxtrot stride piano off-beat chords (beats 2 & 4)
+      if (beatSlot === 2 || beatSlot === 6) {
+        const vel = beatSlot === 2 ? 0.46 : 0.38;
+        chord.notes.forEach((n, idx) => {
+          playDx7Key(n, t0 + idx * 0.014, stepDur * 1.8, vel, {
+            tine: 0.28,
+            cutoff: 1480,
+            pan: -0.20 + idx * 0.13,
+            attack: 0.016,
+            chorus: 4.0,
+          });
         });
       }
-      // Sparse mournful VHS weeping analog lead
+      // Unmistakable muted ballroom trumpet melody
       for (const note of track.melody) {
         if (note.step === step) {
-          playTapeLead(note.midi, t0, stepDur * note.dur, note.vel, {
-            wave1: "sawtooth",
-            wave2: "triangle",
-            sawMix: 0.42,
-            cutoff: 1480,
-            q: 1.2,
-            detuneSpread: 11,
-            vibRate: 4.3,
-            vibDepth: 15,
-            attack: 0.14,
-            release: 0.65,
-            pan: -0.16,
-          });
+          playBallroomHorn(note.midi, t0, stepDur * note.dur, note.vel, { cutoff: 1220, pan: 0.12 });
         }
       }
     }
@@ -820,34 +710,32 @@ export function createBgmEngine(ctx, destination) {
   function ensureVinylStarted() {
     if (!vinylStarted && ctx.state === "running") {
       vinylStarted = true;
-      vinylSrc.start();
-      applyTrackTone(true);
+      try { vinylSrc.start(); } catch { /* already started */ }
     }
   }
 
-  function resetClock() {
-    stepIndex = 0;
-    loopCycle = 0;
-    nextStepTime = ctx.currentTime + 0.12;
-  }
-
   return {
-    setProfile(name) {
-      const next = BGM_TRACKS[name] ? name : "poolrooms";
-      if (next !== profile) {
-        profile = next;
-        activeTrack = BGM_TRACKS[profile];
-        resetClock();
+    setProfile(name, { applyDefault = false } = {}) {
+      const nextProf = BGM_TRACKS[name] ? name : "poolrooms";
+      const changed = nextProf !== profile;
+      profile = nextProf;
+      activeTrack = BGM_TRACKS[profile];
+      if (applyDefault) {
+        enabled = Boolean(activeTrack.defaultEnabled);
       }
+      if (changed) {
+        stepIndex = 0;
+        loopCycle = 0;
+        nextStepTime = ctx.currentTime + 0.08;
+      }
+      ensureVinylStarted();
       applyTrackTone(false);
     },
     setEnabled(v) {
-      const next = Boolean(v);
-      if (enabled === next) return enabled;
-      enabled = next;
-      if (enabled && ctx.state === "running") {
-        ensureVinylStarted();
-        nextStepTime = ctx.currentTime + 0.08;
+      enabled = Boolean(v);
+      ensureVinylStarted();
+      if (enabled) {
+        nextStepTime = ctx.currentTime + 0.06;
       }
       applyTrackTone(false);
       return enabled;
@@ -857,38 +745,44 @@ export function createBgmEngine(ctx, destination) {
     },
     setVolume(v) {
       volume = Math.max(0, Math.min(1, Number(v) || 0));
-      applyTrackTone(false);
+      applyTrackTone(true);
     },
     update() {
-      if (ctx.state !== "running" || !enabled) return;
+      if (ctx.state !== "running") return;
       ensureVinylStarted();
+      if (!enabled) return;
+
       const now = ctx.currentTime;
       const stepDur = (60 / activeTrack.bpm) * 0.5;
       const totalSteps = activeTrack.bars * activeTrack.stepsPerBar;
 
-      // Guard against huge catch-up bursts after tab switch / pause resume
-      if (nextStepTime < now - 0.35) {
-        nextStepTime = now + 0.06;
+      if (nextStepTime < now - 0.5 || nextStepTime === 0) {
+        nextStepTime = now + 0.05;
       }
+
       const horizon = now + 0.22;
-      while (nextStepTime < horizon) {
+      let guard = 0;
+      while (nextStepTime < horizon && guard < 8) {
         scheduleStep(activeTrack, stepIndex, nextStepTime);
-        stepIndex += 1;
+        stepIndex++;
         if (stepIndex >= totalSteps) {
           stepIndex = 0;
-          loopCycle += 1;
+          loopCycle++;
         }
         nextStepTime += stepDur;
+        guard++;
       }
     },
-    inspect: () => ({
-      enabled,
-      volume,
-      profile,
-      track: activeTrack.title,
-      style: activeTrack.style,
-      bpm: activeTrack.bpm,
-      bar: Math.floor(stepIndex / activeTrack.stepsPerBar) + 1,
-    }),
+    inspect() {
+      return {
+        enabled,
+        volume,
+        profile,
+        track: activeTrack.title,
+        style: activeTrack.style,
+        bpm: activeTrack.bpm,
+        bar: Math.floor(stepIndex / activeTrack.stepsPerBar) + 1,
+      };
+    },
   };
 }

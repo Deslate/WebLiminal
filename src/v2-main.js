@@ -153,10 +153,20 @@ function syncBgmUi() {
     btnBgm.textContent = b.enabled ? "♪ BGM: On (N)" : "♪ BGM: Off (N)";
     btnBgm.classList.toggle("active", b.enabled);
     btnBgm.setAttribute("aria-pressed", String(b.enabled));
-    btnBgm.title = b.track ? `${b.track} — ${b.style}` : "Toggle Procedural BGM";
+    btnBgm.title = b.enabled
+      ? `${b.track} — ${b.style}`
+      : b.profile === "backrooms"
+        ? `Ambient Only (Fluorescent Hum) · Press N for ${b.track}`
+        : `BGM Off · Press N for ${b.track}`;
   }
   if (chkBgm) chkBgm.checked = b.enabled;
-  if (bgmTrackEl && b.track) bgmTrackEl.textContent = `♪ ${b.track} · ${b.style}`;
+  if (bgmTrackEl) {
+    bgmTrackEl.textContent = b.enabled
+      ? `♪ ${b.track} · ${b.style}`
+      : b.profile === "backrooms"
+        ? `Ambient · Harsh Fluorescent Ballast Hum (${b.track} off)`
+        : `Ambient · Quiet Natatorium Stillness (${b.track} off)`;
+  }
   if (rngBgmVol) rngBgmVol.value = String(b.volume);
   if (outBgmVol) outBgmVol.textContent = `${Math.round(b.volume * 100)}%`;
 }
@@ -239,7 +249,7 @@ addEventListener("keydown", (e) => {
     if (len > 1) jumpToBookmark((activeBookmark + 1) % len);
     return;
   }
-  if (!e.repeat && ["Digit1", "Digit2", "Digit3"].includes(e.code)) {
+  if (!e.repeat && ["Digit1", "Digit2"].includes(e.code)) {
     const idx = Number(e.code.slice(-1)) - 1;
     if (LEVEL_LIST[idx]) loadLevel(LEVEL_LIST[idx].id);
     return;
@@ -456,6 +466,16 @@ window.__WEBLIMINAL__ = {
       resolution: renderer.getResolution(),
       stats: compiledScene?.stats,
       bake: renderer.getBakeState(),
+      errors: renderer.getErrors(),
+    };
+  },
+  async renderReferencePT({ spp = 96, batchSpp = 8 } = {}) {
+    paused = true;
+    await new Promise((r) => requestAnimationFrame(r));
+    const res = await renderer.renderReferencePT(pose, elapsed, { spp, batchSpp });
+    return {
+      level: activeLevel?.id,
+      ...res,
       errors: renderer.getErrors(),
     };
   },

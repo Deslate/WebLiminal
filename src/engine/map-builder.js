@@ -1542,16 +1542,24 @@ export class MapBuilder {
     const flicker = opts.flicker ?? 0;
     const off = Boolean(opts.off);
 
-    // Flush inset aluminum troffer frame fitting strictly inside the 1.20x0.60 m T-bar grid cell
+    // Flush inset white-enameled aluminum troffer frame fitting strictly inside the 1.20x0.60 m T-bar grid cell
     const margin = 0.014;
-    const bezel = 0.026;
-    const h = 0.022;
+    const bezel = 0.022;
+    const h = 0.009;
     const bx = Math.max(0.05, hw - margin);
     const bz = Math.max(0.05, hd - margin);
-    this.box([cx - bx, y - h, cz - bz], [cx + bx, y, cz + bz], "dark_metal", {
+    const frameMat = this.material({
+      base: "plaster_warm",
+      name: "troffer_bezel_enamel",
+      albedo: [0.76, 0.75, 0.68],
+      roughness: 0.28,
+      coat: 0.38,
+      seed: 14.5,
+    });
+    this.box([cx - bx, y - h, cz - bz], [cx + bx, y, cz + bz], frameMat, {
       solid: false,
       skipFaces: ["py"],
-      priority: 0.25,
+      priority: 0.18,
     });
 
     const mat =
@@ -1567,16 +1575,16 @@ export class MapBuilder {
     // Downward-facing prismatic diffuser quad cleanly inset within bezel frame
     const dx = Math.max(0.04, bx - bezel);
     const dz = Math.max(0.04, bz - bezel);
-    const ly = y - h - 0.002;
+    const ly = y - h - 0.0015;
     const p0 = [cx - dx, ly, cz - dz];
     const p1 = [cx + dx, ly, cz - dz];
     const p2 = [cx + dx, ly, cz + dz];
     const p3 = [cx - dx, ly, cz + dz];
-    this.addQuad(p0, p1, p2, p3, mat, { u0: 0, v0: 0, u1: 1, v1: 1, priority: 0.25 });
+    this.addQuad(p0, p1, p2, p3, mat, { u0: 0, v0: 0, u1: 1, v1: 1, priority: 0.18 });
 
     if (!off && intensity > 0) {
-      // Lightmapper emitter slightly offset below diffuser so shadow rays clear bezel
-      const ey = y - h - 0.018;
+      // Lightmapper emitter slightly offset below diffuser so shadow rays clear bezel cleanly
+      const ey = y - h - 0.014;
       this.addAreaLight([cx - dx, ey, cz - dz], [cx + dx, ey, cz - dz], [cx - dx, ey, cz + dz], color, intensity, { flicker });
     }
     return this;

@@ -82,11 +82,6 @@ test("Material presets pack cleanly and dry v2 levels incur zero water allocatio
   assert.equal(c0.water, null);
   assert(c0.lightCount >= 8);
 
-  const m1 = createMap();
-  byId.level1.build(m1);
-  const c1 = m1.compile();
-  assert.equal(c1.water, null);
-
   const mp = createMap();
   byId["poolrooms-v2"].build(mp);
   const cp = mp.compile();
@@ -273,7 +268,7 @@ test("poolrooms-v2 doorways are unobstructed, bookmarks are walkable, and slide/
   assert.equal(canStand(-9.4, -11.6, cp.collision), false, "Water slide tube should have solid collision");
 });
 
-test("level0 and level1 bookmarks, doorways, Pitfalls walkways, Aquila ramp, and sectors are cleanly navigable", () => {
+test("level0 bookmarks, doorways, and Pitfalls walkways are cleanly navigable", () => {
   const byId = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
 
   // Level 0 verification: 4 iconic connected chambers + walkable Pitfalls narrow carpeted bridge + far doorway
@@ -291,25 +286,6 @@ test("level0 and level1 bookmarks, doorways, Pitfalls walkways, Aquila ramp, and
   assert.equal(canStand(9.20, -4.89, c0.collision), true, "Level 0 Pitfalls far doorway into Pier Hall should be passable");
   assert.equal(canStand(9.81, 6.00, c0.collision), true, "Level 0 Pitfalls narrow carpeted bridge should be walkable");
   assert.equal(canStand(8.23, 8.40, c0.collision), false, "Level 0 Pitfalls pit shaft center must block stepping into abyss");
-
-  // Level 1 verification: 4 connected Aquila/Warehouse/Mushroom/Courtyard sectors + ramp climb
-  const m1 = createMap({ atlasSize: 384 });
-  byId.level1.build(m1);
-  const c1 = m1.compile({ atlasSize: 384 });
-  assert.equal(c1.bookmarks.length, 4);
-  for (const bm of c1.bookmarks) {
-    const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, c1.collision);
-    assert.equal(canStand(bm.spawn.x, bm.spawn.z, c1.collision, fy), true, `Level 1 bookmark '${bm.name}' blocked`);
-  }
-  assert.equal(canStand(0.4, -5.0, c1.collision), true, "Level 1 Aquila->Warehouse drive portal should be passable");
-  assert.equal(canStand(5.88, -2.8, c1.collision), true, "Level 1 Aquila->Courtyard doorway should be passable");
-  assert.equal(canStand(-6.1, 1.6, c1.collision), true, "Level 1 Aquila->Vaulted Garage bay should be passable");
-  assert.equal(canStand(12.0, -5.0, c1.collision), true, "Level 1 Courtyard->Warehouse portal should be passable");
-  // Climb Aquila Sector's left concrete parking ramp smoothly from z=13.0 up onto landing y=1.45
-  const pose = { x: -4.5, y: PLAYER_EYE_HEIGHT, z: 13.0, footY: 0 };
-  for (let i = 0; i < 110; i++) movePlayer(pose, 0, -0.09, c1.collision, 0.03);
-  assert(pose.z < 5.3 && Math.abs(sampleFloorHeight(pose.x, pose.z, c1.collision) - 1.45) < 1e-3,
-    `Expected smooth climb up Aquila parking ramp (z=${pose.z}, floor=${sampleFloorHeight(pose.x, pose.z, c1.collision)})`);
 });
 
 test("MapBuilder flaredCapital, trumpetColumn, and verticalTubeLight compile into valid watertight BVH", () => {
@@ -332,16 +308,18 @@ test("MapBuilder flaredCapital, trumpetColumn, and verticalTubeLight compile int
   }
 });
 
-test("procedural liminal BGM tracks validate cleanly and schedule click-free Web Audio across all 3 realms", () => {
+test("classic Backrooms pure-code BGM tracks validate cleanly and honor per-level defaults", () => {
   assert(Math.abs(midiToHz(69) - 440) < 1e-6);
   assert(Math.abs(midiToHz(60) - 261.625565) < 1e-3);
+  assert.equal(BGM_TRACKS.poolrooms.defaultEnabled, true);
+  assert.equal(BGM_TRACKS.backrooms.defaultEnabled, false);
 
-  // Every v2 level audio profile must map to a complete 16-bar procedural BGM track
+  // Every active v2 level audio profile must map to a complete 16-bar procedural BGM track
   for (const lvl of LEVEL_LIST) {
     const tr = BGM_TRACKS[lvl.audio];
     assert(tr, `Missing BGM track for level '${lvl.id}' profile '${lvl.audio}'`);
     assert.equal(tr.chords.length, tr.bars, `Track '${tr.id}' chord count must match bars`);
-    assert(tr.melody.length >= 16, `Track '${tr.id}' should have an expressive multi-bar melody`);
+    assert(tr.melody.length >= 24, `Track '${tr.id}' should have a complete classic melody`);
     const totalSteps = tr.bars * tr.stepsPerBar;
     for (const c of tr.chords) {
       assert(c.bass >= 24 && c.bass <= 60, `Bass note out of range in ${tr.id}`);
@@ -354,7 +332,7 @@ test("procedural liminal BGM tracks validate cleanly and schedule click-free Web
     }
   }
 
-  // Strict Web Audio mock enforcing positive exponentialRampToValueAtTime values (catches bipolar zero-crossing bugs!)
+  // Strict Web Audio mock enforcing positive exponentialRampToValueAtTime values
   let oscCount = 0;
   let stoppedOscs = 0;
   const mkParam = (init = 0) => {
@@ -408,12 +386,19 @@ test("procedural liminal BGM tracks validate cleanly and schedule click-free Web
   };
 
   const bgm = createBgmEngine(mockCtx, mkNode());
-  for (const prof of ["backrooms", "poolrooms", "parking"]) {
+  // Level 0 defaults to Ambient Only (BGM off) when applyDefault=true
+  bgm.setProfile("backrooms", { applyDefault: true });
+  assert.equal(bgm.inspect().enabled, false);
+  // Poolrooms defaults to ON ("Hi — TEMPOREX")
+  bgm.setProfile("poolrooms", { applyDefault: true });
+  assert.equal(bgm.inspect().enabled, true);
+
+  for (const prof of ["poolrooms", "backrooms"]) {
     bgm.setProfile(prof);
+    bgm.setEnabled(true);
     assert.equal(bgm.inspect().profile, prof);
     assert.equal(bgm.inspect().track, BGM_TRACKS[prof].title);
     const before = oscCount;
-    // Step clock across 20 seconds of music to trigger every chord, pad, arpeggio, pulse & lead voice!
     for (let s = 0; s < 100; s++) {
       mockCtx.currentTime += 0.20;
       bgm.update();
@@ -422,7 +407,6 @@ test("procedural liminal BGM tracks validate cleanly and schedule click-free Web
   }
   assert.equal(stoppedOscs, oscCount, "Every scheduled oscillator must have a clean stop() call");
 
-  // Disabling BGM must immediately stop scheduling new oscillators (0 CPU when toggled off!)
   assert.equal(bgm.toggle(), false);
   assert.equal(bgm.inspect().enabled, false);
   const frozenCount = oscCount;

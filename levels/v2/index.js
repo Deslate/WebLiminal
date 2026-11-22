@@ -3,9 +3,8 @@
 
 import poolroomsV2 from "./poolrooms-v2.js";
 import level0 from "./level0.js";
-import level1 from "./level1.js";
 
-export const LEVEL_LIST = [level0, level1, poolroomsV2];
+export const LEVEL_LIST = [level0, poolroomsV2];
 export const LEVELS = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
 export const DEFAULT_LEVEL = level0.id;
 

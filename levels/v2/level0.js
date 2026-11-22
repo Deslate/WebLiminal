@@ -22,13 +22,13 @@ export default {
     skyTop: [0.015, 0.014, 0.008],
     skyHorizon: [0.022, 0.020, 0.011],
     sun: null,
-    perPixelAreaLights: true,
+    perPixelAreaLights: false, // full unbiased 43-troffer soft area-light baking + MRP specular + contact GTAO!
     exposure: 1.18,
-    bloomStrength: 0.24,
+    bloomStrength: 0.28,
     volumetricStrength: 0.06,
-    ambientFloor: 0.003,
-    bounceBoost: 2.02, // rich warm golden-ochre multi-bounce mono-yellow GI!
-    aoRadius: 1.40,
+    ambientFloor: 0.001,
+    bounceBoost: 1.00, // exact physical multi-bounce energy conservation matching unbiased Ground-Truth Path Tracing!
+    aoRadius: 0.52,
   },
 
   build(m) {
@@ -285,9 +285,9 @@ export default {
     //   - Twin receding rows of cool-white fluorescent troffers casting wall scallops
     //   - Lone recessed dark-framed doorway on the far north wall opening into Pier Hall!
     // =========================================================================
-    // Solid front viewing landing (z = 9.596..14.40) & rear landing (z = -4.80..-1.996) with 4mm T-junction overlap
-    m.floor(6.00, 9.596, 16.80, 14.40, 0, carpetPit, { padOuter: false });
-    m.floor(6.00, -4.80, 16.80, -1.996, 0, carpetPit, { padOuter: false });
+    // Solid front viewing landing (z = 9.18..14.40) & rear landing (z = -4.80..-2.00) — zero front bridge sliver seam!
+    m.floor(6.00, 9.18, 16.80, 14.40, 0, carpetPit, { padOuter: false });
+    m.floor(6.00, -4.80, 16.80, -2.00, 0, carpetPit, { padOuter: false });
 
     // Iconic foreground left framing wall corner on the viewing ledge (matches image_4.png left foreground!)
     m.box([6.00, 0, 9.80], [8.10, H, 10.70], wpPitWall, { skipFaces: ["ny", "py", "nx"] });
@@ -321,7 +321,7 @@ export default {
     ];
     const PIT_DEPTH = -5.50;
 
-    // 4 continuous longitudinal carpeted walkways (left ledge, 2 interior bridges, right ledge) across z in [-2.00..9.60]
+    // 4 continuous longitudinal carpeted walkways (left ledge, 2 interior bridges, right ledge) across z in [-2.00..9.18]
     const walkCols = [
       [6.00, 7.14],
       [9.32, 10.31],
@@ -329,11 +329,10 @@ export default {
       [15.66, 16.80],
     ];
     for (const [wx0, wx1] of walkCols) {
-      m.floor(wx0, -2.00, wx1, 9.60, 0, carpetPit, { padOuter: false });
+      m.floor(wx0, -2.00, wx1, 9.18, 0, carpetPit, { padOuter: false, priority: 1.35 });
     }
-    // 5 transverse carpeted cross-bridges spanning cleanly between pit openings (with 4mm flush overlap into walkCols)
+    // 4 transverse carpeted cross-bridges spanning cleanly between pit rows (front row already joins front landing at z=9.18!)
     const bridgeZs = [
-      [9.18, 9.60],
       [6.78, 7.60],
       [4.38, 5.20],
       [1.98, 2.80],
@@ -341,7 +340,7 @@ export default {
     ];
     for (const [px0, px1] of pitCols) {
       for (const [bz0, bz1] of bridgeZs) {
-        m.floor(px0 - 0.004, bz0, px1 + 0.004, bz1, 0, carpetPit, { padOuter: false });
+        m.floor(px0 - 0.004, bz0, px1 + 0.004, bz1, 0, carpetPit, { padOuter: false, priority: 1.55 });
       }
       // Build each of the 15 deep 3D rectangular abyssal pit shafts + invisible pit-edge safety guard collision!
       for (const [pz0, pz1] of pitRows) {

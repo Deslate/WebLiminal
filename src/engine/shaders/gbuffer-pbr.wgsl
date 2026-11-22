@@ -265,15 +265,16 @@ fn fsMain(i: VSOut) -> GBufferOut {
   var albedo = ar.rgb;
   var rough = clamp(ar.a, 0.035, 1.0);
   var texAO = nh.a;
-  let metallic = mt.r;
+  var metallic = mt.r;
   var coat = mt.g;
-  let emissiveMask = mt.b;
+  var emissiveMask = mt.b;
 
   var nXY = nh.rg * 2.0 - 1.0;
 
   // Flat architectural glazed porcelain evaluation with 4-tap footprint slope-moment roughness compensation.
   let hasWater = frame.waterInfo.y > 0.5;
   let cer = evalAnalyticCeramicFull(i.uv, m, ar.rgb, ar.a, fwUV2, i.worldPos.y, frame.waterInfo.x, hasWater);
+  let intr = evalAnalyticInterior(i.uv, i.worldPos, m, fwUV2);
   if (cer.isCeramic) {
     albedo = cer.albedo;
     rough = cer.rough;
@@ -282,45 +283,16 @@ fn fsMain(i: VSOut) -> GBufferOut {
     // Use pure world-metric ceramic slope (flat face + tiny tilt + delicate glaze waviness),
     // never superimposing coarse 256px baked texture bump!
     nXY = cer.slope;
-  } else if (preset == 4u) {
-    // Level 0 vintage wallpaper: subtle 0.60 m roll seams + organic plaster-backing aging + floor-level dust/damp
-    let rollSeam = filteredGridCoverage(vec2f(i.uv.x / 0.60, 0.25), vec2f(fwUV2.x / 0.60, 0.001), 0.0042);
-    let worldAge = vFbm2(vec2f(i.worldPos.x + i.worldPos.z, i.worldPos.y * 1.15) * 0.36);
-    let dampRise = smoothstep(0.55, 0.06, i.worldPos.y) * smoothstep(0.42, 0.76, vFbm2(vec2f(i.worldPos.x + i.worldPos.z, 1.7) * 0.65));
-    albedo *= (0.94 + 0.11 * worldAge) * (1.0 - rollSeam * 0.11) * (1.0 - dampRise * 0.18);
-    rough = clamp(rough - dampRise * 0.12, 0.50, 0.95);
-    texAO *= 1.0 - rollSeam * 0.16;
-  } else if (preset == 5u) {
-    // Level 0 commercial broadloom carpet: non-repeating organic traffic paths & subtle damp patches (matte, zero plastic!)
-    let macroWear = vFbm2(i.worldPos.xz * 0.24 + vec2f(3.1, 7.4));
-    let traffic = vFbm2(i.worldPos.xz * 0.55 + vec2f(-8.2, 4.1));
-    let dampPatch = smoothstep(0.54, 0.80, vFbm2(i.worldPos.xz * 0.32 + vec2f(19.2, -5.8)));
-    albedo *= (0.86 + 0.22 * macroWear) * (0.92 + 0.14 * traffic) * (1.0 - dampPatch * 0.22);
-    rough = clamp(rough - dampPatch * 0.10, 0.78, 0.99);
-    coat = 0.0;
-  } else if (preset == 6u) {
-    // Level 0 bright ivory commercial suspended drop ceiling: exact 1.20 x 0.60 m thin enameled T-bar grid
-    let g = vec2f(i.uv.x / 1.20, i.uv.y / 0.60);
-    let fwG = vec2f(fwUV2.x / 1.20, fwUV2.y / 0.60);
-    let barX = filteredGridCoverage(vec2f(g.x, 0.25), vec2f(fwG.x, 0.001), 0.022 / 1.20);
-    let barY = filteredGridCoverage(vec2f(0.25, g.y), vec2f(0.001, fwG.y), 0.022 / 0.60);
-    let tBar = clamp(barX + barY - barX * barY, 0.0, 1.0);
-    let shadowLip = clamp(
-      filteredGridCoverage(vec2f(g.x, 0.25), vec2f(fwG.x, 0.001), 0.038 / 1.20)
-      + filteredGridCoverage(vec2f(0.25, g.y), vec2f(0.001, fwG.y), 0.038 / 0.60),
-      0.0, 1.0,
-    ) * (1.0 - tBar);
-    let cellId = vHash2(floor(g) + vec2f(7.3, 19.1));
-    let waterRing = smoothstep(0.66, 0.86, vFbm2(i.worldPos.xz * 0.38 + vec2f(5.4, 2.8)));
-    var tileCol = albedo * (0.96 + 0.07 * cellId);
-    tileCol = mix(tileCol, tileCol * vec3f(0.84, 0.78, 0.58), waterRing * 0.42);
-    tileCol *= 1.0 - shadowLip * 0.32;
-    let barCol = vec3f(0.84, 0.82, 0.74);
-    albedo = mix(tileCol, barCol, tBar);
-    rough = mix(rough, 0.32, tBar);
-    coat = mix(0.0, 0.16, tBar);
-    texAO = mix(texAO * (1.0 - shadowLip * 0.38), 1.0, tBar);
-    nXY *= 1.0 - tBar * 0.92;
+  } else if (intr.handled) {
+    albedo = intr.albedo;
+    rough = intr.rough;
+    coat = intr.coat;
+    metallic = intr.metallic;
+    texAO = intr.ao;
+    nXY = intr.slope;
+    if (preset == 13u) {
+      emissiveMask = intr.emissiveMask;
+    }
   } else if (preset == 8u || preset == 10u) {
     // Level 1 authentic poured concrete & weathered chalky concrete columns:
     // Horizontal formwork lift seams (0.80 m), floor splash grime, damp seepage & non-repeating tonal mottle.
@@ -464,7 +436,11 @@ fn fsMain(i: VSOut) -> GBufferOut {
   if (vineDiscard) { discard; }
   let irrad = lmI.rgb + vec3f(frame.fogParams.w);
   let bakedAO = clamp(lmD.a, 0.0, 1.0);
-  let ao = mix(0.28, 1.0, bakedAO) * mix(0.55, 1.0, texAO);
+  let indoorDirect = (u32(frame.waterInfo.w + 0.5) & 4u) != 0u;
+  // On dry baked-area-light interiors (Level 0), lightmap irradiance already integrates physical occlusion;
+  // keep baked crevice AO gentle (0.66..1.0) and pair with full-res screen-space contact GTAO in compositeSSR!
+  let aoFloor = select(0.28, 0.66, !hasWater && !indoorDirect);
+  let ao = mix(aoFloor, 1.0, bakedAO) * mix(0.62, 1.0, texAO);
 
   // Directional normal modulation from lightmap dominant incoming light vector.
   let irradLuma = max(0.002, dot(irrad, vec3f(0.2126, 0.7152, 0.0722)));
@@ -514,7 +490,6 @@ fn fsMain(i: VSOut) -> GBufferOut {
   //    - Poolrooms (perPixelLights == false): evaluates early-culled BVH-shadowed area-light GGX specular.
   let lightCount = min(u32(frame.skyHorizon.w + 0.5), 64u);
   let shadowOrigin = i.worldPos + Ngeom * 0.014;
-  let indoorDirect = (u32(frame.waterInfo.w + 0.5) & 4u) != 0u;
 
   if (indoorDirect) {
     var topIdx = array<u32, 6>(0u, 0u, 0u, 0u, 0u, 0u);
@@ -646,22 +621,41 @@ fn fsMain(i: VSOut) -> GBufferOut {
       }
     }
   } else {
+    let Rvec = reflect(-V, N);
     for (var li = 0u; li < lightCount; li++) {
       let l = lights[li];
       let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
-      let toL = lCenter - i.worldPos;
-      let dist2 = dot(toL, toL);
-      if (dist2 > 220.0 || dist2 < 0.04) { continue; }
+      let toC = lCenter - i.worldPos;
+      let cDist2 = dot(toC, toC);
+      if (cDist2 > 196.0 || cDist2 < 0.04) { continue; }
       let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+      if (dot(lNorm, -toC) <= 0.01) { continue; }
+
+      // Most Representative Point (MRP): intersect reflection ray with panel plane & clamp onto [0..1]^2!
+      let denom = dot(Rvec, lNorm);
+      var mrp = lCenter;
+      if (abs(denom) > 1e-4) {
+        let tPlane = dot(l.originArea.xyz - i.worldPos, lNorm) / denom;
+        if (tPlane > 0.01) {
+          let hitP = i.worldPos + Rvec * min(tPlane, 24.0) - l.originArea.xyz;
+          let lenU2 = max(dot(l.edgeUPower.xyz, l.edgeUPower.xyz), 1e-4);
+          let lenV2 = max(dot(l.edgeVKind.xyz, l.edgeVKind.xyz), 1e-4);
+          let uCl = clamp(dot(hitP, l.edgeUPower.xyz) / lenU2, 0.0, 1.0);
+          let vCl = clamp(dot(hitP, l.edgeVKind.xyz) / lenV2, 0.0, 1.0);
+          mrp = l.originArea.xyz + l.edgeUPower.xyz * uCl + l.edgeVKind.xyz * vCl;
+        }
+      }
+      let toL = mrp - i.worldPos;
+      let dist2 = max(dot(toL, toL), 0.04);
       let dist = sqrt(dist2);
       let dirL = toL / dist;
       let cosL = dot(lNorm, -dirL);
       if (cosL <= 0.02 || dot(Ngeom, dirL) <= 0.0 || dot(N, dirL) <= 0.0) { continue; }
-      let atten = (cosL * l.originArea.w) / max(dist2, 0.35);
-      let areaSpecRough = clamp(rough + sqrt(l.originArea.w) * 0.075 / max(dist, 0.5), 0.065, 0.92);
-      let cand = evalGGXSpec(N, V, dirL, areaSpecRough, f0) * l.radianceCdf.rgb * atten * 0.45;
-      if (dot(cand, vec3f(0.2126, 0.7152, 0.0722)) < 0.028) { continue; }
-      if (!traceShadowPBR(shadowOrigin, dirL, max(0.02, dist - 0.08))) {
+      let atten = (cosL * l.originArea.w) / max(dist2, 0.25);
+      let areaSpecRough = clamp(rough + sqrt(l.originArea.w) * 0.075 / max(dist, 0.45), 0.065, 0.92);
+      let cand = evalGGXSpec(N, V, dirL, areaSpecRough, f0) * l.radianceCdf.rgb * atten * 0.52;
+      if (dot(cand, vec3f(0.2126, 0.7152, 0.0722)) < 0.016) { continue; }
+      if (!traceShadowPBR(shadowOrigin, dirL, max(0.02, dist - 0.06))) {
         specular += cand;
       }
     }

@@ -560,5 +560,48 @@ fn compositeSSR(@builtin(global_invocation_id) gid: vec3u) {
     finalCol += refl * ar.rgb;
   }
 
+  // 3. Deterministic Zero-Noise World-Space Contact GTAO (6 fixed directions x 3 radial steps, 0.42 m radius)
+  //    Grounds baseboards, wall-to-ceiling junctions, doorway jambs, fallen ceiling tiles & Pitfalls rims
+  //    to match unbiased Ground-Truth Path Tracing with ZERO screen-space crawl or camera-pan shimmer!
+  let wpCenter = reconstructWorldPos(uv, cD);
+  let pxRadius = clamp((0.42 * f32(dims.y) * 0.74) / max(cLinD, 0.25), 3.0, 26.0);
+  let aoDirs = array<vec2f, 6>(
+    vec2f( 0.9659,  0.2588),
+    vec2f( 0.2588,  0.9659),
+    vec2f(-0.7071,  0.7071),
+    vec2f(-0.9659, -0.2588),
+    vec2f(-0.2588, -0.9659),
+    vec2f( 0.7071, -0.7071),
+  );
+  let stepFracs = array<f32, 3>(0.30, 0.62, 1.00);
+  var occSum = 0.0;
+  for (var di = 0u; di < 6u; di++) {
+    var dirOcc = 0.0;
+    let dvec = aoDirs[di];
+    for (var si = 0u; si < 3u; si++) {
+      let spx = clamp(px + vec2i(round(dvec * (pxRadius * stepFracs[si]))), vec2i(0), fullMax);
+      let sD = textureLoad(depthTex, spx, 0);
+      if (sD >= 0.9999) { continue; }
+      let suv = (vec2f(spx) + 0.5) / vec2f(dims);
+      let swp = reconstructWorldPos(suv, sD);
+      let delta = swp - wpCenter;
+      let dist = length(delta);
+      if (dist > 0.014 && dist < 0.48) {
+        let h = dot(delta / dist, cN);
+        if (h > 0.14) {
+          let falloff = 1.0 - smoothstep(0.10, 0.48, dist);
+          dirOcc = max(dirOcc, ((h - 0.14) / 0.86) * falloff);
+        }
+      }
+    }
+    occSum += dirOcc;
+  }
+  let rawContactAO = clamp(1.0 - (occSum / 6.0) * 0.78, 0.36, 1.0);
+  // Protect HDR emissive panels & keep Poolrooms' v1-matched brightness gently weighted
+  let cLuma = dot(finalCol, vec3f(0.2126, 0.7152, 0.0722));
+  let emissiveKeep = smoothstep(2.2, 6.0, cLuma);
+  let aoStrength = select(0.90, 0.20, frame.waterInfo.y > 0.5) * (1.0 - emissiveKeep);
+  finalCol *= mix(1.0, rawContactAO, aoStrength);
+
   textureStore(outHdr, px, vec4f(finalCol, 1.0));
 }

@@ -58,8 +58,10 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
   var sumD = vec3f(0.0);
   var sumAO = 0.0;
   var wSum = 0.0;
+  var wAOSum = 0.0;
 
   let cLuma = dot(cI.rgb, vec3f(0.2126, 0.7152, 0.0722));
+  let maxDist2 = select(0.46, 0.24, step <= 2);
 
   for (var dy = -2; dy <= 2; dy++) {
     for (var dx = -2; dx <= 2; dx++) {
@@ -68,36 +70,41 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
       let pq = lmPos[qIdx];
       if (pq.w < 0.25) { continue; }
       let nq = normalize(lmNorm[qIdx].xyz);
-      if (dot(n0, nq) < 0.90) { continue; }
+      if (dot(n0, nq) < 0.92) { continue; }
       let dp = pq.xyz - p0.xyz;
-      if (abs(dot(dp, n0)) > 0.045) { continue; }
+      if (abs(dot(dp, n0)) > 0.035) { continue; }
       let dist2 = dot(dp, dp);
-      if (dist2 > 0.72) { continue; }
+      if (dist2 > maxDist2) { continue; }
 
       let qI = textureLoad(srcIrrad, q, 0);
       let qD = textureLoad(srcDir, q, 0);
       let qLuma = dot(qI.rgb, vec3f(0.2126, 0.7152, 0.0722));
-      let lumaDiff = abs(qLuma - cLuma) / max(0.55, cLuma + qLuma);
+      let lumaDiff = abs(qLuma - cLuma) / max(0.28, cLuma + qLuma);
 
       let kw = kernel[abs(dx)] * kernel[abs(dy)];
-      let pw = exp(-dist2 * 2.4);
-      let lw = exp(-lumaDiff * 0.95);
+      let pw = exp(-dist2 * 3.2);
+      let lw = exp(-lumaDiff * 2.1);
       let w = kw * pw * lw;
 
       sumI += qI.rgb * w;
       sumD += qD.rgb * w;
-      sumAO += qD.a * w;
       wSum += w;
+
+      // Keep short-range crevice AO crisp on fine passes (step <= 2) so wall/baseboard junctions stay sharp!
+      if (step <= 2 && dist2 < 0.14) {
+        let aoDiff = abs(qD.a - cD.a);
+        let wAO = kw * exp(-dist2 * 10.0) * exp(-aoDiff * 3.5);
+        sumAO += qD.a * wAO;
+        wAOSum += wAO;
+      }
     }
   }
 
-  if (wSum > 1e-5) {
-    textureStore(outIrrad, c, vec4f(sumI / wSum, p0.w));
-    textureStore(outDir, c, vec4f(sumD / wSum, sumAO / wSum));
-  } else {
-    textureStore(outIrrad, c, cI);
-    textureStore(outDir, c, cD);
-  }
+  let finalI = select(cI.rgb, sumI / wSum, wSum > 1e-5);
+  let finalD = select(cD.rgb, sumD / wSum, wSum > 1e-5);
+  let finalAO = select(cD.a, sumAO / wAOSum, step <= 2 && wAOSum > 1e-5);
+  textureStore(outIrrad, c, vec4f(finalI, p0.w));
+  textureStore(outDir, c, vec4f(finalD, finalAO));
 }
 
 // Final gutter fill: copies nearest valid texel into unused atlas cells.
