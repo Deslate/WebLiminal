@@ -483,6 +483,7 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 4, resource: rt.depthView },
         { binding: 7, resource: { buffer: sceneRes.bvhNodeBuf } },
         { binding: 8, resource: { buffer: sceneRes.bvhTriBuf } },
+        { binding: 9, resource: { buffer: sceneRes.materialBuf } },
       ],
     });
     rt.ssrCompGroup1 = device.createBindGroup({
@@ -630,7 +631,8 @@ export async function createRenderer(canvas, options = {}) {
     f[20] = sceneRes.totalLightPower;
     f[21] = atm.bounceBoost ?? 1.15;
     f[22] = atm.aoRadius ?? 1.6;
-    f[23] = sceneRes.hasSkylights ? 1.0 : 0.0;
+    const perPixelLights = Boolean(atm.perPixelAreaLights ?? !atm.sun);
+    f[23] = (sceneRes.hasSkylights ? 1 : 0) | (perPixelLights ? 2 : 0);
     if (sceneRes.water) {
       f[24] = sceneRes.water.absorption[0];
       f[25] = sceneRes.water.absorption[1];
@@ -1107,7 +1109,8 @@ export async function createRenderer(canvas, options = {}) {
     const sunDir = sun ? normalize3(sun.direction) : [0, 1, 0];
     const sunCol = sun ? sun.color : [0, 0, 0];
     const sunInt = sun ? sun.intensity : 0;
-    const flags = (settings.vhsMode ? 1 : 0) | (settings.ssrEnabled ? 0 : 2);
+    const perPixelLights = Boolean(atm.perPixelAreaLights ?? !atm.sun);
+    const flags = (settings.vhsMode ? 1 : 0) | (settings.ssrEnabled ? 0 : 2) | (perPixelLights ? 4 : 0);
 
     const fBuf = new Float32Array(68);
     fBuf.set(vp, 0);

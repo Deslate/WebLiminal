@@ -209,30 +209,29 @@ fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32, fwMax
     vHash2(cell + vec2f(28.7, 9.1 + seed * 11.0)),
   );
 
-  // Authentic ~4.2 mm full grout joint on 200-250 mm architectural tiles (~2.6 mm on 125 mm mosaic).
-  let groutHalf = select(0.0021, 0.0013, preset == 2u);
+  // Authentic ~5.0 mm full grout joint on 200-250 mm architectural tiles (~2.8 mm on 125 mm mosaic), matching v1.
+  let groutHalf = select(0.0025, 0.0014, preset == 2u);
   let halfSize = max(tileSize * 0.5 - groutHalf, 0.01);
-  let cornerR = 0.0011 + 0.0009 * id;
+  let cornerR = 0.0018 + 0.0010 * id;
   let d = abs(q) - halfSize + cornerR;
   let edge = -(length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0) - cornerR);
 
-  // Tight ~1.3-2.3 mm fired porcelain edge shoulder (NOT a bulging cushion!).
-  let bevel = 0.0012 + 0.0011 * r.y;
+  // Crisp ~3.2-4.6 mm fired porcelain rounded glaze shoulder (flat 96% tile face, zero pillow bulge, catches real edge glints!).
+  let bevel = 0.0032 + 0.0014 * r.y;
   let shoulder = smoothstep(0.0, bevel, edge);
 
-  // Subtle hand-laid mounting micro-tilt (v1 porcelain uses 0.009 rad; dado 0.014 rad).
-  let tiltMag = select(0.011, 0.015, preset == 16u);
+  // Subtle hand-laid mounting micro-tilt (v1 porcelain uses ~0.011 rad).
+  let tiltMag = select(0.013, 0.016, preset == 16u);
   let tilt = (r - 0.5) * tiltMag;
 
-  // Outward-facing micro-shoulder gradient ONLY within the ~1.8 mm rounded lip,
-  // smoothly band-limited before Nyquist aliasing so tile edges never sparkle when panning!
+  // Outward-facing glazed shoulder gradient along the rounded ceramic lip, band-limited smoothly before Nyquist.
   var ge = -sign(q) * select(vec2f(0.0, 1.0), vec2f(1.0, 0.0), d.x > d.y);
   if (any(d > vec2f(0.0))) {
     ge = -sign(q) * normalize(max(d, vec2f(1e-6)));
   }
   let u = clamp(edge / bevel, 0.0, 1.0);
-  let lipWeight = 1.0 - smoothstep(0.0018, 0.011, fwMax);
-  let lipSlope = ge * (0.34 * 4.0 * u * (1.0 - u) * lipWeight);
+  let lipWeight = 1.0 - smoothstep(0.0035, 0.024, fwMax);
+  let lipSlope = ge * (0.46 * 4.0 * u * (1.0 - u) * lipWeight);
 
   // Band-limited kiln-fired glaze waviness & micro-texture: fade cleanly before Nyquist
   // (unresolved variance is analytically folded into GGX roughness in evalAnalyticCeramicFull).
@@ -241,7 +240,7 @@ fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32, fwMax
   let microWeight = 1.0 - smoothstep(0.0010, 0.0048, fwMax);
   let waviness = vec2f(vNoise2(uvM * 23.7 + tSeed), vNoise2(uvM * 27.1 - tSeed)) - 0.5;
   let micro = vec2f(vNoise2(uvM * 137.3 + tSeed), vNoise2(uvM * 143.7 - tSeed)) - 0.5;
-  let glaze = (waviness * (0.015 * waveWeight) + micro * (0.018 * microWeight)) * shoulder;
+  let glaze = (waviness * (0.017 * waveWeight) + micro * (0.018 * microWeight)) * shoulder;
 
   let totalSlope = (tilt * shoulder + lipSlope + glaze);
   return TileMetric(edge, bevel, id, totalSlope);
@@ -275,7 +274,7 @@ fn evalAnalyticCeramicFull(
   let tSeed = vec2f(t.id * 173.1, seed * 13.71);
 
   // Exact box-filtered grout coverage (silky smooth at every distance & grazing angle).
-  let groutHalf = select(0.0021, 0.0013, preset == 2u);
+  let groutHalf = select(0.0020, 0.0012, preset == 2u);
   let lineWFrac = (groutHalf * 2.0) * freq;
   let inGrout = filteredGridCoverage(g, fwGrid, lineWFrac);
 
@@ -292,46 +291,48 @@ fn evalAnalyticCeramicFull(
   }
   let waveWeight = 1.0 - smoothstep(0.0045, 0.022, fwMax);
   let microWeight = 1.0 - smoothstep(0.0010, 0.0048, fwMax);
-  // Analytically fold faded sub-Nyquist glaze variance into GGX NDF broadening so glossy
-  // reflections stay physically consistent across distance with zero motion sparkle.
   let fadedGlazeVar = (1.0 - microWeight * microWeight) * 0.000055 + (1.0 - waveWeight * waveWeight) * 0.000038;
   let slopeVar = max(secondMoment - meanSlope * meanSlope, vec2f(0.0)) + vec2f(fadedGlazeVar);
   let slope = meanSlope * (1.0 - inGrout);
 
-  // Authentic architectural porcelain color & weathering (ported from v1 porcelain.wgsl).
+  // Authentic architectural porcelain color & weathering (exact v1 porcelain.wgsl kiln batch range!).
   let detail = 1.0 - smoothstep(0.0009, 0.006, fwMax);
-  // Subtle organic per-tile batch variation (never checkerboard!).
-  let batchWarm = mix(vec3f(0.92, 0.94, 0.90), vec3f(1.06, 1.04, 1.00), t.id * 0.65 + 0.18);
+  // Real handcrafted kiln-fired tile-to-tile tonal variation (v1 mix(.57..80) ratio!).
+  let batchWarm = mix(vec3f(0.82, 0.85, 0.78), vec3f(1.10, 1.07, 0.99), t.id * 0.68 + 0.16);
   var color = baseAlbedo * batchWarm;
+
+  // Soft 3D porcelain glaze bevel shoulder darkening as the lip curves gently into the recessed mortar
+  let bevelShade = (1.0 - smoothstep(0.0, t.bevel * 1.15 + fwMax * 0.4, t.edge)) * (1.0 - inGrout);
+  color *= 1.0 - bevelShade * 0.14;
 
   // Edge mineral staining & subtle vertical water streaks.
   let mineral = smoothstep(0.43, 0.70, vFbm2(uv * 4.7 + tSeed)) * exp(-max(0.0, t.edge) / 0.025);
   let streak = pow(vNoise2(vec2f(uv.x * 39.0, uv.y * 2.3) + tSeed), 3.0);
   let waterline = select(0.0, exp(-abs(worldY - waterLevel - 0.045) / 0.08), hasWater);
-  color *= 1.0 - mineral * 0.11 - streak * 0.055 - waterline * 0.18;
+  color *= 1.0 - mineral * 0.13 - streak * 0.065 - waterline * 0.20;
 
   // Subtle fired edge micro-chips & mineral scale deposits (close-up realism).
-  let chip = (1.0 - smoothstep(0.001, 0.008, t.edge)) * smoothstep(0.62, 0.86, vNoise2(uv * 217.0 + tSeed));
-  color = mix(color, color * 0.44, chip * 0.30 * detail);
-  let scaleDeposit = smoothstep(0.58, 0.79, vNoise2(uv * 17.3 + tSeed) + vNoise2(uv * 61.7 - tSeed) * 0.14) * (0.16 + 0.60 * mineral);
-  color = mix(color, mix(color, vec3f(0.69, 0.70, 0.61), 0.5), scaleDeposit * 0.20);
-  color *= 1.0 + (vNoise2(uv * 491.3 + tSeed) - 0.5) * 0.03 * detail;
+  let chip = (1.0 - smoothstep(0.001, 0.008, t.edge)) * smoothstep(0.60, 0.84, vNoise2(uv * 217.0 + tSeed));
+  color = mix(color, color * 0.44, chip * 0.32 * detail);
+  let scaleDeposit = smoothstep(0.58, 0.79, vNoise2(uv * 17.3 + tSeed) + vNoise2(uv * 61.7 - tSeed) * 0.14) * (0.18 + 0.62 * mineral);
+  color = mix(color, mix(color, vec3f(0.71, 0.71, 0.62), 0.5), scaleDeposit * 0.22);
+  color *= 1.0 + (vNoise2(uv * 491.3 + tSeed) - 0.5) * 0.032 * detail;
 
-  // Recessed neutral warm-olive cement mortar (matching v1 grout vec3f(.15, .165, .133)).
+  // Recessed warm cement mortar (soft natural ceramic grout matching v1 porcelain.wgsl, never harsh CAD black lines!).
   let dirt = vFbm2(uv * 71.9 + tSeed);
   let groutBase = select(
-    vec3f(0.155, 0.168, 0.138) * (0.64 + 0.36 * dirt) * (1.0 - waterline * 0.24),
-    vec3f(0.022, 0.062, 0.052) * (0.72 + 0.28 * dirt),
+    vec3f(0.255, 0.265, 0.225) * (0.72 + 0.28 * dirt) * (1.0 - waterline * 0.22),
+    vec3f(0.030, 0.078, 0.065) * (0.72 + 0.28 * dirt),
     preset == 16u,
   );
   let albedo = mix(color, groutBase, inGrout);
 
-  // Per-tile glaze roughness + isotropic slope-moment NDF broadening.
-  let baseTileRough = clamp(baseRough + (t.id - 0.5) * 0.10 + scaleDeposit * 0.10 + mineral * 0.045, 0.065, 0.52);
+  // Per-tile glaze roughness (0.09..0.22 like v1 porcelain!) + isotropic slope-moment NDF broadening.
+  let baseTileRough = clamp(baseRough + (t.id - 0.5) * 0.12 + scaleDeposit * 0.12 + mineral * 0.055, 0.065, 0.50);
   let momentRough = min(0.92, pow(pow(baseTileRough, 4.0) + slopeVar.x + slopeVar.y, 0.25));
   let rough = mix(momentRough, 0.88, inGrout);
   let coat = mix(m.pbr.z, 0.0, inGrout);
-  let ao = mix(1.0, 0.70, inGrout);
+  let ao = mix(1.0, 0.82, inGrout);
 
   return CeramicEval(true, albedo, rough, coat, ao, slope, inGrout);
 }
@@ -349,16 +350,16 @@ fn evalAnalyticCeramic(uv: vec2f, m: MaterialGPU, baseAlbedo: vec3f, baseRough: 
   let cell = floor(uv / tileSize);
   let id = vHash2(cell + vec2f(seed * 17.19, 0.0));
 
-  let groutHalf = select(0.0021, 0.0013, preset == 2u);
+  let groutHalf = select(0.0020, 0.0012, preset == 2u);
   let lineWFrac = (groutHalf * 2.0) * freq;
   let inGrout = filteredGridCoverage(g, fwUV * freq, lineWFrac);
 
-  let batchWarm = mix(vec3f(0.92, 0.94, 0.90), vec3f(1.06, 1.04, 1.00), id * 0.65 + 0.18);
+  let batchWarm = mix(vec3f(0.82, 0.85, 0.78), vec3f(1.10, 1.07, 0.99), id * 0.68 + 0.16);
   let tileCol = baseAlbedo * batchWarm;
-  let groutBase = select(vec3f(0.145, 0.158, 0.130), vec3f(0.022, 0.062, 0.052), preset == 16u);
+  let groutBase = select(vec3f(0.245, 0.255, 0.215), vec3f(0.030, 0.078, 0.065), preset == 16u);
   let albedo = mix(tileCol, groutBase, inGrout);
-  let rough = mix(clamp(baseRough + (id - 0.5) * 0.08, 0.08, 0.55), 0.88, inGrout);
-  return CeramicEval(true, albedo, rough, mix(m.pbr.z, 0.0, inGrout), mix(1.0, 0.74, inGrout), vec2f(0.0), inGrout);
+  let rough = mix(clamp(baseRough + (id - 0.5) * 0.10, 0.08, 0.52), 0.88, inGrout);
+  return CeramicEval(true, albedo, rough, mix(m.pbr.z, 0.0, inGrout), mix(1.0, 0.82, inGrout), vec2f(0.0), inGrout);
 }
 
 // Fast exact unpolarized dielectric Fresnel (air n1=1.0 -> medium n2=ior).
@@ -397,5 +398,72 @@ fn evalFarCapillarySlope(p: vec2f, t: f32, depth: f32, amp: f32) -> vec2f {
   }
   return slope * amp;
 }
+
+// Procedural botanical hanging/climbing ivy vine silhouette (slender winding woody stem +
+// staggered pointed 3-lobed ivy leaves with central leaf veins). Returns vec2f(alpha, shade):
+// alpha < 0.5 discards transparent air gaps in both G-buffer rendering and BVH shadow rays!
+fn evalFoliageVine(uv: vec2f) -> vec2f {
+  let u = clamp(uv.x, 0.0, 1.0);
+  let v = uv.y;
+  let stemX = 0.50 + 0.08 * sin(v * 2.8) + 0.035 * cos(v * 6.5);
+  let stemD = abs(u - stemX);
+  var alpha = select(0.0, 1.0, stemD < 0.020);
+  var shade = select(0.50, 0.30, stemD < 0.020);
+
+  let cellFreq = 3.6;
+  let baseCell = floor(v * cellFreq);
+  for (var di = -1; di <= 1; di++) {
+    let cid = baseCell + f32(di);
+    let h1 = vHash2(vec2f(cid, 11.7));
+    let h2 = vHash2(vec2f(cid, 37.3));
+    let h3 = vHash2(vec2f(cid, 73.1));
+    let side = select(-1.0, 1.0, (i32(cid) & 1) == 0);
+    for (var sub = 0; sub < 3; sub++) {
+      let sh = select(select(h1, h2, sub == 1), h3, sub == 2);
+      let sh2 = select(select(h2, h3, sub == 1), h1, sub == 2);
+      let sgn = select(select(side, -side * 0.85, sub == 1), side * 0.35, sub == 2);
+      let lcV = (cid + 0.18 + 0.68 * sh2) / cellFreq;
+      let reach = select(0.16 + 0.20 * sh, 0.07 + 0.10 * sh, sub == 2);
+      let lcU = stemX + sgn * reach;
+      // Thin leaf petiole connecting leaf base to main vine stem
+      let petT = clamp((u - stemX) / select(lcU - stemX, 1e-4, abs(lcU - stemX) < 1e-4), 0.0, 1.0);
+      let petV = mix(lcV + 0.03, lcV, petT);
+      if (abs(v - petV) * cellFreq < 0.055 && petT > 0.02 && petT < 0.95) {
+        alpha = 1.0;
+        shade = max(shade, 0.36);
+      }
+      let ang = sgn * (0.45 + 0.85 * sh) + select(0.0, 0.35, sub == 1);
+      let ca = cos(ang);
+      let sa = sin(ang);
+      let du = u - lcU;
+      let dv = (v - lcV) * 0.85;
+      let lx = du * ca + dv * sa;
+      let ly = -du * sa + dv * ca;
+      let lSize = select(0.115 + 0.075 * sh, 0.085 + 0.055 * sh, sub == 2);
+      let nx = lx / lSize;
+      let ny = ly / (lSize * 0.84);
+      // Pointed 3-lobed ivy heart leaf: tapers sharply toward +nx tip, slight basal indent at -nx
+      let taper = max(0.16, 1.0 - max(0.0, nx) * 0.72);
+      let lobe = 1.0 + 0.16 * cos(atan2(ny, nx + 0.24 + 1e-4) * 3.0);
+      let d2 = (nx * nx) / (lobe * lobe) + (ny * ny) / (taper * taper * lobe * lobe);
+      if (d2 < 1.0) {
+        alpha = 1.0;
+        let vein = exp(-abs(ny) * 14.0) * 0.20 + (1.0 - sqrt(max(0.0, d2))) * 0.24;
+        shade = max(shade, 0.58 + 0.52 * sh + vein);
+      }
+    }
+  }
+  return vec2f(alpha, shade);
+}
+
+// Ultra-lightweight register-free dappled foliage shadow alpha test for BVH shadow rays (zero loops / atan2).
+fn evalFoliageShadowAlpha(uv: vec2f) -> f32 {
+  let stem = abs(uv.x - (0.50 + 0.08 * sin(uv.y * 2.8)));
+  if (stem < 0.025) { return 1.0; }
+  let edge = 1.0 - smoothstep(0.24, 0.48, abs(uv.x - 0.50));
+  return select(0.0, 1.0, vNoise2(vec2f(uv.x * 5.6, uv.y * 8.2)) * edge > 0.34);
+}
+
+
 
 

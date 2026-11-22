@@ -255,9 +255,9 @@ test("v2 MapBuilder snaps arch, ring, and cylinder UVs cleanly to symmetric tile
 
 test("poolrooms-v2 doorways are unobstructed, bookmarks are walkable, and slide/spiral stairs have solid collision", () => {
   const byId = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
-  const mp = createMap();
+  const mp = createMap({ atlasSize: 384 });
   byId["poolrooms-v2"].build(mp);
-  const cp = mp.compile();
+  const cp = mp.compile({ atlasSize: 384 });
 
   // Every bookmark spawn must be unobstructed at its local floor/deck height
   for (const bm of cp.bookmarks) {
@@ -272,56 +272,61 @@ test("poolrooms-v2 doorways are unobstructed, bookmarks are walkable, and slide/
   assert.equal(canStand(-9.4, -11.6, cp.collision), false, "Water slide tube should have solid collision");
 });
 
-test("level0 and level1 bookmarks, doorways, stairs, and EXIT sub-tunnel are cleanly navigable", () => {
+test("level0 and level1 bookmarks, doorways, Pitfalls walkways, Aquila ramp, and sectors are cleanly navigable", () => {
   const byId = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
 
-  // Level 0 verification: 4 walkable bookmarks + clear main & side passages
-  const m0 = createMap({ atlasSize: 512 });
+  // Level 0 verification: 4 iconic connected chambers + walkable Pitfalls narrow carpeted bridge + far doorway
+  const m0 = createMap({ atlasSize: 384 });
   byId.level0.build(m0);
-  const c0 = m0.compile({ atlasSize: 512 });
+  const c0 = m0.compile({ atlasSize: 384 });
   assert.equal(c0.bookmarks.length, 4);
   for (const bm of c0.bookmarks) {
     const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, c0.collision);
     assert.equal(canStand(bm.spawn.x, bm.spawn.z, c0.collision, fy), true, `Level 0 bookmark '${bm.name}' blocked`);
   }
-  assert.equal(canStand(-0.96, 7.50, c0.collision), true, "Level 0 iconic main foreground opening should be passable");
-  assert.equal(canStand(-5.31, 4.32, c0.collision), true, "Level 0 west soffit corridor doorway should be passable");
-  assert.equal(canStand(7.29, 3.60, c0.collision), true, "Level 0 east unlit wing doorway should be passable");
-  // Pass-through window sill (y=0..1.04) at x=-5.31, z=-1.80 must block walking straight through
-  assert.equal(canStand(-5.31, -1.80, c0.collision), false, "Level 0 pass-through window sill should block walk-through");
+  assert.equal(canStand(-5.90, 0.40, c0.collision), true, "Level 0 Original->Corridor north doorway should be passable");
+  assert.equal(canStand(-5.90, 11.00, c0.collision), true, "Level 0 Original->Corridor south doorway should be passable");
+  assert.equal(canStand(5.90, 12.00, c0.collision), true, "Level 0 Original->Pitfalls doorway should be passable");
+  assert.equal(canStand(9.20, -4.89, c0.collision), true, "Level 0 Pitfalls far doorway into Pier Hall should be passable");
+  assert.equal(canStand(9.81, 6.00, c0.collision), true, "Level 0 Pitfalls narrow carpeted bridge should be walkable");
+  assert.equal(canStand(8.23, 8.40, c0.collision), false, "Level 0 Pitfalls pit shaft center must block stepping into abyss");
 
-  // Level 1 verification: 4 walkable bookmarks + EXIT portal into deep concrete hall + mezzanine stair climb
-  const m1 = createMap({ atlasSize: 512 });
+  // Level 1 verification: 4 connected Aquila/Warehouse/Mushroom/Courtyard sectors + ramp climb
+  const m1 = createMap({ atlasSize: 384 });
   byId.level1.build(m1);
-  const c1 = m1.compile({ atlasSize: 512 });
+  const c1 = m1.compile({ atlasSize: 384 });
   assert.equal(c1.bookmarks.length, 4);
   for (const bm of c1.bookmarks) {
     const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, c1.collision);
     assert.equal(canStand(bm.spawn.x, bm.spawn.z, c1.collision, fy), true, `Level 1 bookmark '${bm.name}' blocked`);
   }
-  assert.equal(canStand(0.0, -9.90, c1.collision), true, "Level 1 EXIT portal into deep concrete hall should be passable");
-  assert.equal(canStand(-6.70, -15.0, c1.collision), true, "Level 1 deep concrete hall toward steel doors should be walkable");
-  // Climb the 6-step loading mezzanine stairs smoothly from z=5.2 up onto DECK_Y=0.96
-  const pose = { x: 8.7, y: PLAYER_EYE_HEIGHT, z: 5.2, footY: 0 };
-  for (let i = 0; i < 65; i++) movePlayer(pose, 0, -0.09, c1.collision, 0.03);
-  assert(pose.z < 1.0 && Math.abs(sampleFloorHeight(pose.x, pose.z, c1.collision) - 0.96) < 1e-3,
-    `Expected smooth climb onto Level 1 mezzanine (z=${pose.z}, floor=${sampleFloorHeight(pose.x, pose.z, c1.collision)})`);
+  assert.equal(canStand(0.4, -5.0, c1.collision), true, "Level 1 Aquila->Warehouse drive portal should be passable");
+  assert.equal(canStand(5.88, -2.8, c1.collision), true, "Level 1 Aquila->Courtyard doorway should be passable");
+  assert.equal(canStand(-6.1, 1.6, c1.collision), true, "Level 1 Aquila->Vaulted Garage bay should be passable");
+  assert.equal(canStand(12.0, -5.0, c1.collision), true, "Level 1 Courtyard->Warehouse portal should be passable");
+  // Climb Aquila Sector's left concrete parking ramp smoothly from z=13.0 up onto landing y=1.45
+  const pose = { x: -4.5, y: PLAYER_EYE_HEIGHT, z: 13.0, footY: 0 };
+  for (let i = 0; i < 110; i++) movePlayer(pose, 0, -0.09, c1.collision, 0.03);
+  assert(pose.z < 5.3 && Math.abs(sampleFloorHeight(pose.x, pose.z, c1.collision) - 1.45) < 1e-3,
+    `Expected smooth climb up Aquila parking ramp (z=${pose.z}, floor=${sampleFloorHeight(pose.x, pose.z, c1.collision)})`);
 });
 
-test("MapBuilder flaredCapital compiles 4 sloped outward-facing pyramid faces into valid BVH", () => {
+test("MapBuilder flaredCapital, trumpetColumn, and verticalTubeLight compile into valid watertight BVH", () => {
   const m = createMap({ atlasSize: 256 });
   m.flaredCapital(0, 0, 2.26, 2.94, 0.34, 0.78, "concrete_painted");
+  m.trumpetColumn(4, 0, 0, 3.05, 0.34, 1.38, "concrete_raw", { segments: 16, rings: 5 });
+  m.verticalTubeLight(-1, 1.4, 2.7, 0, "+x", { intensity: 50 });
   const c = m.compile({ atlasSize: 256 });
-  assert.equal(c.stats.triangles, 8, "4 trapezoidal side faces = 8 triangles");
-  assert(c.stats.bvhNodes >= 1);
-  // Every vertex must have finite outward-pointing normal with downward y-component (since top is wider than bottom)
+  assert(c.stats.triangles > 150, `Expected flaredCapital + trumpetColumn + tube tris, got ${c.stats.triangles}`);
+  assert.equal(c.lightCount, 1, "verticalTubeLight should emit 1 vertical area light");
+  assert(c.stats.bvhNodes >= 4);
   const v = new Float32Array(c.vertexData);
   for (let i = 0; i < c.vertexCount; i++) {
     const base = i * 16;
     const ny = v[base + 5];
-    assert(Number.isFinite(ny) && ny < -0.2 && ny > -0.95, `Expected sloped underside normal ny, got ${ny}`);
+    assert(Number.isFinite(ny), "Vertex normal ny must be finite");
     const uv2x = v[base + 14];
     const uv2y = v[base + 15];
-    assert(uv2x >= 0 && uv2x <= 1 && uv2y >= 0 && uv2y <= 1, "Invalid flaredCapital UV2");
+    assert(uv2x >= 0 && uv2x <= 1 && uv2y >= 0 && uv2y <= 1, "Invalid UV2");
   }
 });

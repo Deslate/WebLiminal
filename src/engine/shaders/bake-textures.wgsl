@@ -146,11 +146,11 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let col = baseCol * (0.90 + 0.18 * n1) * (0.96 + 0.08 * n2);
     return Sample(col, clamp(baseRough + (n2 - 0.5) * 0.12, 0.4, 0.98), h, 0.92 + 0.08 * n1, 0.0, m.pbr.z, 0.0, 0.0, vec2f(0.0));
   }
-  // 4: wallpaper_yellow (3 authentic 2002 HobbyTown Oshkosh Backrooms vintage wallpaper patterns selected by seed!)
+  // 4: wallpaper_yellow (4 authentic Backrooms wallpaper patterns selected by seed!)
   if (preset == 4u) {
     var pattern = 0.0;
     if (seed < 15.0) {
-      // Variant A: iconic fine 12 cm vertical chevron/arrow damask (10 stripes / 1.20 m = 5 per 0.60 m roll)
+      // Variant A: iconic fine 12 cm vertical chevron/arrow damask (2002 original photo right wall!)
       let rep = vec2f(10.0, 6.0);
       let cell = fract(uv * rep);
       let dx = abs(cell.x - 0.5);
@@ -164,45 +164,64 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
       let dotRow = 1.0 - smoothstep(0.04, 0.075, length(vec2f(cell.x - 0.0, fract(cell.y * 3.0) - 0.5) * vec2f(1.2, 0.8)));
       pattern = clamp(motif * 0.78 + stem + stripe * 0.22 + dotRow * 0.42, 0.0, 1.0);
     } else if (seed < 30.0) {
-      // Variant B: fine vintage vertical micro-dot columns (left foreground wall in original Backrooms photo!)
+      // Variant B: fine vintage vertical micro-dot columns (2002 original photo left wall!)
       let rep = vec2f(12.0, 12.0);
       let cell = fract(uv * rep);
       let dot1 = 1.0 - smoothstep(0.06, 0.12, length(cell - vec2f(0.5, 0.5)));
       let dot2 = 1.0 - smoothstep(0.05, 0.10, length(cell - vec2f(0.0, 0.0)));
       let faintStripe = 1.0 - smoothstep(0.06, 0.14, abs(cell.x - 0.5));
       pattern = clamp(max(dot1, dot2) * 0.68 + faintStripe * 0.16, 0.0, 1.0);
-    } else {
-      // Variant C: fine repeating vertical beige-olive pinstripe wallpaper (midground partition in original photo!)
+    } else if (seed < 45.0) {
+      // Variant C: fine repeating vertical beige-olive pinstripe (2002 original midground partition!)
       let rep = vec2f(16.0, 4.0);
       let cell = fract(uv * rep);
       let s1 = 1.0 - smoothstep(0.06, 0.12, abs(cell.x - 0.25));
       let s2 = 1.0 - smoothstep(0.03, 0.07, abs(cell.x - 0.75));
       pattern = clamp(s1 * 0.55 + s2 * 0.35, 0.0, 1.0);
+    } else {
+      // Variant D: large vintage Baroque floral/medallion damask (Kane Pixels Pier Hall & Corridor!)
+      let rep = vec2f(3.0, 3.0);
+      let p = uv * rep;
+      let stagger = vec2f(0.5 * floor(p.y), 0.0);
+      let cell = fract(p + stagger) - 0.5;
+      let ax = abs(cell.x);
+      let ay = abs(cell.y);
+      let r = length(cell * vec2f(1.25, 0.92));
+      let ang = atan2(cell.y, cell.x);
+      let petal = 0.28 + 0.075 * cos(ang * 4.0) + 0.04 * cos(ang * 8.0);
+      let medallion = (1.0 - smoothstep(petal - 0.05, petal + 0.03, r)) * smoothstep(0.04, 0.11, r);
+      let innerStar = 1.0 - smoothstep(0.05, 0.10, length(cell * vec2f(1.4, 1.0)));
+      let scroll = (1.0 - smoothstep(0.03, 0.075, abs(ax - 0.38 - 0.06 * sin(cell.y * 12.566)))) * smoothstep(0.48, 0.12, ay);
+      let leafCrown = 1.0 - smoothstep(0.04, 0.095, length(vec2f(ax * 1.4, ay - 0.36)));
+      pattern = clamp(medallion * 0.55 + innerStar * 0.48 + scroll * 0.36 + leafCrown * 0.42, 0.0, 1.0);
     }
 
     let blotch = pFbm(uv, vec2f(2.0), seed + 2.0, 3);
     let fiber = pFbm(uv, vec2f(40.0, 10.0), seed + 11.0, 3);
 
-    // High-value pale cream-yellow ground with delicate olive-taupe print (NOT muddy dark mustard!)
-    var col = baseCol * mix(vec3f(1.03, 1.02, 0.98), vec3f(0.75, 0.72, 0.54), pattern);
-    col *= 0.95 + 0.09 * blotch;
-    col *= 0.97 + 0.06 * fiber;
+    // Luminous mono-yellow ground with organic tonal damask print
+    var col = baseCol * mix(vec3f(1.03, 1.02, 0.98), vec3f(0.76, 0.72, 0.50), pattern);
+    col *= 0.94 + 0.11 * blotch;
+    col *= 0.96 + 0.08 * fiber;
 
-    let h = 0.52 + pattern * 0.05 + (fiber - 0.5) * 0.07;
-    let rough = clamp(baseRough - pattern * 0.10 + (fiber - 0.5) * 0.06, 0.56, 0.94);
-    let ao = 0.95 + 0.05 * fiber;
-    return Sample(col, rough, clamp(h, 0.0, 1.0), ao, 0.0, pattern * 0.06, 0.0, 0.04, vec2f(0.0));
+    let h = 0.52 + pattern * 0.055 + (fiber - 0.5) * 0.08;
+    let rough = clamp(baseRough - pattern * 0.12 + (fiber - 0.5) * 0.06, 0.54, 0.94);
+    let ao = 0.94 + 0.06 * fiber;
+    return Sample(col, rough, clamp(h, 0.0, 1.0), ao, 0.0, pattern * 0.08, 0.0, 0.04, vec2f(0.0));
   }
-  // 5: carpet_damp (dense broadloom commercial cut-pile carpet — fine fibrous wool pile, zero grid seams!)
+  // 5: carpet_damp (tactile broadloom commercial wool-loop pile carpet — crisp fibrous weave!)
   if (preset == 5u) {
-    let finePile = pNoise(uv, vec2f(96.0, 96.0), seed) * 0.55 + pNoise(uv, vec2f(48.0, 64.0), seed + 4.0) * 0.45;
-    let tuft = pFbm(uv, vec2f(16.0, 16.0), seed + 9.0, 3);
+    let ribWeave = 0.5 + 0.5 * sin(uv.x * 96.0 * 6.2831853);
+    let finePile = pNoise(uv, vec2f(112.0, 112.0), seed) * 0.50
+                 + pNoise(uv, vec2f(56.0, 72.0), seed + 4.0) * 0.38
+                 + ribWeave * 0.12;
+    let tuft = pFbm(uv, vec2f(18.0, 18.0), seed + 9.0, 3);
     let nap = pFbm(uv, vec2f(3.0, 5.0), seed + 14.0, 3);
 
-    var col = baseCol * (0.86 + 0.24 * finePile) * (0.91 + 0.16 * tuft) * (0.94 + 0.12 * nap);
-    let h = clamp(0.30 + finePile * 0.48 + tuft * 0.18, 0.0, 1.0);
+    var col = baseCol * (0.83 + 0.30 * finePile) * (0.90 + 0.18 * tuft) * (0.94 + 0.12 * nap);
+    let h = clamp(0.26 + finePile * 0.54 + tuft * 0.18, 0.0, 1.0);
     let rough = clamp(baseRough + (1.0 - finePile) * 0.05, 0.78, 0.99);
-    let ao = 0.80 + 0.20 * finePile;
+    let ao = 0.76 + 0.24 * finePile;
     return Sample(col, rough, h, ao, 0.0, 0.0, 0.0, 0.12, vec2f(0.0));
   }
   // 6: ceiling_grid (clean bright ivory commercial fissured mineral acoustic tile; crisp T-bars analytic in gbuffer-pbr!)
@@ -322,6 +341,39 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let h = 0.55 + (grain - 0.5) * 0.04 + seam * 0.14;
     let rough = clamp(baseRough + (grain - 0.5) * 0.05 + seam * 0.10, 0.06, 0.55);
     return Sample(col, rough, h, 1.0 - seam * 0.2, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
+  }
+  // 19: corrugated_metal (vertical galvanized steel ribs — Aquila Sector right partition wall!)
+  if (preset == 19u) {
+    let ribPhase = uv.x * 8.0 * 6.2831853; // 8 vertical ribs per meter (12.5 cm corrugation pitch!)
+    let wave = 0.5 + 0.5 * sin(ribPhase);
+    let zinc = pFbm(uv, vec2f(10.0, 6.0), seed, 3);
+    let grime = pFbm(uv, vec2f(4.0, 12.0), seed + 5.0, 3);
+    let col = baseCol * (0.86 + 0.22 * wave) * (0.91 + 0.16 * zinc) * (0.92 + 0.12 * grime);
+    let h = clamp(0.18 + 0.64 * wave + (zinc - 0.5) * 0.06, 0.0, 1.0);
+    let slopeX = -cos(ribPhase) * 0.52;
+    let ao = 0.72 + 0.28 * wave;
+    let rough = clamp(baseRough + (1.0 - wave) * 0.14 + (grime - 0.5) * 0.12, 0.18, 0.75);
+    return Sample(col, rough, h, ao, m.pbr.y, m.pbr.z, 0.0, m.extra.y, vec2f(slopeX, 0.0));
+  }
+  // 20: moss_floor (lush swirling emerald courtyard moss & dense ivy leaves)
+  if (preset == 20u) {
+    let blades = pNoise(uv, vec2f(96.0, 96.0), seed) * 0.55 + pNoise(uv, vec2f(48.0, 64.0), seed + 4.0) * 0.45;
+    let clump = pFbm(uv, vec2f(12.0), seed + 8.0, 4);
+    let leafTip = smoothstep(0.55, 0.88, blades * 0.6 + clump * 0.4);
+    var col = mix(baseCol * vec3f(0.58, 0.64, 0.48), baseCol * vec3f(1.55, 1.62, 0.92), leafTip);
+    col *= 0.80 + 0.36 * clump;
+    let h = clamp(0.18 + blades * 0.46 + clump * 0.32, 0.0, 1.0);
+    let ao = 0.58 + 0.42 * (blades * 0.5 + clump * 0.5);
+    return Sample(col, clamp(baseRough - leafTip * 0.18, 0.58, 0.98), h, ao, 0.0, leafTip * 0.08, 0.0, m.extra.y, vec2f(0.0));
+  }
+  // 21: foliage_vine (sunlit layered courtyard ivy & fern leaves)
+  if (preset == 21u) {
+    let leaf = pFbm(uv, vec2f(16.0, 20.0), seed, 3);
+    let fine = pNoise(uv, vec2f(72.0, 72.0), seed + 7.0);
+    let sunlit = smoothstep(0.45, 0.85, leaf * 0.65 + fine * 0.35);
+    let col = mix(baseCol * vec3f(0.48, 0.55, 0.40), baseCol * vec3f(1.65, 1.75, 0.90), sunlit);
+    let h = clamp(0.25 + leaf * 0.45 + fine * 0.25, 0.0, 1.0);
+    return Sample(col, clamp(baseRough - sunlit * 0.16, 0.38, 0.88), h, 0.68 + 0.32 * sunlit, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
   // 15: vent_grate (metallic louvered HVAC register)
   let edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));

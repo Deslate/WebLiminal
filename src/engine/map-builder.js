@@ -695,6 +695,112 @@ export class MapBuilder {
     return this;
   }
 
+  // Smooth concave trumpet-flared round concrete mushroom column (Level 1 Vaulted Garage!).
+  // Cylindrical shaft from y0..yFlare transitions smoothly via a hyperbolic bell flare to rTop at y1.
+  trumpetColumn(cx, cz, y0, y1, rShaft, rTop, matSpec, opts = {}) {
+    const segs = opts.segments ?? 24;
+    const rings = opts.rings ?? 7;
+    const yFlare = opts.yFlare ?? (y0 + (y1 - y0) * 0.48);
+    const prio = opts.priority ?? 0.65;
+    const circum = TAU * rShaft;
+    const chart = this._beginChart(circum, y1 - y0, prio);
+
+    // Profile points (y, r, ny_slope) from floor y0 to ceiling y1
+    const prof = [];
+    prof.push({ y: y0, r: rShaft, drdy: 0 });
+    prof.push({ y: yFlare, r: rShaft, drdy: 0 });
+    const flareH = Math.max(0.1, y1 - yFlare);
+    const power = opts.flarePower ?? 2.35;
+    for (let j = 1; j <= rings; j++) {
+      const t = j / rings;
+      const r = rShaft + (rTop - rShaft) * Math.pow(t, power);
+      const drdy = ((rTop - rShaft) * power * Math.pow(Math.max(t, 1e-3), power - 1)) / flareH;
+      prof.push({ y: yFlare + t * flareH, r, drdy });
+    }
+
+    const totalH = Math.max(1e-4, y1 - y0);
+    for (let j = 0; j < prof.length - 1; j++) {
+      const pA = prof[j];
+      const pB = prof[j + 1];
+      const lv0 = (pA.y - y0) / totalH;
+      const lv1 = (pB.y - y0) / totalH;
+      const v0 = pA.y;
+      const v1 = pB.y;
+      for (let i = 0; i < segs; i++) {
+        const f0 = i / segs;
+        const f1 = (i + 1) / segs;
+        const a0 = f0 * TAU;
+        const a1 = f1 * TAU;
+        const c0 = Math.cos(a0), s0 = Math.sin(a0);
+        const c1 = Math.cos(a1), s1 = Math.sin(a1);
+        const q0 = [cx + pA.r * c1, pA.y, cz + pA.r * s1];
+        const q1 = [cx + pA.r * c0, pA.y, cz + pA.r * s0];
+        const q2 = [cx + pB.r * c0, pB.y, cz + pB.r * s0];
+        const q3 = [cx + pB.r * c1, pB.y, cz + pB.r * s1];
+        const nA1 = norm3([c1, -pA.drdy, s1]);
+        const nA0 = norm3([c0, -pA.drdy, s0]);
+        const nB0 = norm3([c0, -pB.drdy, s0]);
+        const nB1 = norm3([c1, -pB.drdy, s1]);
+        this.addQuad(q0, q1, q2, q3, matSpec, {
+          u0: f1 * circum, v0, u1: f0 * circum, v1,
+          normals: [nA1, nA0, nB0, nB1],
+          chart,
+          lu0: f1, lv0, lu1: f0, lv1,
+        });
+      }
+    }
+
+    if (opts.solid !== false) {
+      this.solids.push({ kind: "circle", x: cx, z: cz, radius: rShaft, minY: y0, maxY: y1 });
+    }
+    return this;
+  }
+
+  // Organic procedural 3D hanging/climbing foliage ivy vine (2 crossed gently swaying continuous ribbons
+  // evaluated with botanical stem + 3-lobed ivy leaf alpha-cutout in WGSL — 32 tris/vine, 1 UV2 chart, zero collision!).
+  foliageVine(x, yTop, yBot, z, matSpec = "foliage_vine", opts = {}) {
+    const height = Math.max(0.3, yTop - yBot);
+    const seed = opts.seed ?? (x * 13.7 + z * 29.3);
+    const width = opts.width ?? (opts.leafSize ? opts.leafSize * 2.15 : 0.38);
+    const sway = opts.sway ?? 0.11;
+    const segs = Math.max(3, Math.min(6, Math.round(height / 0.95)));
+    const prio = opts.priority ?? 0.14;
+    const baseAngle = (Math.abs(Math.sin(seed * 7.31)) * TAU);
+    const vOff = Math.abs(Math.sin(seed * 3.17)) * 11.3;
+    const vScale = opts.vScale ?? 2.05;
+
+    // Single shared non-overlapping UV2 chart per vine strand
+    const chart = this._beginChart(width * 2.0, height, prio);
+
+    for (let c = 0; c < 2; c++) {
+      const ang = baseAngle + c * (Math.PI * 0.5);
+      const px = Math.cos(ang);
+      const pz = Math.sin(ang);
+      const luBase = c * 0.5;
+      for (let i = 0; i < segs; i++) {
+        const f0 = i / segs;
+        const f1 = (i + 1) / segs;
+        const y0 = yTop - f0 * height;
+        const y1 = yTop - f1 * height;
+        const hw0 = width * 0.5 * (0.95 + 0.18 * Math.sin(f0 * 4.5 + seed));
+        const hw1 = width * 0.5 * (0.95 + 0.18 * Math.sin(f1 * 4.5 + seed));
+        const ox0 = Math.sin(f0 * 4.2 + seed) * sway;
+        const oz0 = Math.cos(f0 * 3.6 + seed * 1.4) * sway;
+        const ox1 = Math.sin(f1 * 4.2 + seed) * sway;
+        const oz1 = Math.cos(f1 * 3.6 + seed * 1.4) * sway;
+        const p0 = [x + ox0 - px * hw0, y0, z + oz0 - pz * hw0];
+        const p1 = [x + ox0 + px * hw0, y0, z + oz0 + pz * hw0];
+        const p2 = [x + ox1 + px * hw1, y1, z + oz1 + pz * hw1];
+        const p3 = [x + ox1 - px * hw1, y1, z + oz1 - pz * hw1];
+        const v0 = vOff + f0 * height * vScale;
+        const v1 = vOff + f1 * height * vScale;
+        this.addQuad(p0, p1, p2, p3, matSpec, { u0: 0, v0, u1: 1, v1, chart, lu0: luBase, lv0: f0, lu1: luBase + 0.25, lv1: f1 });
+        this.addQuad(p1, p0, p3, p2, matSpec, { u0: 0, v0, u1: 1, v1, chart, lu0: luBase + 0.25, lv0: f0, lu1: luBase + 0.5, lv1: f1 });
+      }
+    }
+    return this;
+  }
+
   // Straight staircase ascending along '+x', '-x', '+z', or '-z'.
   // Emits solid step geometry + smooth walkable ramp zone for collision.
   stairs(lo, hi, dir, steps, matSpec, opts = {}) {
@@ -1525,6 +1631,47 @@ export class MapBuilder {
     if (!off && intensity > 0) {
       const ey = y - 0.02;
       this.addAreaLight([cx - hx, ey, cz - hz], [cx + hx, ey, cz - hz], [cx - hx, ey, cz + hz], color, intensity, { flicker });
+    }
+    return this;
+  }
+
+  // Vertical industrial fluorescent batten mounted directly onto a concrete column or corrugated metal wall!
+  verticalTubeLight(cx, y0, y1, cz, facing = "+x", opts = {}) {
+    const color = opts.color ?? [0.94, 0.99, 1.0];
+    const intensity = opts.intensity ?? 48.0;
+    const width = opts.width ?? 0.14;
+    const depth = opts.depth ?? 0.065;
+    const hw = width * 0.5;
+    const mat =
+      opts.material ??
+      this.material({
+        base: "fluorescent_panel",
+        emissive: color,
+        emissiveStrength: opts.emissiveStrength ?? 34.0,
+        flicker: opts.flicker ?? 0,
+      });
+
+    const eps = 0.025;
+    if (facing === "+x") {
+      this.box([cx, y0, cz - hw - 0.02], [cx + 0.032, y1, cz + hw + 0.02], "dark_metal", { solid: false, skipFaces: ["nx"], priority: 0.16 });
+      this.box([cx + 0.032, y0 + 0.02, cz - hw], [cx + depth, y1 - 0.02, cz + hw], mat, { solid: false, skipFaces: ["nx"], priority: 0.22 });
+      const fx = cx + depth + eps;
+      this.addAreaLight([fx, y0, cz + hw], [fx, y0, cz - hw], [fx, y1, cz + hw], color, intensity, { flicker: opts.flicker ?? 0 });
+    } else if (facing === "-x") {
+      this.box([cx - 0.032, y0, cz - hw - 0.02], [cx, y1, cz + hw + 0.02], "dark_metal", { solid: false, skipFaces: ["px"], priority: 0.16 });
+      this.box([cx - depth, y0 + 0.02, cz - hw], [cx - 0.032, y1 - 0.02, cz + hw], mat, { solid: false, skipFaces: ["px"], priority: 0.22 });
+      const fx = cx - depth - eps;
+      this.addAreaLight([fx, y0, cz - hw], [fx, y0, cz + hw], [fx, y1, cz - hw], color, intensity, { flicker: opts.flicker ?? 0 });
+    } else if (facing === "+z") {
+      this.box([cx - hw - 0.02, y0, cz], [cx + hw + 0.02, y1, cz + 0.032], "dark_metal", { solid: false, skipFaces: ["nz"], priority: 0.16 });
+      this.box([cx - hw, y0 + 0.02, cz + 0.032], [cx + hw, y1 - 0.02, cz + depth], mat, { solid: false, skipFaces: ["nz"], priority: 0.22 });
+      const fz = cz + depth + eps;
+      this.addAreaLight([cx - hw, y0, fz], [cx + hw, y0, fz], [cx - hw, y1, fz], color, intensity, { flicker: opts.flicker ?? 0 });
+    } else {
+      this.box([cx - hw - 0.02, y0, cz - 0.032], [cx + hw + 0.02, y1, cz], "dark_metal", { solid: false, skipFaces: ["pz"], priority: 0.16 });
+      this.box([cx - hw, y0 + 0.02, cz - depth], [cx + hw, y1 - 0.02, cz - 0.032], mat, { solid: false, skipFaces: ["pz"], priority: 0.22 });
+      const fz = cz - depth - eps;
+      this.addAreaLight([cx + hw, y0, fz], [cx - hw, y0, fz], [cx + hw, y1, fz], color, intensity, { flicker: opts.flicker ?? 0 });
     }
     return this;
   }

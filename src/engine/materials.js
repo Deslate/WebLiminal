@@ -57,7 +57,7 @@ export const MATERIAL_PRESETS = {
   },
   wallpaper_yellow: {
     presetId: 4,
-    albedo: [0.86, 0.83, 0.59], // authentic 2002 HobbyTown Oshkosh pale cream-yellow wallpaper
+    albedo: [0.89, 0.85, 0.54], // authentic luminous warm mono-yellow Backrooms wallpaper
     roughness: 0.82,
     metallic: 0.0,
     coat: 0.0,
@@ -70,12 +70,12 @@ export const MATERIAL_PRESETS = {
   },
   carpet_damp: {
     presetId: 5,
-    albedo: [0.49, 0.39, 0.22], // warm camel-tan / mocha commercial broadloom cut-pile carpet
+    albedo: [0.54, 0.43, 0.21], // rich warm camel-tan / golden-ochre commercial broadloom cut-pile carpet
     roughness: 0.94,
     metallic: 0.0,
     coat: 0.0,
-    tileScale: 1.4,
-    pomDepth: 0.009,
+    tileScale: 1.5,
+    pomDepth: 0.011,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
     wetness: 0.14,
@@ -249,6 +249,45 @@ export const MATERIAL_PRESETS = {
     emissiveStrength: 0,
     wetness: 0.5,
     seed: 19.0,
+  },
+  corrugated_metal: {
+    presetId: 19,
+    albedo: [0.66, 0.67, 0.65], // galvanized industrial corrugated sheet-metal partition (Aquila Sector!)
+    roughness: 0.36,
+    metallic: 0.56,
+    coat: 0.24,
+    tileScale: 1.0,
+    pomDepth: 0.012,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.08,
+    seed: 20.0,
+  },
+  moss_floor: {
+    presetId: 20,
+    albedo: [0.16, 0.30, 0.075], // lush sunlit emerald courtyard moss & ground-cover ivy carpet
+    roughness: 0.92,
+    metallic: 0.0,
+    coat: 0.0,
+    tileScale: 0.8,
+    pomDepth: 0.014,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.12,
+    seed: 21.0,
+  },
+  foliage_vine: {
+    presetId: 21,
+    albedo: [0.15, 0.31, 0.085], // hanging & climbing courtyard ivy foliage catching golden sunlight
+    roughness: 0.64,
+    metallic: 0.0,
+    coat: 0.12,
+    tileScale: 1.5,
+    pomDepth: 0.006,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.15,
+    seed: 22.0,
   },
 };
 

@@ -119,10 +119,10 @@ fn agxToneMap(val: vec3f) -> vec3f {
   v = clamp((log2(v) - (-12.47393)) / (4.026069 - (-12.47393)), vec3f(0.0), vec3f(1.0));
   v = agxDefaultContrastApprox(v);
   v = agxInv * v;
-  // Subtle cinematic punch look (gentle contrast & saturation preservation).
+  // Photographic contrast punch (deep obsidian shadows like v1 ACES + smooth AgX highlight roll-off).
   let luma = dot(v, vec3f(0.2126, 0.7152, 0.0722));
-  v = pow(max(v, vec3f(0.0)), vec3f(1.06));
-  v = mix(vec3f(luma), v, 1.08);
+  v = pow(max(v, vec3f(0.0)), vec3f(1.14));
+  v = mix(vec3f(luma), v, 1.10);
   return clamp(v, vec3f(0.0), vec3f(1.0));
 }
 

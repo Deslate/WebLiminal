@@ -106,6 +106,10 @@ fn traceShadow(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-4 && t < maxT) {
+          if (u32(materials[tri.matId].extra.x + 0.5) == 21u) {
+            let hitUV = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
+            if (evalFoliageShadowAlpha(hitUV) < 0.5) { continue; }
+          }
           return true;
         }
       }
@@ -193,7 +197,7 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
         *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
       }
     } else {
-      let pickSamples = select(min(lightCount, 4u), min(lightCount, 2u), isBounce);
+      let pickSamples = select(min(lightCount, 4u), min(lightCount, select(2u, 3u, lightCount > 12u)), isBounce);
       for (var s = 0u; s < pickSamples; s++) {
         var li = 0u;
         var pdf = 1.0;
@@ -212,7 +216,7 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
         var wi = vec3f(0.0);
         let scale = f32(select(pickSamples, 1u, lightCount <= 2u));
         let contrib = evalAreaLight(p, n, lights[li], rand01(rng), rand01(rng), &wi) / (pdf * scale);
-        let clamped = min(contrib, select(vec3f(24.0), vec3f(9.0), isBounce));
+        let clamped = min(contrib, select(vec3f(24.0), vec3f(10.0), isBounce));
         total += clamped;
         *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
       }
@@ -247,6 +251,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   var dirSum = vec3f(0.0);
   var aoSum = 0.0;
   let wl = env.waterOptics.w;
+  let envFlags = u32(env.extra.w + 0.5);
+  let hasSkylights = (envFlags & 1u) != 0u;
+  let perPixelAreaLights = (envFlags & 2u) != 0u;
 
   for (var s = 0u; s < spp; s++) {
     let gs = f32(batch * spp + s + 1u);
@@ -254,11 +261,11 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let qAO = fract(cpB + r2Alpha * gs);
 
     // 1. Direct area lights & skylight portals at primary texel:
-    //    - On sunlit levels (Poolrooms): primary texels store smooth skylight/window fill while sun is per-pixel.
-    //    - On indoor artificial-light levels (Level 0 & Level 1): primary direct area lights are evaluated
-    //      per-pixel at full resolution with 4-point quad BVH soft shadows in gbuffer-pbr.wgsl so columns,
-    //      beams, soffits, and doorways have crisp photographic shadows instead of blurry lightmap smudges!
-    if (env.sunColorInt.w > 0.5) {
+    //    - When perPixelAreaLights is false (Poolrooms): primary texels store smooth skylight/window fill.
+    //    - When perPixelAreaLights is true (Level 0 & Level 1): primary direct area lights are evaluated
+    //      at full resolution per-pixel in gbuffer-pbr.wgsl so columns, doorways, piers & pipes get razor-crisp
+    //      photographic soft shadows while the lightmap stores pure smooth 3-bounce indirect GI + crevice AO!
+    if (!perPixelAreaLights) {
       var directDir = vec3f(0.0);
       irradSum += sampleDirectLighting(p0, n0, &rng, &directDir, false) * INV_PI;
       dirSum += directDir * INV_PI;
@@ -279,7 +286,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     for (var bounce = 0u; bounce < 3u; bounce++) {
       let h = traceClosest(ro, rd, 120.0);
       if (!h.hit) {
-        if (env.extra.w < 0.5) {
+        if (!hasSkylights) {
           pathRad += throughput * evalSky(rd, env);
         }
         break;

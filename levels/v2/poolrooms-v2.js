@@ -14,35 +14,35 @@ export default {
   spawn: { x: 0.90, y: 1.66, z: 8.20, yaw: 0.14, pitch: -0.07 },
   atmosphere: {
     // Near-black fog extinction color: unlit tunnels drop naturally into true abyssal darkness,
-    // while sunlit/skylit air glows purely via BVH-occluded volumetric scattering.
-    fogColor: [0.005, 0.009, 0.007],
-    fogDensity: 0.014,
+    // while sunlit/skylit air glows cleanly via subtle BVH-occluded volumetric scattering.
+    fogColor: [0.004, 0.006, 0.006],
+    fogDensity: 0.011,
     heightFogFalloff: 0.16,
-    skyTop: [0.30, 0.48, 0.64],
-    skyHorizon: [0.95, 0.91, 0.78],
+    skyTop: [0.32, 0.52, 0.86],
+    skyHorizon: [0.76, 0.84, 0.94],
     sun: {
-      // Upper-left-behind diagonal sun: pours cleanly through Ring 1 onto foreground steps & emerald
-      // floor in Chamber 1 (with skylight hidden behind camera!), illuminates the lightwell mist in
-      // Chamber 2, and lights the front-left curved belly of the cylindrical column in Chamber 3!
-      direction: [-0.52, 0.68, 0.52],
-      color: [1.0, 0.94, 0.80],
-      intensity: 6.8,
-      angularRadius: 0.008, // crisp ~0.5° solar disc for photographic shadow boundaries
+      // Crisp warm-white upper-left diagonal sun (matching v1 sunDirection/sunIrradiance!):
+      // Slashes across the right arch walls & casts receding bright caustic squares down the emerald pool,
+      // while keeping the foreground arch surround in dramatic obsidian shadow!
+      direction: [-0.58, 0.72, 0.38],
+      color: [1.0, 0.95, 0.82],
+      intensity: 9.6,
+      angularRadius: 0.0065, // crisp ~0.4° solar disc for razor-clean photographic shadows
     },
     exposure: 1.04,
-    bloomStrength: 0.24,
-    volumetricStrength: 0.88,
-    ambientFloor: 0.0005,
-    bounceBoost: 1.45,
+    bloomStrength: 0.22,
+    volumetricStrength: 0.28,
+    ambientFloor: 0.0003,
+    bounceBoost: 1.32,
     aoRadius: 1.8,
   },
 
   build(m) {
-    // Authentic warm architectural alabaster porcelain on a shared 200 mm (0.20 m) masonry module
-    // (baseFreq 4.0 * tileScale 1.25 = 5 tiles/m -> every wall, deck, step, column & arch snaps to 0.20 m!).
-    const whiteTile = m.material({ base: "tile_white", tint: [1.0, 1.0, 0.97], roughness: 0.145, coat: 0.88, tileScale: 1.25 });
-    const ringTile = m.material({ base: "tile_white", tint: [0.99, 1.0, 0.96], roughness: 0.15, coat: 0.86, tileScale: 1.25 });
-    const poolFloor = m.material({ base: "tile_pool", tint: [0.98, 1.0, 0.97], roughness: 0.16, coat: 0.84, tileScale: 1.25 });
+    // Authentic warm architectural travertine-ivory porcelain (exact v1 porcelain.wgsl warmth!)
+    // on a shared 200 mm (0.20 m) masonry module (baseFreq 4.0 * tileScale 1.25 = 5 tiles/m).
+    const whiteTile = m.material({ base: "tile_white", tint: [0.98, 0.97, 0.87], roughness: 0.12, coat: 0.94, tileScale: 1.25 });
+    const ringTile = m.material({ base: "tile_white", tint: [0.98, 0.97, 0.87], roughness: 0.12, coat: 0.94, tileScale: 1.25 });
+    const poolFloor = m.material({ base: "tile_pool", tint: [0.98, 0.99, 0.91], roughness: 0.14, coat: 0.88, tileScale: 1.25 });
     const plasterMat = m.material({ base: "plaster_warm", tint: [0.94, 0.92, 0.84], roughness: 0.84, coat: 0.02 });
     const dadoGreen = m.material({ base: "tile_dado_green", roughness: 0.09, coat: 0.94, tileScale: 1.25 });
     const frostedWin = m.material({ base: "frosted_window", emissive: [1.0, 0.95, 0.80], emissiveStrength: 16.5 });
@@ -55,7 +55,8 @@ export default {
 
     // =========================================================================
     // CHAMBER 1: RING PASSAGE (x: -5.20..5.20, z: -16.40..12.40, H1: 4.60 = 23 tiles)
-    // Receding circular arches into pitch-black abyss + hidden behind-camera skylight + anchored steps.
+    // Dramatic obsidian-shadowed foreground arch opening onto sunlit warm-ivory arches,
+    // receding skylight caustic pools on crystal jade-aquamarine water, and pitch-black abyss ahead!
     // =========================================================================
     const H1 = 4.60;
     m.box([-5.80, 0, 12.40], [5.80, H1, 13.00], whiteTile, { skipFaces: ["ny"] });
@@ -76,15 +77,22 @@ export default {
       openings: [{ pos: 7.90, width: 3.40, top: 3.60 }],
     });
 
-    // Watertight single-plane ceiling subdivided cleanly around hidden behind-camera skylight shaft.
-    m.ceiling(-5.20, -16.40, 5.20, 12.40, H1, whiteTile, {
-      holes: [[-5.20, 6.20, -0.40, 11.00]],
-    });
-    m.box([-5.80, H1, 6.20], [-5.20, H1 + 2.00, 11.00], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-0.40, H1, 6.20], [0.00, H1 + 2.00, 11.00], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-5.80, H1, 5.80], [0.00, H1 + 2.00, 6.20], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-5.80, H1, 11.00], [0.00, H1 + 2.00, 11.40], whiteTile, { solid: false, priority: 0.4 });
-    m.skylight(-5.20, 6.20, -0.40, 11.00, H1 + 1.95, { color: [0.94, 0.96, 0.94], intensity: 2.2 });
+    // Watertight ceiling with THREE hidden recessed skylight slots tucked behind the left arch piers (x=-5.20..-2.20)!
+    // Keeps the visible central ceiling solid white tile while casting 3 receding bright caustic squares
+    // straight down the center of the water & slashing warm diagonal sun across the receding right arches!
+    const c1Holes = [
+      [-5.20, 2.20, -2.20, 4.80],   // Bay 1 (Rings 1-2): foreground centered caustic pool + right wall sun slash
+      [-5.20, -2.00, -2.20, 0.60],  // Bay 2 (Rings 2-3): middle receding centered caustic pool
+      [-5.20, -6.20, -2.20, -3.60], // Bay 3 (Rings 3-4): far receding centered caustic pool
+    ];
+    m.ceiling(-5.20, -16.40, 5.20, 12.40, H1, whiteTile, { holes: c1Holes });
+    for (const [hx0, hz0, hx1, hz1] of c1Holes) {
+      m.box([hx0 - 0.40, H1, hz0], [hx0, H1 + 0.70, hz1], whiteTile, { solid: false, priority: 0.35 });
+      m.box([hx1, H1, hz0], [hx1 + 0.40, H1 + 0.70, hz1], whiteTile, { solid: false, priority: 0.35 });
+      m.box([hx0 - 0.40, H1, hz0 - 0.40], [hx1 + 0.40, H1 + 0.70, hz0], whiteTile, { solid: false, priority: 0.35 });
+      m.box([hx0 - 0.40, H1, hz1], [hx1 + 0.40, H1 + 0.70, hz1 + 0.40], whiteTile, { solid: false, priority: 0.35 });
+      m.skylight(hx0, hz0, hx1, hz1, H1 + 0.65, { color: [0.86, 0.92, 0.97], intensity: 2.8 });
+    }
 
     // Five receding circular tunnel rings (0.60 m = 3 exact full tiles deep, symmetric crown joints,
     // flush between x=-5.20..5.20 and y=0..4.60 with zero wall/ceiling interpenetration!).
@@ -258,15 +266,15 @@ export default {
     // Two-solver GPU water: Chebyshev finite-depth Neumann ripples + 256x256 FFT wading wake!
     // =========================================================================
     m.water(-19.60, -16.20, 21.80, 12.60, 0.60, {
-      // Rich Poolrooms emerald-jade Beer-Lambert absorption:
-      // sunlit shallow floors glow vivid emerald-jade, shadowed corridors drop to deep dark emerald!
-      absorption: [1.05, 0.16, 0.28],
-      waveAmp: 0.020,
-      causticStrength: 1.22,
+      // Exact v1-calibrated crystal jade-emerald Beer-Lambert absorption (NOT swamp green!):
+      // deep shadowed pools read as crystal dark teal-jade glass where arch reflections pop cleanly!
+      absorption: [0.49, 0.068, 0.088],
+      waveAmp: 0.0072,
+      causticStrength: 1.40,
     });
 
     // Four curated camera bookmarks matching each iconic Poolrooms composition:
-    m.bookmark("1 · Ring Passage", { x: 0.90, y: 1.66, z: 8.20, yaw: 0.14, pitch: -0.07 });
+    m.bookmark("1 · Ring Passage", { x: 0.85, y: 1.66, z: 8.35, yaw: 0.12, pitch: -0.07 });
     m.bookmark("2 · Misty Lightwell", { x: 9.00, y: 1.62, z: 7.90, yaw: -1.57, pitch: 0.01 });
     m.bookmark("3 · Spiral Column", { x: -11.30, y: 1.68, z: 11.30, yaw: 0.25, pitch: 0.02 });
     m.bookmark("4 · Slide & Portholes", { x: -16.00, y: 1.56, z: -4.20, yaw: -0.24, pitch: 0.01 });

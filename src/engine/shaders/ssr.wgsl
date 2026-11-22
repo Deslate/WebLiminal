@@ -76,12 +76,14 @@ fn traceClosestRefl(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
         if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-4 && t < res.t) {
+          let hitUV = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
+          if (u32(materials[tri.matId].extra.x + 0.5) == 21u && evalFoliageShadowAlpha(hitUV) < 0.5) { continue; }
           res.t = t;
           res.n = select(tri.gn, -tri.gn, det < 0.0);
           res.matId = tri.matId;
           res.hit = true;
           res.lmUV = tri.lm0_dlm1.xy + u * tri.lm0_dlm1.zw + v * tri.dlm2_uv0.xy;
-          res.uv = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
+          res.uv = hitUV;
         }
       }
       if (sp == 0u) { break; }
@@ -135,7 +137,13 @@ fn traceShadowRefl(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         let v = dot(rd, qvec) * invDet;
         if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
-        if (t > 1e-4 && t < maxT) { return true; }
+        if (t > 1e-4 && t < maxT) {
+          if (u32(materials[tri.matId].extra.x + 0.5) == 21u) {
+            let hitUV = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
+            if (evalFoliageShadowAlpha(hitUV) < 0.5) { continue; }
+          }
+          return true;
+        }
       }
       if (sp == 0u) { break; }
       sp -= 1u;
@@ -177,16 +185,18 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
   let kD = 1.0 - m.pbr.y * 0.85;
   var col = albedo * kD * lmI;
 
-  // Direct sunlight (Poolrooms) OR direct indoor area lights (Level 0 & Level 1) at reflected hit point
-  // so wet concrete puddles reflect brightly lit white columns, beams, and fluorescent light pools!
+  // Direct sunlight (Poolrooms / Level 1 Overgrown Courtyard) AND/OR per-pixel indoor area lights
+  // (Level 0 & Level 1 Aquila/Warehouse/Vaults) at reflected hit point so wet puddles mirror lit columns & tubes!
   if (frame.sunColorInt.w > 0.5) {
     let sunDir = frame.sunDirRad.xyz;
     let ndl = dot(hit.n, sunDir);
     if (ndl > 0.0 && !traceShadowRefl(hitPos + hit.n * 0.015, sunDir, 150.0)) {
       col += albedo * kD * frame.sunColorInt.rgb * ndl * INV_PI;
     }
-  } else {
-    let lc = min(u32(frame.skyHorizon.w + 0.5), 32u);
+  }
+  let perPixelLights = (u32(frame.waterInfo.w + 0.5) & 4u) != 0u;
+  if (perPixelLights) {
+    let lc = min(u32(frame.skyHorizon.w + 0.5), 64u);
     let roS = hitPos + hit.n * 0.015;
     var bestIdx = array<u32, 3>(0u, 0u, 0u);
     var bestSc = array<f32, 3>(0.0, 0.0, 0.0);
@@ -195,7 +205,7 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
       let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
       let toL = lCenter - hitPos;
       let d2 = dot(toL, toL);
-      if (d2 > 140.0 || d2 < 0.04) { continue; }
+      if (d2 > 160.0 || d2 < 0.04) { continue; }
       let invD = inverseSqrt(d2);
       let wi = toL * invD;
       let cosS = dot(hit.n, wi);
@@ -221,7 +231,7 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
       let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
       let toL = lCenter - hitPos;
       let d2 = max(dot(toL, toL), 0.04);
-      let rFade = smoothstep(140.0, 64.0, d2) * smoothstep(0.004, 0.025, bestSc[k]);
+      let rFade = smoothstep(160.0, 64.0, d2) * smoothstep(0.004, 0.025, bestSc[k]);
       if (rFade <= 0.0) { continue; }
       let dist = sqrt(d2);
       let wi = toL / dist;

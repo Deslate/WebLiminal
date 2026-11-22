@@ -418,17 +418,15 @@ fn fsWater(i: VSOut) -> @location(0) vec4f {
 
   let refrOrigin = safeP;
   let subHit = traceClosestWater(refrOrigin, T, 24.0);
-  var underwater = frame.fogColorDens.rgb + vec3f(0.012, 0.042, 0.032);
+  var underwater = vec3f(0.002, 0.008, 0.007);
   if (subHit.hit) {
     let subLen = subHit.t;
     let subPos = refrOrigin + T * subHit.t;
     let subCol = shadeSurfaceHit(subHit, subPos, T, camDist + subHit.t, true);
-    // Exact Beer-Lambert physical RGB water absorption
+    // Exact Beer-Lambert RGB water absorption + Snell solid-angle radiance factor (n1/n2)^2 = 1/1.333^2!
+    // Matches v1 camera.wgsl physical water clarity: crystal-clear dark emerald water where mirror reflections POP!
     let transmit = exp(-water.optics.rgb * subLen);
-    // Light-proportional warm emerald-jade volume scattering (zero glow in shadowed pools!)
-    let subLuma = dot(subCol, vec3f(0.2126, 0.7152, 0.0722));
-    let inScatter = vec3f(0.008, 0.040, 0.028) * (1.0 - transmit) * min(subLuma * 0.72, 0.95);
-    underwater = subCol * transmit + inScatter;
+    underwater = (subCol * transmit) * (1.0 / (1.333 * 1.333));
   }
 
   // 3. TRUE Full-Scene BVH Mirror Reflection Ray!
