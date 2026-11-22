@@ -1,5 +1,6 @@
 // Entire soundscape is synthesized locally: ventilation, water and a long tiled-room tail.
-export function createSoundscape(status) {
+export function createSoundscape(status, profile = "poolrooms") {
+  const isHorror = profile === "horror";
   const Context = window.AudioContext || window.webkitAudioContext;
   if (!Context) {
     status.textContent = "This browser cannot play spatial audio";
@@ -29,15 +30,15 @@ export function createSoundscape(status) {
   for (let ch = 0; ch < 2; ch++) {
     const data = impulse.getChannelData(ch);
     for (let i = 0; i < data.length; i++)
-      data[i] = (rand() * 2 - 1) * Math.exp((-i / ctx.sampleRate) * 1.6) * 0.38;
+      data[i] = (rand() * 2 - 1) * Math.exp((-i / ctx.sampleRate) * (isHorror ? 2.4 : 1.6)) * (isHorror ? 0.28 : 0.38);
   }
   reverb.buffer = impulse;
   const wet = ctx.createGain();
-  wet.gain.value = 0.6;
+  wet.gain.value = isHorror ? 0.5 : 0.6;
   reverb.connect(wet);
   wet.connect(master);
   const room = ctx.createGain();
-  room.gain.value = 0.12;
+  room.gain.value = isHorror ? 0.09 : 0.12;
   room.connect(master);
   room.connect(reverb);
   const noise = ctx.createBuffer(1, ctx.sampleRate * 5, ctx.sampleRate);
@@ -52,17 +53,17 @@ export function createSoundscape(status) {
   source.loop = true;
   const filter = ctx.createBiquadFilter();
   filter.type = "lowpass";
-  filter.frequency.value = 850;
+  filter.frequency.value = isHorror ? 320 : 850;
   source.connect(filter);
   filter.connect(room);
   pending.push(source);
   const hum = ctx.createGain();
-  hum.gain.value = 0.038;
+  hum.gain.value = isHorror ? 0.028 : 0.038;
   hum.connect(master);
   hum.connect(reverb);
-  for (const f of [54, 81.15, 108.3]) {
+  for (const f of isHorror ? [41, 61.5, 92.25] : [54, 81.15, 108.3]) {
     const osc = ctx.createOscillator();
-    osc.type = "sine";
+    osc.type = isHorror ? "triangle" : "sine";
     osc.frequency.value = f;
     osc.connect(hum);
     pending.push(osc);

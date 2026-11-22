@@ -4,7 +4,7 @@ let previewPanel=null;
 let labPanel=null,labState={...LAB_DEFAULTS},labApplying=false,labPauseAfter=false;
 import {createWakeTrail} from "./wake-trail.js";
 const wakeTrail=createWakeTrail();
-import { selectLevel } from "../levels/index.js";
+import { LEVELS, selectLevel } from "../levels/index.js";
 import { loadWindow, regionIndex, worldPosition } from "./world.js";
 import { createRenderer } from "./render/renderer.js";
 import { initialRenderScale } from "./render/viewport-size.js";
@@ -12,7 +12,6 @@ import { movePlayer, canStand } from "./collision.js";
 import { createSoundscape } from "./audio.js";
 const canvas = document.createElement("canvas");
 document.querySelector("#experience").appendChild(canvas);
-const sound = createSoundscape(document.getElementById("audio-status"));
 let level;
 try {
   level = selectLevel(new URLSearchParams(location.search).get("level"));
@@ -20,10 +19,20 @@ try {
   document.getElementById("audio-status").textContent = e.message;
   throw e;
 }
+const sound = createSoundscape(document.getElementById("audio-status"), level.audioProfile);
 const bookmarks = level.world?.bookmarks ?? [{ name: level.id, address: { x: 0, z: 0 } }];
 let activeRegion = 0, regionChanging = false;
 let windowLevel = loadWindow(level, bookmarks[0].address);
 const view = { ...windowLevel.spawn };
+if (level.title) {
+  document.title = `${level.title} · ${level.subtitle || level.id}`;
+  document.querySelector('.caption h1').textContent = bookmarks[0].name || level.title;
+  document.querySelector('.caption p').textContent = level.subtitle || '';
+  document.querySelector('.caption .index').textContent = `${level.indexLabel || level.id.toUpperCase()} / LOCATION 1 OF ${bookmarks.length}`;
+  document.querySelector('.coordinates').textContent = windowLevel.optics.waterLevel > 0
+    ? `DEPTH ${windowLevel.optics.waterLevel.toFixed(2)} M / OCCUPANCY 01`
+    : 'DRY FLOOR / OCCUPANCY 01';
+}
 let observer=null,bodyEnabled=true;
 function cameraPose(){return observer||view;}
 const keys = new Set();
@@ -337,8 +346,10 @@ async function teleport(index, previewName = waterPreviewName) {
     renderer.setBody(bodyEnabled ? view : null);
     await renderer.render(cameraPose(), 0, false, 1);
     document.querySelector('.caption h1').textContent = bookmarks[index].name;
-    document.querySelector('.caption .index').textContent = `POOLROOMS / LOCATION ${index + 1} OF ${bookmarks.length}`;
-    document.querySelector('.coordinates').textContent = `DEPTH ${next.optics.waterLevel.toFixed(2)} M / OCCUPANCY 01`;
+    document.querySelector('.caption .index').textContent = `${level.indexLabel || 'POOLROOMS'} / LOCATION ${index + 1} OF ${bookmarks.length}`;
+    document.querySelector('.coordinates').textContent = next.optics.waterLevel > 0
+      ? `DEPTH ${next.optics.waterLevel.toFixed(2)} M / OCCUPANCY 01`
+      : 'DRY FLOOR / OCCUPANCY 01';
     status.textContent = '';
   } catch (error) {
     status.textContent = `Location loading failed: ${error.message}. Reload to recover.`;
@@ -356,6 +367,8 @@ await applyLab(readLab(localStorage),false);
 if (import.meta.env.DEV || import.meta.env.MODE === 'preview') {
   const {createPreviewMenu, previewUrl} = await import('./preview-menu.js');
   previewPanel = createPreviewMenu({
+    levels: Object.values(LEVELS).map((l) => ({ id: l.id, name: l.title || 'Poolrooms' })),
+    currentLevel: level.id,
     bookmarks,
     getState: () => ({water: waterPreviewName, region: activeRegion, busy: regionChanging || labApplying}),
     releaseInput: () => {keys.clear(); dragging = false;},

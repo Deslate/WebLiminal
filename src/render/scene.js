@@ -30,8 +30,23 @@ export function validateScene(scene) {
   if (scene.tileSampling !== undefined && !['legacy','integrated'].includes(scene.tileSampling)) fail('invalid tile sampling');
   if (scene.tileBevelScale !== undefined && !(Number.isFinite(scene.tileBevelScale)&&scene.tileBevelScale>0&&scene.tileBevelScale<=1)) fail('invalid tile bevel scale');
   if (scene.tileSize !== undefined && !(Number.isFinite(scene.tileSize)&&scene.tileSize>.04&&scene.tileSize<1)) fail('invalid tile module');
-  if (scene.illumination && (!(Number.isFinite(scene.illumination.skyScale)&&scene.illumination.skyScale>0)||!Array.isArray(scene.illumination.sun)||scene.illumination.sun.length!==3||!scene.illumination.sun.every(v=>Number.isFinite(v)&&v>=0))) fail('invalid illumination');
+  const isRgb = (v) => Array.isArray(v) && v.length === 3 && v.every((c) => Number.isFinite(c) && c >= 0);
+  if (scene.illumination && (!(Number.isFinite(scene.illumination.skyScale)&&scene.illumination.skyScale>0)||!isRgb(scene.illumination.sun))) fail('invalid illumination');
   if (scene.illumination?.sunDirection && !(Array.isArray(scene.illumination.sunDirection)&&scene.illumination.sunDirection.length===3&&scene.illumination.sunDirection.every(Number.isFinite)&&scene.illumination.sunDirection[1]>.05)) fail('invalid sun direction');
+  for (const key of ['skyHorizon', 'skyZenith', 'haze'])
+    if (scene.illumination?.[key] !== undefined && !isRgb(scene.illumination[key])) fail(`invalid illumination ${key}`);
+  if (scene.tileRelief !== undefined && typeof scene.tileRelief !== 'boolean') fail('invalid tileRelief flag');
+  if (scene.hasEmission !== undefined && typeof scene.hasEmission !== 'boolean') fail('invalid hasEmission flag');
+  if (scene.pointLights !== undefined) {
+    if (!Array.isArray(scene.pointLights) || scene.pointLights.length > 16) fail('invalid point lights');
+    for (const l of scene.pointLights) {
+      if (!Array.isArray(l?.pos) || l.pos.length !== 3 || !l.pos.every(Number.isFinite)) fail('invalid point light position');
+      if (!isRgb(l.color)) fail('invalid point light color');
+      if (l.radius !== undefined && !(Number.isFinite(l.radius) && l.radius >= 0)) fail('invalid point light radius');
+      if (l.shadowOffset !== undefined && !(Number.isFinite(l.shadowOffset) && l.shadowOffset >= 0)) fail('invalid point light shadowOffset');
+      if (l.flicker !== undefined && !(Array.isArray(l.flicker) && l.flicker.length === 3 && l.flicker.every(Number.isFinite) && l.flicker[0] >= 0 && l.flicker[0] <= .5 && l.flicker[1] >= 0)) fail('invalid point light flicker');
+    }
+  }
   // Extinction is 0.004/m throughout the existing air paths. Scattering may
   // not add more energy than that extinction removes.
   if (scene.air !== undefined && !(Number.isFinite(scene.air?.scattering) && scene.air.scattering >= 0 && scene.air.scattering <= .004
@@ -68,8 +83,10 @@ export function validateScene(scene) {
       if (![b.x, b.z, b.radius].every(Number.isFinite) || b.radius <= 0) fail('invalid circular footprint');
     } else if (!(b.minX < b.maxX && b.minZ < b.maxZ)) fail("empty solid footprint");
   }
-  if (!(water.minX < water.maxX && water.minZ < water.maxZ && water.cell > 0)) fail("empty water rectangle");
-  waterGrid(water);
+  if (water !== null) {
+    if (!water || !(water.minX < water.maxX && water.minZ < water.maxZ && water.cell > 0)) fail("empty water rectangle");
+    waterGrid(water);
+  }
   if (!(aperture.minX < aperture.maxX && aperture.minZ < aperture.maxZ)) fail("empty aperture");
   if (!shapes[floor.shape] || !(floor.face >= 0 && floor.face < 6)) fail("floor receiver is not a planar shape face");
   return scene;
@@ -105,8 +122,21 @@ const wgslFloat = (v) => (Number.isInteger(v) ? `${v}.` : String(v));
 // a loaded level; values that can change at runtime (the aperture rectangle,
 // water height) travel in uniforms instead.
 export function sceneShaderPrelude(scene) {
-  const w = scene.water,
-    grid = waterGrid(w);
+  const w = scene.water;
+  if (!w) {
+    return `// Scene constants derived from the level's scene description (dry level).
+const WATER_MIN=vec2f(0.,0.);
+const WATER_MAX=vec2f(0.,0.);
+const WATER_SIZE=WATER_MAX-WATER_MIN;
+const WATER_NX:u32=1u;
+const WATER_NZ:u32=1u;
+const WATER_DX=1.;
+const WATER_CELLS_PER_METRE=1.;
+const OPENING_Y=${wgslFloat(scene.aperture.y)};
+const FLOOR_SID:u32=${scene.floor.shape * FACES + scene.floor.face}u;
+`;
+  }
+  const grid = waterGrid(w);
   return `// Scene constants derived from the level's scene description.
 const WATER_MIN=vec2f(${wgslFloat(w.minX)},${wgslFloat(w.minZ)});
 const WATER_MAX=vec2f(${wgslFloat(w.maxX)},${wgslFloat(w.maxZ)});

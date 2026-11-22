@@ -257,14 +257,29 @@ All lengths are metres, `y` up.
   4. Faces that merge into one receiver atlas take the largest value.
 - **Water.** `cell` must tile the rectangle exactly; the background solver runs
   on that grid. The water height is `optics.waterLevel`; depth comes from the
-  shapes below it.
-- **Aperture.** The only light source today: sun and sky enter through this
-  rectangle. Its size may change at runtime (the renderer rebuilds geometry and
-  light caches); its plane `y` may not.
+  shapes below it. A dry level may set `water: null` to omit the water surface,
+  wave simulation, and per-frame caustic passes.
+- **Aperture.** Sun and sky enter through this rectangle. Its size may change at
+  runtime (the renderer rebuilds geometry and light caches); its plane `y` may
+  not. `illumination` may also specify `skyHorizon`, `skyZenith`, and fallback
+  `haze` RGB triples.
+- **Point lights (`pointLights`).** Optional array of up to 16 local point
+  emitters `{pos, color, radius?, shadowOffset?, flicker?}`. Direct lighting
+  uses deterministic tetrahedral soft-shadow visibility, physical inverse-square
+  falloff and GGX specular; `photons.wgsl` emits isotropic photons weighted by
+  emitter power (`4 * PI * color`) so multi-bounce indirect light matches direct
+  units. `flicker` (`[amp, freq, phase]`) modulates intensity deterministically
+  from elapsed time.
+- **Emission and non-tiled surfaces.** Setting `hasEmission: true` invokes a
+  level-provided `materialEmission(h: Hit) -> vec3f` in surface shading.
+  Setting `tileRelief: false` bypasses ceramic grout height-marching and joint
+  visibility for non-tiled materials such as plaster, timber and stone.
 - **Air.** Optional `{scattering, anisotropy, cell?}` enables a world-space
   single-scattering grid. Scattering is in inverse metres, from 0 to the
   existing extinction coefficient 0.004/m; `abs(anisotropy)` must be less
   than 1. Grid cells default to 1/3 m and must be finite and at least 0.1 m.
+  When `pointLights` are present, point-light single scattering is included in
+  both the baked voxel grid and near-field ray integration.
   Adapters need nine camera storage bindings for this feature; otherwise the
   legacy haze path remains active. `audit().air` reports the actual selection.
 
@@ -275,12 +290,33 @@ compile-time constants (`WATER_MIN`, `WATER_MAX`, `WATER_NX`, `WATER_NZ`,
 floor receiver are therefore fixed for a resident window; the renderer throws if a
 rebuild changes them.
 
+## Second level: Chinese horror (`?level=chinese-horror`)
+
+`levels/chinese-horror.js` (`levels/chinese-horror-scene.js`,
+`materials/chinese-horror.wgsl`, `materials/photon-chinese-horror.wgsl`) is a
+dry night-time rural corridor laid out after its reference view:
+
+- A protruding ochre mud-plaster partition wall with procedural flaking lower
+  stucco frames a narrow damp stone corridor leading to a recessed dark timber
+  double door with oxidized iron hardware.
+- Weathered vermilion paper Spring Festival couplets, a horizontal scroll above
+  the lintel, and two door talisman strips render traditional Chinese brush
+  calligraphy analytically with signed-distance stroke segments (zero bitmap
+  assets).
+- A flickering wax candle and smoldering red incense ember on the floor beside a
+  charred ceramic bowl cast hard-edged diagonal shadows, glossy wet-floor GGX
+  reflections, multi-bounce warm photon GI and dusty single-scattering air glow;
+  dim cold moonlight enters through a recessed wooden lattice window from a
+  concealed exterior court.
+
 ## Current limits
 
-- One water body per resident window, and water is required.
-- One rectangular sky aperture is the only light source.
+- At most one rectangular water body per resident window (or `water: null` for
+  dry levels).
+- Up to 16 local point lights plus one rectangular sky aperture per resident
+  window.
 - The spectral body-wake window is a fixed 32 x 64 m domain centred on the
-  local window origin; the window's water rectangle must lie well inside it.
+  local window origin; a wet window's water rectangle must lie well inside it.
 - Shapes are a flat list tested one by one in every ray; there is no
   acceleration structure yet.
 

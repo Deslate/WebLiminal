@@ -8,6 +8,7 @@ import { integratedTiles } from "./tile-integration.js";
 import { curvedShader, tileMaterial } from "./curved-shapes.js";
 import { conductorShader, conductorCommon } from "./conductor-shaders.js";
 import { airGrid, airBakeSource, airCamera } from "./atmosphere.js";
+import { sceneCommon, pointLightPhotons, pointLightCamera } from "./point-lights.js";
 import photons from "./photons.wgsl?raw";
 import sky from "./sky.wgsl?raw";
 import resolve from "./resolve.wgsl?raw";
@@ -21,7 +22,7 @@ import { packScene, sceneShaderPrelude, waterGrid } from "./scene.js";
 
 // `level` is a level module (see docs/LEVELS.md): optics, limits, material
 // WGSL and a scene(options) builder. The renderer knows no level by name.
-export async function createRenderer(canvas, level, previewName = '') {
+export async function createRenderer(canvas, level, previewName = '', initialLab = null) {
   const preview = waterPreview(previewName);
   if (!navigator.gpu) throw new Error("This version needs a desktop browser with WebGPU support.");
   const adapter = await navigator.gpu.requestAdapter({
@@ -46,34 +47,40 @@ export async function createRenderer(canvas, level, previewName = '') {
   // Water rectangle, aperture plane and floor receiver are fixed per level and
   // compiled into every shader; the aperture rectangle stays a uniform.
   const initialScene = level.scene(level.optics);
-  const common = conductorCommon(curvedShader(commonSource, initialScene), initialScene);
+  const hasWater = initialScene.water !== null;
+  const common = sceneCommon(conductorCommon(curvedShader(commonSource, initialScene), initialScene), initialScene);
   const prelude = sceneShaderPrelude(initialScene);
   // Scattering adds one camera storage buffer; keep the legacy path on
   // adapters which cannot bind it. Other windows keep their shader source.
   const air = device.limits.maxStorageBuffersPerShaderStage >= 9 ? airGrid(initialScene) : null;
-  const simulation = await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude, pressurePasses: preview.pressurePasses });
+  const simulation = hasWater
+    ? await createWaveSimulation(device, { grid: waterGrid(initialScene.water), prelude, pressurePasses: preview.pressurePasses })
+    : (() => {
+        const field = device.createBuffer({ label: "dry scene wave placeholder", size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+        return { field, info: { enabled: false }, advance() {}, reset() {}, setBody() {}, addWake() {}, async audit() { return { enabled: false }; } };
+      })();
   const nearMaterial = integratedTiles(level.materials.near, initialScene);
   const photonMaterial = tileMaterial(level.materials.photon, initialScene);
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque" });
   const module = (label, code) => device.createShaderModule({ label, code });
-  let lab={...LAB_DEFAULTS},pipelines;
+  let lab = initialLab ? normalizeLab(initialLab) : { ...LAB_DEFAULTS }, pipelines;
   async function compileLab(){
   const shaderModules = [
-    module("photon transport", prelude + common + photonMaterial + conductorShader('photons', photons, initialScene)),
+    module("photon transport", prelude + common + photonMaterial + pointLightPhotons(conductorShader('photons', photons, initialScene), initialScene)),
     module("world irradiance estimate", prelude + common + labShader("resolve",resolve,lab)),
-    module("camera transport", prelude + common + nearMaterial + airCamera(conductorShader('camera', labShader("camera",waterPreviewCamera(camera,preview,initialScene.conductorMaterials),lab), initialScene), air ? initialScene : {})),
+    module("camera transport", prelude + common + nearMaterial + pointLightCamera(airCamera(conductorShader('camera', labShader("camera",waterPreviewCamera(camera,preview,initialScene.conductorMaterials),lab), initialScene), air ? initialScene : {}), initialScene)),
     module("lens and film", present),
     module("area sky integral", prelude + common + labShader("sky",sky,lab)),
-    module("current water flux", prelude + common + labShader("water",waterCaustics,lab)),
-    module("instant diffuse transfer", prelude + common + photonMaterial + labShader("diffuse",diffuseTransfer,lab)),
+    hasWater ? module("current water flux", prelude + common + labShader("water",waterCaustics,lab)) : null,
+    hasWater ? module("instant diffuse transfer", prelude + common + photonMaterial + labShader("diffuse",diffuseTransfer,lab)) : null,
     module("assemble current lighting",prelude+common+composeLight),
     module("continuous reflection footprint",prelude+common+reflectionFilter),
     ...(air ? [module("air light grid",prelude+common+airBakeSource(initialScene))] : []),
   ];
   const infos = await Promise.all(
-    shaderModules.map((m) => m.getCompilationInfo()),
+    shaderModules.map((m) => (m ? m.getCompilationInfo() : { messages: [] })),
   );
   for (let i = 0; i < infos.length; i++)
     for (const message of infos[i].messages)
@@ -108,11 +115,15 @@ export async function createRenderer(canvas, level, previewName = '') {
     }),
     device.createComputePipelineAsync({label:"area sky integral",layout:"auto",compute:{module:shaderModules[4],entryPoint:"integrateSky"}}),
     device.createComputePipelineAsync({label:"separable photon kernel",layout:"auto",compute:{module:shaderModules[1],entryPoint:"horizontal"}}),
-    ...["emitWater","waterHorizontal","waterResolve"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[5],entryPoint}})),
-    ...["bakeTransfer","propagate"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[6],entryPoint}})),
+    ...(hasWater
+      ? ["emitWater","waterHorizontal","waterResolve"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[5],entryPoint}}))
+      : [null, null, null]),
+    ...(hasWater
+      ? ["bakeTransfer","propagate"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[6],entryPoint}}))
+      : [null, null]),
     device.createComputePipelineAsync({label:"compose current light",layout:"auto",compute:{module:shaderModules[7],entryPoint:"compose"}}),
     ...["horizontalReflection","verticalReflection"].map(entryPoint=>device.createComputePipelineAsync({label:entryPoint,layout:"auto",compute:{module:shaderModules[8],entryPoint}})),
-    device.createComputePipelineAsync({label:"finite-volume diffuse source",layout:"auto",compute:{module:shaderModules[6],entryPoint:"restrictPatches"}}),
+    hasWater ? device.createComputePipelineAsync({label:"finite-volume diffuse source",layout:"auto",compute:{module:shaderModules[6],entryPoint:"restrictPatches"}}) : null,
     ...(air ? [device.createComputePipelineAsync({label:"air light grid",layout:"auto",compute:{module:shaderModules[9],entryPoint:"bakeAir"}})] : []),
   ]);
   }
@@ -207,12 +218,12 @@ export async function createRenderer(canvas, level, previewName = '') {
         ...shared,
         [3, buffers.flux],
         [4, counters],
-        [5, pathAudit],[9,simulation.field],
+        [5, pathAudit],...(hasWater ? [[9,simulation.field]] : []),
       ]),
       null,
       bindings(pipelines[2], [
         ...shared,
-        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],[9,simulation.field],...(air ? [[10,buffers.air]] : []),
+        [3,buffers.combined],[4,imageBuffer],[5,reflectionBuffer],[6,reflectionGuideBuffer],[8,buffers.sky],...(hasWater ? [[9,simulation.field]] : []),...(air ? [[10,buffers.air]] : []),
       ]),
       bindings(pipelines[3], [
         [0, imageBuffer],
@@ -224,14 +235,16 @@ export async function createRenderer(canvas, level, previewName = '') {
     resolveGroups=[0].map(i=>bindings(pipelines[1],[[0,uniforms],[2,buffers.surfaces],[4,buffers[`irradiance${i}`]],[5,buffers.cellSurface],[6,buffers[`fine${i}`]],[7,buffers.rows]]));
     horizontalGroup=bindings(pipelines[5],[[0,uniforms],[2,buffers.surfaces],[3,buffers.flux],[5,buffers.cellSurface],[7,buffers.rows]]);
     skyGroup=bindings(pipelines[4],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.cellSurface],[4,buffers.sky]]);
-    liveEmitGroup=bindings(pipelines[6],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.liveFlux],[6,pathAudit],[7,counters],[9,simulation.field]]);
-    liveHorizontalGroup=bindings(pipelines[7],[[0,uniforms],[2,buffers.surfaces],[3,buffers.liveFlux],[5,buffers.cellSurface],[8,buffers.rows]]);
-    liveResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.liveField],[5,buffers.cellSurface],[8,buffers.rows]]);
-    flatResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.flatField],[5,buffers.cellSurface],[8,buffers.rows]]);
     composeGroup=bindings(pipelines[11],[[0,uniforms],[2,buffers.surfaces],[3,buffers.irradiance0],[4,buffers.fine0],[5,buffers.liveField],[6,buffers.bounce0],[7,buffers.combined],[8,buffers.cellSurface]]);
-    restrictGroup=bindings(pipelines[14],[[0,uniforms],[2,buffers.surfaces],[3,buffers.probeSurface],[10,buffers.liveField],[11,buffers.flatField],[12,buffers.cellSurface],[13,buffers.patchDelta]]);
-    bakeGroup=bindings(pipelines[9],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.probeSurface],[4,buffers.links],[14,buffers.linkCounts]]);
-    propagateGroups=[0,1].map(i=>bindings(pipelines[10],[[0,uniforms],[3,buffers.probeSurface],[4,buffers.links],[5,buffers.patchDelta],[6,buffers[`bounce${i}`]],[7,buffers[`bounce${1-i}`]],[14,buffers.linkCounts]]));
+    if (hasWater) {
+      liveEmitGroup=bindings(pipelines[6],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.liveFlux],[6,pathAudit],[7,counters],[9,simulation.field]]);
+      liveHorizontalGroup=bindings(pipelines[7],[[0,uniforms],[2,buffers.surfaces],[3,buffers.liveFlux],[5,buffers.cellSurface],[8,buffers.rows]]);
+      liveResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.liveField],[5,buffers.cellSurface],[8,buffers.rows]]);
+      flatResolveGroup=bindings(pipelines[8],[[0,uniforms],[2,buffers.surfaces],[4,buffers.flatField],[5,buffers.cellSurface],[8,buffers.rows]]);
+      restrictGroup=bindings(pipelines[14],[[0,uniforms],[2,buffers.surfaces],[3,buffers.probeSurface],[10,buffers.liveField],[11,buffers.flatField],[12,buffers.cellSurface],[13,buffers.patchDelta]]);
+      bakeGroup=bindings(pipelines[9],[[0,uniforms],[1,buffers.geometry],[2,buffers.surfaces],[3,buffers.probeSurface],[4,buffers.links],[14,buffers.linkCounts]]);
+      propagateGroups=[0,1].map(i=>bindings(pipelines[10],[[0,uniforms],[3,buffers.probeSurface],[4,buffers.links],[5,buffers.patchDelta],[6,buffers[`bounce${i}`]],[7,buffers[`bounce${1-i}`]],[14,buffers.linkCounts]]));
+    }
 
   }
   function rebuild() {
@@ -267,7 +280,7 @@ export async function createRenderer(canvas, level, previewName = '') {
     buffers.sky=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE});
     buffers.combined=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE});
     buffers.liveFlux=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
-    buffers.liveField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
+    buffers.liveField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST|GPUBufferUsage.COPY_SRC});
     buffers.flatField=device.createBuffer({size:geometry.totalCells*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
     buffers.probeSurface=buffer("diffuse probe surfaces",geometry.probeSurfaces);
     buffers.linkCounts=device.createBuffer({size:geometry.probeCount*4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
@@ -316,11 +329,11 @@ export async function createRenderer(canvas, level, previewName = '') {
     config.diffuseIterations=Math.max(2,Math.min(8,Math.round(config.diffuseIterations/2)*2));
     config.lightBatches=Math.max(16,Math.min(256,Math.round(config.lightBatches)));
     config.photonCount=Math.max(32768,Math.min(262144,Math.round(config.photonCount/512)*512));
-    config.waterLevel = Math.max(0.12, Math.min(1.05, config.waterLevel));
-    config.waveAmplitude = Math.max(
+    config.waterLevel = hasWater ? Math.max(0.12, Math.min(1.05, config.waterLevel)) : 0;
+    config.waveAmplitude = hasWater ? Math.max(
       0.001,
       Math.min(0.14, config.waveAmplitude),
-    );
+    ) : 0;
     const clampTo = (v, [lo, hi]) => Math.max(lo, Math.min(hi, v));
     config.apertureWidth = clampTo(config.apertureWidth, level.limits.apertureWidth);
     config.apertureDepth = clampTo(config.apertureDepth, level.limits.apertureDepth);
@@ -420,7 +433,7 @@ export async function createRenderer(canvas, level, previewName = '') {
         20,
       );
       for(let i=0;i<wakes.length;i++){const w=wakes[i];f.set([w.x,w.z,w.time+config.waveTime,w.amplitude],52+i*4);}
-      if(body)f.set([body.x,body.z,.19,1.05],100);
+      if(body && hasWater)f.set([body.x,body.z,.19,1.05],100);
       f.set(geometry.aperture, 24);
       u.set([width, height, sceneBatches, geometry.shapes.length], 28);
       f.set(
@@ -469,29 +482,38 @@ export async function createRenderer(canvas, level, previewName = '') {
         const skyEncoder=device.createCommandEncoder();compute(skyEncoder,pipelines[4],skyGroup,geometry.totalCells,lab.gridScale>1?128:64);
         if(air)compute(skyEncoder,pipelines[15],bindings(pipelines[15],[[0,uniforms],[1,buffers.geometry],[3,buffers.air]]),air.count,64);
         device.queue.submit([skyEncoder.finish()]);
-        const baseBudget=config.freeze?lightBatches():128;
+        const baseBudget=!hasWater?lightBatches():(config.freeze?lightBatches():128);
         for(let b=1;b<=baseBudget;b++)photonBatch(0,lastWaveTime,b);
-        const bakeEncoder=device.createCommandEncoder();compute(bakeEncoder,pipelines[9],bakeGroup,geometry.probeCount,64);device.queue.submit([bakeEncoder.finish()]);
-        const activeWakes=f.slice(52);f.fill(0,52);
-        // Keep identical emission quadrature; only flatten the water geometry.
-        u[43]=1;device.queue.writeBuffer(uniforms,0,data);
-        const flatEncoder=device.createCommandEncoder();flatEncoder.clearBuffer(buffers.liveFlux);flatEncoder.clearBuffer(counters);flatEncoder.clearBuffer(pathAudit);
-        if(lab.waterMode!=="off"){compute(flatEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
-        compute(flatEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);compute(flatEncoder,pipelines[8],flatResolveGroup,geometry.totalCells);
-        }device.queue.submit([flatEncoder.finish()]);u[43]=0;f.set(activeWakes,52);
+        if(hasWater){
+          const bakeEncoder=device.createCommandEncoder();compute(bakeEncoder,pipelines[9],bakeGroup,geometry.probeCount,64);device.queue.submit([bakeEncoder.finish()]);
+          const activeWakes=f.slice(52);f.fill(0,52);
+          // Keep identical emission quadrature; only flatten the water geometry.
+          u[43]=1;device.queue.writeBuffer(uniforms,0,data);
+          const flatEncoder=device.createCommandEncoder();flatEncoder.clearBuffer(buffers.liveFlux);flatEncoder.clearBuffer(counters);flatEncoder.clearBuffer(pathAudit);
+          if(lab.waterMode!=="off"){compute(flatEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
+          compute(flatEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);compute(flatEncoder,pipelines[8],flatResolveGroup,geometry.totalCells);
+          }device.queue.submit([flatEncoder.finish()]);u[43]=0;f.set(activeWakes,52);
+        } else {
+          const dryEncoder=device.createCommandEncoder();
+          dryEncoder.clearBuffer(buffers.liveField);dryEncoder.clearBuffer(buffers.bounce0);
+          device.queue.submit([dryEncoder.finish()]);
+        }
       }
       // No keyframes. Every water-light buffer is replaced at this frame's exact
       // phase before camera rays are submitted. The static field carries the mean-water diffuse solution.
       f[20]=lastWaveTime;u[30]=sceneBatches;u[38]=sceneBatches;u[41]=1;f[34]=1;
       f.set([wakeEnvelope,config.reflectionCone,quality*quality*(3-2*quality),config.reflectionFilter],44);
       device.queue.writeBuffer(uniforms,0,data);
-      const waterEncoder=device.createCommandEncoder();waterEncoder.clearBuffer(buffers.liveFlux);waterEncoder.clearBuffer(counters);waterEncoder.clearBuffer(pathAudit);
-      if(lab.waterMode!=="off"){compute(waterEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
-      compute(waterEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);
-      compute(waterEncoder,pipelines[8],liveResolveGroup,geometry.totalCells);
-      compute(waterEncoder,pipelines[14],restrictGroup,geometry.probeCount,64);
-      waterEncoder.clearBuffer(buffers.bounce0);
-      for(let i=0;i<config.diffuseIterations;i++)compute(waterEncoder,pipelines[10],propagateGroups[i%2],geometry.probeCount*32);
+      const waterEncoder=device.createCommandEncoder();
+      if(hasWater){
+        waterEncoder.clearBuffer(buffers.liveFlux);waterEncoder.clearBuffer(counters);waterEncoder.clearBuffer(pathAudit);
+        if(lab.waterMode!=="off"){compute(waterEncoder,pipelines[6],liveEmitGroup,Math.max(config.sunGrid**2,config.skyGridX*config.skyGridY),64);
+        compute(waterEncoder,pipelines[7],liveHorizontalGroup,geometry.totalCells);
+        compute(waterEncoder,pipelines[8],liveResolveGroup,geometry.totalCells);
+        compute(waterEncoder,pipelines[14],restrictGroup,geometry.probeCount,64);
+        waterEncoder.clearBuffer(buffers.bounce0);
+        for(let i=0;i<config.diffuseIterations;i++)compute(waterEncoder,pipelines[10],propagateGroups[i%2],geometry.probeCount*32);
+        }
       }
       compute(waterEncoder,pipelines[11],composeGroup,geometry.totalCells);
       device.queue.submit([waterEncoder.finish()]);liveTime=lastWaveTime;lastPhotonTime=lastWaveTime;liveFrames++;
@@ -578,10 +600,10 @@ export async function createRenderer(canvas, level, previewName = '') {
       config: { ...config,wakes:wakes.map(w=>({...w,time:w.time+config.waveTime})) },
       waveTime: lastPhotonTime,
       cameraWaveTime: lastWaveTime,
-      waterLight:{enabled:lab.waterMode!=="off",transport:lab.waterMode,time:liveTime,frames:liveFrames,keyframes:false},
+      waterLight:{enabled:hasWater&&lab.waterMode!=="off",transport:hasWater?lab.waterMode:"none",time:liveTime,frames:liveFrames,keyframes:false},
       batches: sceneBatches,
       baseEmittedSinceReset: sceneBatches * config.photonCount,
-      livePacketsPerFrame: lab.waterMode==="off"?0:config.sunGrid**2*2+config.skyGridX*config.skyGridY*(lab.waterMode==="full"?68:4),
+      livePacketsPerFrame: (!hasWater||lab.waterMode==="off")?0:config.sunGrid**2*2+config.skyGridX*config.skyGridY*(lab.waterMode==="full"?68:4),
       atlasCells: geometry.totalCells,
       internal: [width, height],
       adapter: {
@@ -628,7 +650,7 @@ export async function createRenderer(canvas, level, previewName = '') {
     },
     get autoStatic() { return autoStatic; },
     get lightingBatches() { return sceneBatches; },
-    get dynamics() {return {simulation:simulation.info,frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:lab.skySamples,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:lab.waterMode==="off"?0:config.sunGrid**2*2,skyPackets:lab.waterMode==="off"?0:config.skyGridX*config.skyGridY*(lab.waterMode==="full"?68:4),diffuseLinks:geometry.probeCount*2*lab.diffuseDirections,diffuseIterations:lab.waterMode==="off"?0:config.diffuseIterations};},
+    get dynamics() {return {simulation:simulation.info,frameCost,baseBatches:sceneBatches,quality:quality*quality*(3-2*quality),gridCells:geometry.totalCells,probeCount:geometry.probeCount,skySamples:lab.skySamples,waveTime:lastWaveTime,causticTime:liveTime,diffuseTime:liveTime,lightFrames:liveFrames,lightKeyframes:false,sunPackets:(!hasWater||lab.waterMode==="off")?0:config.sunGrid**2*2,skyPackets:(!hasWater||lab.waterMode==="off")?0:config.skyGridX*config.skyGridY*(lab.waterMode==="full"?68:4),diffuseLinks:geometry.probeCount*2*lab.diffuseDirections,diffuseIterations:(!hasWater||lab.waterMode==="off")?0:config.diffuseIterations};},
     get busy() {
       return activeJobs > 0;
     },

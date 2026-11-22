@@ -27,6 +27,18 @@ const AIR_ANISOTROPY:f32=${f(a.anisotropy)};
 // Bake: one invocation per voxel. Sun transmittance from four fixed sub-voxel
 // points; sky radiance integrated over the roof aperture with visibility.
 export function airBakeSource(scene) {
+  const pointBake = scene.pointLights?.length
+    ? scene.pointLights.map((l) => {
+        const pos = `vec3f(${l.pos.map(f).join(',')})`;
+        const col = `vec3f(${l.color.map(f).join(',')})`;
+        const r2 = f(Math.max((l.radius ?? 0.02) ** 2, 0.03));
+        const off = f(l.shadowOffset ?? 0.04);
+        return `  {
+    let delta=${pos}-p;let d=length(delta);let l=delta/max(d,.0001);
+    if(!traceSolidAny(p,l,max(EPS,d-${off}))){sky+=${col}*exp(-AIR_EXTINCTION*d)/(d*d+${r2});}
+  }`;
+      }).join('\n')
+    : '';
   return `${constants(scene)}
 @group(0) @binding(3) var<storage,read_write> air:array<vec4f>;
 @compute @workgroup_size(64)
@@ -50,6 +62,7 @@ fn bakeAir(@builtin(global_invocation_id) gid:vec3u){
     let delta=lp-p;let d=length(delta);let l=delta/d;
     if(l.y>0. && !traceSolidAny(p,l,d-.004)){sky+=skyRadiance(l)*exp(-AIR_EXTINCTION*d)*l.y*area/(d*d)/16.;}
   }
+${pointBake}
   air[idx]=vec4f(sky,visible);
 }
 `;
@@ -60,6 +73,25 @@ export function airCamera(source, scene) {
   const haze = 'return c*tr+vec3f(.065,.085,.09)*(1.-tr);';
   const entry = 'fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->CameraLayers {';
   for (const hook of [haze, entry]) if (!source.includes(hook)) throw Error('Missing air scattering shader hook');
+  const waterClip = scene.water === null ? '' : '\n  if(rd.y<0.){let tw=(U.state.y-ro.y)/rd.y;if(tw>0.){end=min(end,tw);}}';
+  const pointHalo = scene.pointLights?.length
+    ? scene.pointLights.map((l) => {
+        const pos = `vec3f(${l.pos.map(f).join(',')})`;
+        const col = `vec3f(${l.color.map(f).join(',')})`;
+        const off = f(l.shadowOffset ?? 0.04);
+        // Closed-form single-scattering integral along the ray segment [0, end]
+        // for a nearby point emitter, gated by visibility at the closest point.
+        return `  {
+    let lp=${pos};let toL=lp-ro;let tClose=clamp(dot(toL,rd),0.,end);
+    let q=ro+rd*tClose;let perp=lp-q;let d2=dot(perp,perp)+.0036;let d=sqrt(d2);
+    let dl=lp-q;let dist=length(dl);
+    if(tClose<end && !traceSolidAny(q,dl/max(dist,.0001),max(EPS,dist-${off}))){
+      let ang=atan2(end-tClose,d)-atan2(-tClose,d);
+      sum+=${col}*exp(-AIR_EXTINCTION*tClose)*(ang/max(d,.02))/(4.*PI);
+    }
+  }`;
+      }).join('\n')
+    : '';
   // Extinction stays the existing 0.004/m; the light-independent haze term is
   // replaced by light actually scattered out of the sun and sky.
   return source.replace(haze, 'return c*tr;').replace(entry, `${constants(scene)}
@@ -76,8 +108,7 @@ fn airSample(p:vec3f)->vec4f {
 }
 // Single scattering along the camera ray up to its first surface or the water.
 fn airScatter(ro:vec3f,rd:vec3f)->vec3f {
-  let h=traceDynamicSolid(ro,rd,INF);var end=min(h.t,60.);
-  if(rd.y<0.){let tw=(U.state.y-ro.y)/rd.y;if(tw>0.){end=min(end,tw);}}
+  let h=traceDynamicSolid(ro,rd,INF);var end=min(h.t,60.);${waterClip}
   let mu=dot(rd,sunDirection());let g=AIR_ANISOTROPY;
   let phase=(1.-g*g)/(4.*PI*pow(1.+g*g-2.*g*mu,1.5));
   let steps=24u;let ds=end/f32(steps);var sum=vec3f(0);
@@ -85,6 +116,7 @@ fn airScatter(ro:vec3f,rd:vec3f)->vec3f {
     let s=(f32(i)+.5)*ds;let a=airSample(ro+rd*s);
     sum+=exp(-AIR_EXTINCTION*s)*(sunIrradiance()*a.w*phase+a.rgb/(4.*PI))*ds;
   }
+${pointHalo}
   return sum*AIR_SCATTERING;
 }
 fn radiance(ro:vec3f,rd:vec3f,sampleIndex:u32)->CameraLayers {

@@ -3,6 +3,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {buildPoolroomsScene} from '../levels/poolrooms-scene.js';
+import {buildChineseHorrorScene,CHINESE_HORROR_BOOKMARKS} from '../levels/chinese-horror-scene.js';
 import {validateScene} from '../src/render/scene.js';
 import {createPoolroomsWorld,bookmarks} from '../levels/poolrooms-regions.js';
 import {canStand} from '../src/collision.js';
@@ -16,6 +17,13 @@ for(const bookmark of bookmarks){
  assert(canStand(region.spawn.x,region.spawn.z,local.bounds,local.solids),`${bookmark.name}: blocked spawn`);
  assert(local.shapes.length<=80,`${bookmark.name}: resident shape budget exceeded`);
 }
+const horror=validateScene(buildChineseHorrorScene());
+assert(horror.shapes.length<=80,'chinese-horror: resident shape budget exceeded');
+for(const b of CHINESE_HORROR_BOOKMARKS){
+ assert(canStand(b.spawn.x,b.spawn.z,horror.bounds,horror.solids),`chinese-horror ${b.name}: blocked spawn`);
+}
+assert(existsSync(join(root,'materials/chinese-horror.wgsl')));
+assert(existsSync(join(root,'materials/photon-chinese-horror.wgsl')));
 assert(level.spawn.x>scene.bounds.minX&&level.spawn.x<scene.bounds.maxX);
 assert(level.spawn.z>scene.bounds.minZ&&level.spawn.z<scene.bounds.maxZ);
 assert(level.spawn.y<scene.bounds.ceiling);

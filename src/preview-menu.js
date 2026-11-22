@@ -16,12 +16,25 @@ export function previewUrl(href, name) {
   else url.searchParams.delete('waterPreview');
   return url.href;
 }
-export function createPreviewMenu({bookmarks, getState, applyWater, teleport, releaseInput}) {
+export function createPreviewMenu({levels = [], currentLevel = '', bookmarks, getState, applyWater, teleport, releaseInput}) {
   const panel = document.createElement('section');
   panel.id = 'preview-menu';
-  panel.setAttribute('aria-label', '预览选择器');
-  panel.innerHTML = '<details open><summary>预览选择器 <small>PREVIEW</small></summary><div class="preview-fields"><label>水波方案<select aria-label="水波方案"></select></label><label>机位/位置<select aria-label="机位/位置"></select></label><p data-status role="status"></p><p>位置快捷键 1–5 保留。方案切换重建水面，保留当前机位。</p></div></details>';
-  const [water, place] = panel.querySelectorAll('select');
+  panel.setAttribute('aria-label', 'Preview selector');
+  const levelRow = levels.length > 1 ? '<label>Level<select data-level aria-label="Level"></select></label>' : '';
+  panel.innerHTML = `<details open><summary>Preview <small>SELECTOR</small></summary><div class="preview-fields">${levelRow}<label>Water preset<select data-water aria-label="Water preset"></select></label><label>Location<select data-place aria-label="Location"></select></label><p data-status role="status"></p><p>Keys 1–5 switch locations directly.</p></div></details>`;
+  const levelSelect = panel.querySelector('[data-level]');
+  const water = panel.querySelector('[data-water]');
+  const place = panel.querySelector('[data-place]');
+  if (levelSelect) {
+    for (const entry of levels) levelSelect.add(new Option(entry.name, entry.id));
+    levelSelect.value = currentLevel;
+    levelSelect.onchange = () => {
+      const url = new URL(location.href);
+      url.searchParams.set('level', levelSelect.value);
+      url.searchParams.delete('waterPreview');
+      location.href = url.href;
+    };
+  }
   for (const [value, label] of WATER_OPTIONS) water.add(new Option(label, value));
   bookmarks.forEach((b, i) => place.add(new Option(`${i + 1} · ${b.name}`, String(i))));
   const status = panel.querySelector('[data-status]');
@@ -31,29 +44,30 @@ export function createPreviewMenu({bookmarks, getState, applyWater, teleport, re
     water.value = previewSelection(state.water);
     place.value = String(state.region);
     water.disabled = place.disabled = busy || state.busy;
+    if (levelSelect) levelSelect.disabled = busy || state.busy;
   }
   async function change(action, message) {
     if (busy) return;
     busy = true; sync(); releaseInput();
-    status.textContent = '正在切换并重建渲染器…';
+    status.textContent = 'Rebuilding renderer...';
     panel.setAttribute('aria-busy', 'true');
     try { await action(); status.textContent = message; }
-    catch (error) { status.textContent = `切换失败：${error.message}`; }
+    catch (error) { status.textContent = `Switch failed: ${error.message}`; }
     finally { busy = false; panel.removeAttribute('aria-busy'); sync(); document.activeElement?.blur(); }
   }
   water.onchange = () => {
     const value = water.value, label = water.selectedOptions[0].textContent;
-    change(() => applyWater(value), `已切换到 ${label}`);
+    change(() => applyWater(value), `Switched to ${label}`);
   };
   place.onchange = () => {
     const index = Number(place.value);
-    change(() => teleport(index), `已切换到 ${bookmarks[index].name}`);
+    change(() => teleport(index), `Switched to ${bookmarks[index].name}`);
   };
   panel.addEventListener('focusin', releaseInput);
   // Tab and arrow keys belong to the controls while they have focus.
   panel.addEventListener('keydown', event => event.stopPropagation());
   panel.querySelector('summary').addEventListener('click', () => document.activeElement?.blur());
   document.body.append(panel);
-  sync(); status.textContent = `当前方案：${water.selectedOptions[0].textContent}`;
+  sync(); status.textContent = `Active: ${bookmarks[0]?.name || currentLevel}`;
   return {sync};
 }
