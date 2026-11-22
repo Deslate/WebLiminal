@@ -179,14 +179,16 @@ fn fsPresent(i: VSOut) -> @location(0) vec4f {
   let vigStrength = select(0.24, 0.48, vhs);
   mapped *= 1.0 - smoothstep(0.38, 1.08, dCenter) * vigStrength;
 
-  // Fine monochrome film grain attenuated in dark shadows so shadows stay clean and grain-free.
-  let outLuma = dot(mapped, vec3f(0.2126, 0.7152, 0.0722));
-  let grainAmp = select(0.005 * (0.25 + 0.75 * smoothstep(0.03, 0.35, outLuma)), 0.036, vhs);
-  let grain = (hash12(i.clipPos.xy + fract(frame.cameraPos.w * 13.7) * 512.0) - 0.5) * grainAmp;
-  mapped += vec3f(grain);
+  // Clean mode: zero time-animated grain (only ultra-subtle static 8-bit banding dither).
+  // Found-Footage VHS mode retains authentic animated camcorder grain & scanlines.
   if (vhs) {
+    let grain = (hash12(i.clipPos.xy + fract(frame.cameraPos.w * 13.7) * 512.0) - 0.5) * 0.036;
+    mapped += vec3f(grain);
     let scan = 0.972 + 0.028 * sin(i.clipPos.y * 3.14159);
     mapped *= scan;
+  } else {
+    let dither = (hash12(i.clipPos.xy) - 0.5) * (1.0 / 255.0);
+    mapped += vec3f(dither);
   }
 
   return vec4f(clamp(mapped, vec3f(0.0), vec3f(1.0)), 1.0);

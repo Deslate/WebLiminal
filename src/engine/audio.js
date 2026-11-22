@@ -434,75 +434,104 @@ export function createAudioEngine(statusEl) {
     };
   }
 
-  // Multi-stage physical wading footstep splash (synchronized 1:1 with wakeTrail footsteps!)
-  // or surface-appropriate dry tile / damp carpet / echoing concrete footstep.
+  // Multi-stage physical wading footstep (synchronized 1:1 with wakeTrail footsteps!)
+  // Designed for unmistakable rhythmic left-right step-by-step water traversal ("一脚一脚涉水"),
+  // with strong dry near-field presence and moderate room reverb rather than muddy reverb wash.
   function playFootstep({ inWater = false, speed = 0.9, side = 1 } = {}) {
     if (ctx.state !== "running" || muted) return;
-    const pan = side * (0.18 + rand() * 0.12);
+    const pan = side * (0.28 + rand() * 0.08);
+    const pitchBias = side > 0 ? 1.06 : 0.94;
 
     if (inWater) {
-      const energy = Math.max(0.45, Math.min(1.5, speed / 0.95));
+      const energy = Math.max(0.55, Math.min(1.45, speed / 0.88));
 
-      // Stage 1 (0 ms): submerged hydraulic displacement surge + muffled tile foot plant
+      // Beat 0 (0 ms): rear foot lifting & breaking water surface tension (hollow suction + sheet rattle)
       playNoiseBurst({
         delay: 0,
-        dur: 0.15 + rand() * 0.04,
-        attack: 0.016,
-        gain: 0.085 * energy,
-        f0: 150 + rand() * 40,
-        fPeak: 340 + rand() * 70,
-        fEnd: 170,
-        q: 1.25,
-        pan,
-        reverbSend: 0.72,
-      });
-      playHeelThud({
-        delay: 0.005,
-        gain: 0.024 * energy,
-        f0: 120 + rand() * 20,
-        f1: 68,
-        dur: 0.065,
-        pan,
-        reverbSend: 0.45,
-      });
-
-      // Stage 2 (25-45 ms): forward shin-kick slosh + crisp frothy surface splash!
-      const kickDelay = 0.024 + rand() * 0.022;
-      playNoiseBurst({
-        delay: kickDelay,
-        dur: 0.20 + rand() * 0.08,
-        attack: 0.018,
-        gain: 0.115 * energy,
-        f0: 440 + rand() * 140,
-        fPeak: 1180 + rand() * 340 * energy,
-        fEnd: 480 + rand() * 120,
-        q: 1.55,
-        pan: pan * 1.15,
-        reverbSend: 0.85,
-      });
-      playNoiseBurst({
-        delay: kickDelay + 0.012,
-        dur: 0.14 + rand() * 0.06,
+        dur: 0.078 + rand() * 0.022,
         attack: 0.012,
-        gain: 0.062 * energy,
-        f0: 1750 + rand() * 450,
-        fPeak: 3300 + rand() * 700,
-        fEnd: 1350,
-        q: 1.3,
-        pan: pan * 1.25,
-        reverbSend: 0.80,
+        gain: 0.105 * energy,
+        f0: (205 + rand() * 45) * pitchBias,
+        fPeak: (580 + rand() * 110) * pitchBias,
+        fEnd: 245 * pitchBias,
+        q: 2.25,
+        pan: pan * 0.95,
+        reverbSend: 0.28,
       });
 
-      // Stage 3 (110-390 ms): 4 staggered Minnaert rising-pitch droplets pattering back onto the pool!
-      const dropCount = energy > 1.15 ? 5 : 3;
+      // Beat 1 (28 ms): heavy shin-plow through 60 cm deep water — signature rhythmic "shhh-LOOSH" stroke!
+      const plowDelay = 0.026 + rand() * 0.012;
+      playNoiseBurst({
+        delay: plowDelay,
+        dur: 0.21 + rand() * 0.045,
+        attack: 0.024,
+        gain: 0.245 * energy,
+        f0: (135 + rand() * 25) * pitchBias,
+        fPeak: (490 + rand() * 90 * energy) * pitchBias,
+        fEnd: (180 + rand() * 35) * pitchBias,
+        q: 1.9,
+        pan,
+        reverbSend: 0.34,
+      });
+      playNoiseBurst({
+        delay: plowDelay + 0.016,
+        dur: 0.18 + rand() * 0.04,
+        attack: 0.020,
+        gain: 0.185 * energy,
+        f0: (480 + rand() * 110) * pitchBias,
+        fPeak: (1380 + rand() * 280 * energy) * pitchBias,
+        fEnd: (520 + rand() * 90) * pitchBias,
+        q: 1.75,
+        pan: pan * 1.1,
+        reverbSend: 0.40,
+      });
+
+      // Beat 2 (110-125 ms): submerged ceramic sole plant + crisp dry near-field forward splash spray!
+      const plantDelay = 0.105 + rand() * 0.02;
+      playHeelThud({
+        delay: plantDelay,
+        gain: 0.062 * energy,
+        f0: (118 + rand() * 18) * pitchBias,
+        f1: 50,
+        dur: 0.075,
+        pan,
+        reverbSend: 0.24,
+      });
+      playNoiseBurst({
+        delay: plantDelay + 0.008,
+        dur: 0.135 + rand() * 0.04,
+        attack: 0.010,
+        gain: 0.118 * energy,
+        f0: (1650 + rand() * 350) * pitchBias,
+        fPeak: (3950 + rand() * 650) * pitchBias,
+        fEnd: 1220,
+        q: 1.35,
+        pan: pan * 1.18,
+        reverbSend: 0.44,
+      });
+
+      // Beat 3 (200-355 ms): brief pocket slosh settle + 2-3 trailing Minnaert calf drips in the stride gap
+      playNoiseBurst({
+        delay: 0.195 + rand() * 0.025,
+        dur: 0.105 + rand() * 0.03,
+        attack: 0.020,
+        gain: 0.062 * energy,
+        f0: 195 * pitchBias,
+        fPeak: 330 * pitchBias,
+        fEnd: 165,
+        q: 2.1,
+        pan: -pan * 0.35,
+        reverbSend: 0.42,
+      });
+      const dropCount = energy > 1.15 ? 3 : 2;
       for (let i = 0; i < dropCount; i++) {
         playBubbleDrip({
-          delay: 0.105 + i * 0.055 + rand() * 0.045,
-          gain: (0.012 + rand() * 0.016) * energy,
-          baseFreq: 950 + rand() * 1650,
-          pan: pan + (rand() - 0.5) * 0.42,
-          reverbSend: 0.90,
-          withClick: i < 2,
+          delay: 0.215 + i * 0.065 + rand() * 0.035,
+          gain: (0.016 + rand() * 0.016) * energy,
+          baseFreq: 860 + rand() * 1450,
+          pan: pan + (rand() - 0.5) * 0.36,
+          reverbSend: 0.68,
+          withClick: i === 0,
         });
       }
       return;
@@ -510,50 +539,73 @@ export function createAudioEngine(statusEl) {
 
     // Dry-surface footsteps tailored to active environment material
     if (profile === "backrooms") {
-      // Soft muffled damp carpet step
+      // Muffled damp commercial loop carpet step (soft heel + subtle damp fabric squelch)
       playNoiseBurst({
         delay: 0,
-        dur: 0.075,
+        dur: 0.082,
         attack: 0.008,
-        gain: 0.036,
-        f0: 260,
-        fPeak: 540,
-        fEnd: 220,
-        q: 1.0,
+        gain: 0.048,
+        f0: 250 * pitchBias,
+        fPeak: 640 * pitchBias,
+        fEnd: 210,
+        q: 1.15,
         pan,
-        reverbSend: 0.18,
+        reverbSend: 0.16,
       });
-      playHeelThud({ delay: 0, gain: 0.022, f0: 98, f1: 54, dur: 0.055, pan, reverbSend: 0.14 });
+      playNoiseBurst({
+        delay: 0.022,
+        dur: 0.055,
+        attack: 0.006,
+        gain: 0.024,
+        f0: 620 * pitchBias,
+        fPeak: 1120 * pitchBias,
+        fEnd: 460,
+        q: 1.8,
+        pan,
+        reverbSend: 0.14,
+      });
+      playHeelThud({ delay: 0, gain: 0.034, f0: 96 * pitchBias, f1: 50, dur: 0.058, pan, reverbSend: 0.12 });
     } else if (profile === "parking") {
-      // Echoing damp subterranean concrete step
+      // Echoing damp subterranean concrete step (crisp hard heel click + subtle wet-film splash nuance)
+      const wetPatch = rand() < 0.42;
       playNoiseBurst({
         delay: 0,
-        dur: 0.048,
-        attack: 0.004,
-        gain: 0.058,
-        f0: 750,
-        fPeak: 1850,
-        fEnd: 620,
-        q: 1.4,
+        dur: wetPatch ? 0.095 : 0.048,
+        attack: 0.003,
+        gain: wetPatch ? 0.082 : 0.068,
+        f0: (wetPatch ? 880 : 760) * pitchBias,
+        fPeak: (wetPatch ? 2650 : 1920) * pitchBias,
+        fEnd: 640,
+        q: wetPatch ? 1.35 : 1.55,
         pan,
-        reverbSend: 0.88,
+        reverbSend: 0.72,
       });
-      playHeelThud({ delay: 0, gain: 0.036, f0: 145, f1: 62, dur: 0.06, pan, reverbSend: 0.72 });
+      playHeelThud({ delay: 0, gain: 0.048, f0: 152 * pitchBias, f1: 60, dur: 0.062, pan, reverbSend: 0.62 });
+      if (wetPatch) {
+        playBubbleDrip({
+          delay: 0.065 + rand() * 0.04,
+          gain: 0.011,
+          baseFreq: 1350 + rand() * 900,
+          pan,
+          reverbSend: 0.75,
+          withClick: false,
+        });
+      }
     } else {
       // Poolrooms wet porcelain deck tap with tiled hall reverb
       playNoiseBurst({
         delay: 0,
-        dur: 0.036,
+        dur: 0.042,
         attack: 0.003,
-        gain: 0.054,
-        f0: 1100,
-        fPeak: 2350,
-        fEnd: 900,
-        q: 1.8,
+        gain: 0.062,
+        f0: 1120 * pitchBias,
+        fPeak: 2450 * pitchBias,
+        fEnd: 880,
+        q: 1.75,
         pan,
-        reverbSend: 0.85,
+        reverbSend: 0.62,
       });
-      playHeelThud({ delay: 0, gain: 0.028, f0: 175, f1: 86, dur: 0.05, pan, reverbSend: 0.65 });
+      playHeelThud({ delay: 0, gain: 0.036, f0: 175 * pitchBias, f1: 84, dur: 0.052, pan, reverbSend: 0.50 });
     }
   }
 
@@ -587,24 +639,25 @@ export function createAudioEngine(statusEl) {
       const speed = typeof moveSpeed === "number" ? moveSpeed : moveSpeed ? 1.0 : 0.0;
       const moving = speed > 0.08;
 
-      // Continuous speed-driven wading water drag & froth (smoothly settles when stopping!)
+      // Very subtle ankle-flow background drag (kept 6x quieter than individual wading strides so the
+      // unmistakable left-right step-by-step cadence dominates clearly!).
       const wadeNorm = inWater ? Math.min(1.0, speed / 1.45) : 0.0;
-      const tau = wadeNorm > 0.05 ? 0.08 : 0.28;
-      wadeSwirlGain.gain.setTargetAtTime(wadeNorm * 0.105, now, tau);
-      wadeSwirlBP.frequency.setTargetAtTime(240 + wadeNorm * 380, now, 0.09);
-      wadeFrothGain.gain.setTargetAtTime(wadeNorm * wadeNorm * 0.048, now, tau);
-      wadeFrothBP.frequency.setTargetAtTime(1350 + wadeNorm * 1650, now, 0.09);
+      const tau = wadeNorm > 0.05 ? 0.09 : 0.24;
+      wadeSwirlGain.gain.setTargetAtTime(wadeNorm * 0.015, now, tau);
+      wadeSwirlBP.frequency.setTargetAtTime(220 + wadeNorm * 280, now, 0.10);
+      wadeFrothGain.gain.setTargetAtTime(wadeNorm * wadeNorm * 0.007, now, tau);
+      wadeFrothBP.frequency.setTargetAtTime(1400 + wadeNorm * 1200, now, 0.10);
 
-      // Organic distant Minnaert water droplets echoing across tiled Poolrooms halls
-      if (profile === "poolrooms" && t >= nextDripTime) {
-        const pan = (rand() * 2 - 1) * 0.78;
-        const baseFreq = 780 + rand() * 1150;
-        const gain = 0.022 + rand() * 0.032;
+      // Organic distant Minnaert water droplets echoing across Poolrooms halls AND subterranean Level 1 puddles!
+      if ((profile === "poolrooms" || profile === "parking") && t >= nextDripTime) {
+        const pan = (rand() * 2 - 1) * 0.80;
+        const isParking = profile === "parking";
+        const baseFreq = isParking ? 540 + rand() * 760 : 780 + rand() * 1150;
+        const gain = isParking ? 0.018 + rand() * 0.024 : 0.022 + rand() * 0.032;
         playBubbleDrip({ delay: 0, gain, baseFreq, pan, reverbSend: 0.96, withClick: true });
-        // Occasional soft double-drip echo (classic ceiling condensation drop)
         if (rand() < 0.28) {
           playBubbleDrip({
-            delay: 0.18 + rand() * 0.22,
+            delay: 0.18 + rand() * 0.24,
             gain: gain * 0.65,
             baseFreq: baseFreq * (0.92 + rand() * 0.22),
             pan: pan + (rand() - 0.5) * 0.15,
@@ -612,12 +665,12 @@ export function createAudioEngine(statusEl) {
             withClick: true,
           });
         }
-        nextDripTime = t + 2.2 + rand() * 3.8;
+        nextDripTime = t + (isParking ? 3.2 + rand() * 4.8 : 2.2 + rand() * 3.8);
       }
 
       // Dry-surface rhythmic footsteps (in-water footsteps fire directly from wakeTrail contact!)
       if (!inWater && moving) {
-        const cadence = Math.max(0.32, Math.min(0.54, 0.92 / Math.max(speed, 0.5)));
+        const cadence = Math.max(0.34, Math.min(0.56, 0.96 / Math.max(speed, 0.5)));
         if (t - lastDryStep >= cadence) {
           lastDryStep = t;
           dryFootSide = -dryFootSide;

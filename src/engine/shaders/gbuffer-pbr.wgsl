@@ -55,7 +55,7 @@ fn traceShadowPBR(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         let v = dot(rd, qvec) * invDet;
         if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
-        if (t > 1e-3 && t < maxT) {
+        if (t > 1e-4 && t < maxT) {
           return true;
         }
       }
@@ -85,32 +85,14 @@ fn traceShadowPBR(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
   return false;
 }
 
-fn ignPBR(p: vec2f) -> f32 {
-  return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715))));
-}
-
-// 1-sample strictly periodic 4x4 Bayer-stratified Vogel-disk soft solar visibility ray.
-// Removing per-block random rotation guarantees every 4x4 window spans all 16 disk strata with
-// zero block-to-block variance, so the 5x5 bilateral filter resolves a grain-free penumbra.
-fn evalSunVisibility1(p: vec3f, nGeom: vec3f, pixelCoord: vec2f) -> f32 {
+// Deterministic 1-ray world-locked sun center visibility.
+// Zero screen-space Bayer/IGN dithering prevents any shadow stipple crawling when moving the camera.
+// Soft distance-dependent penumbras are resolved deterministically on detected shadow edges in compositeSSR.
+fn evalSunVisibility1(p: vec3f, nGeom: vec3f) -> f32 {
   let sunDir = frame.sunDirRad.xyz;
   if (dot(nGeom, sunDir) <= 0.0) { return 0.0; }
   let origin = p + nGeom * 0.015;
-  let angR = clamp(frame.sunDirRad.w, 0.004, 0.011);
-  let basis = orthoBasis(sunDir);
-  let bayer = array<u32, 16>(
-    0u, 8u, 2u, 10u,
-    12u, 4u, 14u, 6u,
-    3u, 11u, 1u, 9u,
-    15u, 7u, 13u, 5u,
-  );
-  let pxU = vec2u(pixelCoord);
-  let cell = (pxU.x & 3u) | ((pxU.y & 3u) << 2u);
-  let stratum = bayer[cell];
-  let r = angR * sqrt((f32(stratum) + 0.5) / 16.0);
-  let theta = f32(stratum) * 2.3999632;
-  let d = normalize(basis * vec3f(r * cos(theta), r * sin(theta), 1.0));
-  return select(0.0, 1.0, !traceShadowPBR(origin, d, 160.0));
+  return select(0.0, 1.0, !traceShadowPBR(origin, sunDir, 160.0));
 }
 
 // --- Sky Backdrop Pass ---
@@ -296,6 +278,95 @@ fn fsMain(i: VSOut) -> GBufferOut {
     // Use pure world-metric ceramic slope (flat face + tiny tilt + delicate glaze waviness),
     // never superimposing coarse 256px baked texture bump!
     nXY = cer.slope;
+  } else if (preset == 4u) {
+    // Level 0 iconic vintage yellow wallpaper: crisp vertical 0.60 m roll seams + organic lower-wall
+    // capillary damp wicking above the baseboard + non-repeating architectural aging.
+    let seamGrid = vec2f(i.uv.x / 0.60, 0.25);
+    let fwSeam = vec2f(fwUV2.x / 0.60, 0.001);
+    let rollSeam = filteredGridCoverage(seamGrid, fwSeam, 0.0055);
+    let worldAge = vFbm2(vec2f(i.worldPos.x + i.worldPos.z, i.worldPos.y * 1.1) * 0.38);
+    let dampRise = smoothstep(0.68, 0.08, i.worldPos.y) * smoothstep(0.36, 0.72, vFbm2(vec2f(i.worldPos.x + i.worldPos.z, 1.7) * 0.65));
+    albedo *= (0.91 + 0.16 * worldAge) * (1.0 - rollSeam * 0.16) * (1.0 - dampRise * 0.24);
+    rough = clamp(rough - dampRise * 0.16, 0.42, 0.96);
+    texAO *= 1.0 - rollSeam * 0.22;
+  } else if (preset == 5u) {
+    // Level 0 damp commercial woven loop carpet: sweeping non-repeating world-space moisture stains
+    // & traffic wear paths so large lobbies never show tiled square repetition.
+    let macroWear = vFbm2(i.worldPos.xz * 0.26 + vec2f(3.1, 7.4));
+    let dampPatch = smoothstep(0.50, 0.76, vFbm2(i.worldPos.xz * 0.34 + vec2f(19.2, -5.8)));
+    let rollSeam = filteredGridCoverage(vec2f(i.worldPos.x / 3.60, 0.25), vec2f(fwUV2.x / 3.60, 0.001), 0.0025);
+    albedo *= (0.86 + 0.24 * macroWear) * (1.0 - dampPatch * 0.28) * (1.0 - rollSeam * 0.14);
+    rough = clamp(rough - dampPatch * 0.22, 0.56, 0.99);
+    coat = mix(coat, 0.09, dampPatch * 0.5);
+  } else if (preset == 6u) {
+    // Level 0 commercial suspended drop ceiling: exact box-filtered 1.20 x 0.60 m enameled metal T-bar
+    // grid locked 1:1 to world metric coordinates so recessed 1.20 x 0.60 m troffers sit flush in grid bays!
+    let g = vec2f(i.uv.x / 1.20, i.uv.y / 0.60);
+    let fwG = vec2f(fwUV2.x / 1.20, fwUV2.y / 0.60);
+    let barX = filteredGridCoverage(vec2f(g.x, 0.25), vec2f(fwG.x, 0.001), 0.026 / 1.20);
+    let barY = filteredGridCoverage(vec2f(0.25, g.y), vec2f(0.001, fwG.y), 0.026 / 0.60);
+    let tBar = clamp(barX + barY - barX * barY, 0.0, 1.0);
+    let shadowLip = clamp(
+      filteredGridCoverage(vec2f(g.x, 0.25), vec2f(fwG.x, 0.001), 0.044 / 1.20)
+      + filteredGridCoverage(vec2f(0.25, g.y), vec2f(0.001, fwG.y), 0.044 / 0.60),
+      0.0, 1.0,
+    ) * (1.0 - tBar);
+    let cellId = vHash2(floor(g) + vec2f(7.3, 19.1));
+    let waterRing = smoothstep(0.58, 0.80, vFbm2(i.worldPos.xz * 0.42 + vec2f(5.4, 2.8)));
+    var tileCol = albedo * (0.93 + 0.12 * cellId);
+    tileCol = mix(tileCol, tileCol * vec3f(0.78, 0.69, 0.46), waterRing * 0.55);
+    tileCol *= 1.0 - shadowLip * 0.26;
+    let barCol = vec3f(0.84, 0.83, 0.78);
+    albedo = mix(tileCol, barCol, tBar);
+    rough = mix(clamp(rough - waterRing * 0.08, 0.65, 0.96), 0.28, tBar);
+    coat = mix(0.0, 0.22, tBar);
+    texAO = mix(texAO * (1.0 - shadowLip * 0.35), 1.0, tBar);
+    nXY *= 1.0 - tBar * 0.92;
+  } else if (preset == 8u) {
+    // Level 1 brutalist board-formed concrete walls & columns: exact 1.20 x 1.20 m formwork panel
+    // seams + realistic non-repeating vertical seepage & rising floor dampness.
+    let g = i.uv / 1.20;
+    let fwG = fwUV2 / 1.20;
+    let seam = filteredGridCoverage(g, fwG, 0.008 / 1.20);
+    let panelId = vHash2(floor(g) + vec2f(3.7, 11.3));
+    let worldMottle = vFbm2(vec2f(i.worldPos.x + i.worldPos.z, i.worldPos.y * 0.85) * 0.35);
+    let streak = smoothstep(0.54, 0.80, vFbm2(vec2f((i.worldPos.x + i.worldPos.z) * 1.4, i.worldPos.y * 0.22))) * smoothstep(1.2, 4.2, i.worldPos.y);
+    let floorDamp = smoothstep(0.85, 0.04, i.worldPos.y) * (0.45 + 0.55 * vFbm2(vec2f(i.worldPos.x + i.worldPos.z, 2.3) * 0.55));
+    let dampTotal = clamp((floorDamp * 0.75 + streak * 0.55) * max(m.extra.y, 0.22), 0.0, 1.0);
+    albedo *= (0.90 + 0.16 * panelId) * (0.88 + 0.22 * worldMottle);
+    albedo = mix(albedo, albedo * 0.52, seam * 0.78);
+    albedo = mix(albedo, albedo * vec3f(0.64, 0.68, 0.70), dampTotal * 0.62);
+    rough = clamp(rough - dampTotal * 0.44, 0.16, 0.96);
+    coat = max(coat, dampTotal * 0.38);
+    texAO *= 1.0 - seam * 0.45;
+  } else if (preset == 9u) {
+    // Level 1 subterranean concrete parking deck: exact 2.40 m structural saw-cut expansion joints
+    // + sweeping non-repeating world-space mirror-glossy wet concrete puddles!
+    let g = i.worldPos.xz / 2.40;
+    let fwG = fwUV2 / 2.40;
+    let sawJoint = filteredGridCoverage(g, fwG, 0.009 / 2.40);
+    let macroSlab = vFbm2(i.worldPos.xz * 0.20 + vec2f(4.2, 9.1));
+    let pLow = vFbm2(i.worldPos.xz * 0.21 + vec2f(-6.4, 13.7));
+    let pMed = vFbm2(i.worldPos.xz * 0.56 + vec2f(11.3, -4.2));
+    // Natural drainage troughs gently collect slightly more water along central & left drive aisles
+    let aisleBias = 0.06 * exp(-pow((i.worldPos.x + 0.6) / 3.6, 2.0));
+    let puddleField = pLow * 0.72 + pMed * 0.28 + aisleBias;
+    let wetLvl = clamp(m.extra.y, 0.0, 1.0);
+    let thresh = 0.56 - wetLvl * 0.14;
+    let dampMargin = smoothstep(thresh - 0.11, thresh + 0.02, puddleField) * smoothstep(0.05, 0.30, wetLvl);
+    let puddle = smoothstep(thresh, thresh + 0.065, puddleField) * smoothstep(0.15, 0.45, wetLvl);
+
+    albedo *= 0.84 + 0.30 * macroSlab;
+    albedo = mix(albedo, albedo * 0.38, sawJoint * 0.85);
+    albedo = mix(albedo, albedo * vec3f(0.62, 0.66, 0.69), dampMargin * 0.55);
+    albedo = mix(albedo, albedo * vec3f(0.42, 0.48, 0.52), puddle * 0.82);
+
+    // Capillary damp rim lowers roughness; standing puddle water becomes mirror-flat (rough = 0.032, coat = 1.0)!
+    let dryR = clamp(rough + 0.14, 0.48, 0.92);
+    rough = mix(mix(dryR, 0.26, dampMargin), 0.032, puddle);
+    coat = mix(mix(0.05, 0.42, dampMargin), 1.0, puddle);
+    nXY *= 1.0 - puddle * 0.96;
+    texAO *= 1.0 - sawJoint * 0.52;
   }
 
   let nZ = sqrt(max(0.04, 1.0 - min(0.92, dot(nXY, nXY))));
@@ -344,7 +415,7 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let specRough = clamp(mix(rough, max(rough, 0.24), 1.0 - dirStrength * 0.65), 0.06, 0.96);
   var specular = evalGGXSpec(N, V, domDir, specRough, f0) * irrad * dirStrength * ao * 0.75;
 
-  // 2. Per-Pixel Direct Sunlight (1-ray 4x4 Bayer-stratified visibility -> 5x5 bilateral filter in compositeSSR)
+  // 2. Per-Pixel Direct Sunlight (1-ray deterministic center visibility -> edge-only 8-tap penumbra in compositeSSR)
   var sunDirectRGB = vec3f(0.0);
   var sunVis = 0.0;
   if (frame.sunColorInt.w > 0.5) {
@@ -356,7 +427,7 @@ fn fsMain(i: VSOut) -> GBufferOut {
       let sunDiff = kD * (vec3f(1.0) - fIn) * albedo * sunRad * ndlSun * INV_PI * mix(0.74, 1.0, texAO);
       let sunSpec = evalGGXSpec(N, V, sunDir, max(rough, 0.065), f0) * sunRad;
       sunDirectRGB = sunDiff + sunSpec;
-      sunVis = evalSunVisibility1(i.worldPos, Ngeom, i.clipPos.xy);
+      sunVis = evalSunVisibility1(i.worldPos, Ngeom);
     }
   }
 

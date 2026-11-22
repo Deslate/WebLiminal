@@ -212,6 +212,8 @@ export async function createRenderer(canvas, options = {}) {
     skyPipe,
     pbrPipe,
     ssrTracePipe,
+    ssrFilterHPipe,
+    ssrFilterVPipe,
     ssrCompPipe,
     volMarchPipe,
     volBlurPipe,
@@ -263,6 +265,8 @@ export async function createRenderer(canvas, options = {}) {
       primitive: { topology: "triangle-list", frontFace: "ccw", cullMode: "back" },
     }),
     device.createComputePipelineAsync({ label: "ssr-trace", layout: "auto", compute: { module: ssrMod, entryPoint: "traceSSR" } }),
+    device.createComputePipelineAsync({ label: "ssr-filter-h", layout: "auto", compute: { module: ssrMod, entryPoint: "filterSSRH" } }),
+    device.createComputePipelineAsync({ label: "ssr-filter-v", layout: "auto", compute: { module: ssrMod, entryPoint: "filterSSRV" } }),
     device.createComputePipelineAsync({ label: "ssr-comp", layout: "auto", compute: { module: ssrMod, entryPoint: "compositeSSR" } }),
     device.createComputePipelineAsync({ label: "vol-march", layout: "auto", compute: { module: volMod, entryPoint: "marchVolumetric" } }),
     device.createComputePipelineAsync({ label: "vol-blur", layout: "auto", compute: { module: volMod, entryPoint: "blurVolumetric" } }),
@@ -428,7 +432,6 @@ export async function createRenderer(canvas, options = {}) {
       layout: ssrTracePipe.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: frameUniformBuf } },
-        { binding: 1, resource: rt.hdrRawView },
         { binding: 2, resource: rt.gNormalRoughView },
         { binding: 3, resource: rt.gAlbedoMetalView },
         { binding: 4, resource: rt.depthView },
@@ -441,6 +444,34 @@ export async function createRenderer(canvas, options = {}) {
       ],
     });
 
+    rt.ssrFilterHGroup0 = device.createBindGroup({
+      layout: ssrFilterHPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 2, resource: rt.gNormalRoughView },
+        { binding: 3, resource: rt.gAlbedoMetalView },
+        { binding: 4, resource: rt.depthView },
+        { binding: 6, resource: rt.ssrBView },
+      ],
+    });
+    rt.ssrFilterHGroup1 = device.createBindGroup({
+      layout: ssrFilterHPipe.getBindGroupLayout(1),
+      entries: [{ binding: 0, resource: rt.ssrView }],
+    });
+
+    rt.ssrFilterVGroup0 = device.createBindGroup({
+      layout: ssrFilterVPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 2, resource: rt.gNormalRoughView },
+        { binding: 3, resource: rt.gAlbedoMetalView },
+        { binding: 4, resource: rt.depthView },
+        { binding: 6, resource: rt.ssrView },
+      ],
+    });
+    rt.ssrFilterVGroup1 = device.createBindGroup({
+      layout: ssrFilterVPipe.getBindGroupLayout(1),
+      entries: [{ binding: 0, resource: rt.ssrBView }],
+    });
+
     rt.ssrCompGroup0 = device.createBindGroup({
       layout: ssrCompPipe.getBindGroupLayout(0),
       entries: [
@@ -449,6 +480,8 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 2, resource: rt.gNormalRoughView },
         { binding: 3, resource: rt.gAlbedoMetalView },
         { binding: 4, resource: rt.depthView },
+        { binding: 7, resource: { buffer: sceneRes.bvhNodeBuf } },
+        { binding: 8, resource: { buffer: sceneRes.bvhTriBuf } },
       ],
     });
     rt.ssrCompGroup1 = device.createBindGroup({
@@ -545,6 +578,7 @@ export async function createRenderer(canvas, options = {}) {
     const ssrW = halfW;
     const ssrH = halfH;
     const ssr = mkTex("ssr", ssrW, ssrH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
+    const ssrB = mkTex("ssrB", ssrW, ssrH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const volA = mkTex("volA", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const volB = mkTex("volB", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
     const bloomA = mkTex("bloomA", halfW, halfH, "rgba16float", GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING);
@@ -565,6 +599,7 @@ export async function createRenderer(canvas, options = {}) {
       sunDirect, sunDirectView: sunDirect.createView(),
       depth, depthView: depth.createView(),
       ssr, ssrView: ssr.createView(),
+      ssrB, ssrBView: ssrB.createView(),
       volA, volAView: volA.createView(),
       volB, volBView: volB.createView(),
       bloomA, bloomAView: bloomA.createView(),
@@ -1138,13 +1173,30 @@ export async function createRenderer(canvas, options = {}) {
       rpass.end();
     }
 
-    // Pass 2: Half-Res 2-Ray BVH Glossy Reflections + Full-Res Bilateral Soft Sun Shadow & Reflection Composite
+    // Pass 2: Half-Res 1-Ray Deterministic BVH Reflections + Separable H/V Roughness Cone Filter
+    //         + Full-Res Edge-Only 12-Tap Soft Sun Penumbra & Bilinear Reflection Composite
     if (settings.debugView === 0) {
       if (settings.ssrEnabled) {
-        const cpass = enc.beginComputePass({ label: "bvh-refl-trace" });
+        const wgX = Math.ceil(rt.ssrW / 8);
+        const wgY = Math.ceil(rt.ssrH / 8);
+        let cpass = enc.beginComputePass({ label: "bvh-refl-trace" });
         cpass.setPipeline(ssrTracePipe);
         cpass.setBindGroup(0, rt.ssrTraceGroup);
-        cpass.dispatchWorkgroups(Math.ceil(rt.ssrW / 8), Math.ceil(rt.ssrH / 8));
+        cpass.dispatchWorkgroups(wgX, wgY);
+        cpass.end();
+
+        cpass = enc.beginComputePass({ label: "bvh-refl-filter-h" });
+        cpass.setPipeline(ssrFilterHPipe);
+        cpass.setBindGroup(0, rt.ssrFilterHGroup0);
+        cpass.setBindGroup(1, rt.ssrFilterHGroup1);
+        cpass.dispatchWorkgroups(wgX, wgY);
+        cpass.end();
+
+        cpass = enc.beginComputePass({ label: "bvh-refl-filter-v" });
+        cpass.setPipeline(ssrFilterVPipe);
+        cpass.setBindGroup(0, rt.ssrFilterVGroup0);
+        cpass.setBindGroup(1, rt.ssrFilterVGroup1);
+        cpass.dispatchWorkgroups(wgX, wgY);
         cpass.end();
       }
 

@@ -217,14 +217,22 @@ export class MapBuilder {
   // Horizontal surface (floor facing +Y or ceiling facing -Y) with optional rectangular cutouts.
   _horizontalSurface(minX, minZ, maxX, maxZ, y, facingUp, matSpec, opts = {}) {
     const holes = opts.holes ?? [];
+    // Extend outer perimeter by 6 mm past bounding wall planes (leaving interior hole cutouts exact)
+    // so subdivided skylight ceilings and floors never exhibit 1-pixel T-junction sky leaks at seams.
+    const pad = opts.padOuter === false ? 0 : 0.006;
+    const oMinX = minX - pad;
+    const oMaxX = maxX + pad;
+    const oMinZ = minZ - pad;
+    const oMaxZ = maxZ + pad;
+
     if (!holes.length) {
       if (facingUp) {
-        this.addQuad([minX, y, maxZ], [maxX, y, maxZ], [maxX, y, minZ], [minX, y, minZ], matSpec, {
-          u0: minX, v0: -maxZ, u1: maxX, v1: -minZ, priority: opts.priority ?? 1.0,
+        this.addQuad([oMinX, y, oMaxZ], [oMaxX, y, oMaxZ], [oMaxX, y, oMinZ], [oMinX, y, oMinZ], matSpec, {
+          u0: oMinX, v0: -oMaxZ, u1: oMaxX, v1: -oMinZ, priority: opts.priority ?? 1.0,
         });
       } else {
-        this.addQuad([minX, y, minZ], [maxX, y, minZ], [maxX, y, maxZ], [minX, y, maxZ], matSpec, {
-          u0: minX, v0: minZ, u1: maxX, v1: maxZ, priority: opts.priority ?? 1.0,
+        this.addQuad([oMinX, y, oMinZ], [oMaxX, y, oMinZ], [oMaxX, y, oMaxZ], [oMinX, y, oMaxZ], matSpec, {
+          u0: oMinX, v0: oMinZ, u1: oMaxX, v1: oMaxZ, priority: opts.priority ?? 1.0,
         });
       }
       return;
@@ -232,10 +240,10 @@ export class MapBuilder {
 
     // Subdivide grid cleanly along all hole x/z coordinates, emitting non-hole cells.
     const xs = Array.from(
-      new Set([minX, maxX, ...holes.flatMap((h) => [Math.max(minX, h[0]), Math.min(maxX, h[2])])]),
+      new Set([oMinX, oMaxX, ...holes.flatMap((h) => [Math.max(oMinX, h[0]), Math.min(oMaxX, h[2])])]),
     ).sort((a, b) => a - b);
     const zs = Array.from(
-      new Set([minZ, maxZ, ...holes.flatMap((h) => [Math.max(minZ, h[1]), Math.min(maxZ, h[3])])]),
+      new Set([oMinZ, oMaxZ, ...holes.flatMap((h) => [Math.max(oMinZ, h[1]), Math.min(oMaxZ, h[3])])]),
     ).sort((a, b) => a - b);
 
     for (let ix = 0; ix < xs.length - 1; ix++) {
@@ -246,7 +254,7 @@ export class MapBuilder {
         const cx = (ax + bx) * 0.5, cz = (az + bz) * 0.5;
         const insideHole = holes.some((h) => cx > h[0] && cx < h[2] && cz > h[1] && cz < h[3]);
         if (insideHole) continue;
-        this._horizontalSurface(ax, az, bx, bz, y, facingUp, matSpec, { priority: opts.priority });
+        this._horizontalSurface(ax, az, bx, bz, y, facingUp, matSpec, { priority: opts.priority, padOuter: false });
       }
     }
   }
@@ -1396,7 +1404,7 @@ export class MapBuilder {
     return this;
   }
 
-  // Recessed ceiling fluorescent light fixture (bezel + glowing prismatic panel + area light).
+  // Recessed ceiling fluorescent light fixture (bezel fits flush INSIDE width x depth grid bay).
   panelLight(pos, width, depth, opts = {}) {
     const [cx, y, cz] = pos;
     const hw = width * 0.5;
@@ -1404,11 +1412,15 @@ export class MapBuilder {
     const color = opts.color ?? [1.0, 0.95, 0.78];
     const intensity = opts.intensity ?? 10.0;
     const flicker = opts.flicker ?? 0;
+    const off = Boolean(opts.off);
 
-    // Compact recessed bezel housing (only 5 visible faces, low lightmap priority)
-    const bezel = 0.035;
-    const h = 0.025;
-    this.box([cx - hw - bezel, y - h, cz - hd - bezel], [cx + hw + bezel, y, cz + hd + bezel], "dark_metal", {
+    // Flush inset aluminum troffer frame fitting strictly inside the 1.20x0.60 m T-bar grid cell
+    const margin = 0.014;
+    const bezel = 0.026;
+    const h = 0.022;
+    const bx = Math.max(0.05, hw - margin);
+    const bz = Math.max(0.05, hd - margin);
+    this.box([cx - bx, y - h, cz - bz], [cx + bx, y, cz + bz], "dark_metal", {
       solid: false,
       skipFaces: ["py"],
       priority: 0.25,
@@ -1418,56 +1430,80 @@ export class MapBuilder {
       opts.material ??
       this.material({
         base: "fluorescent_panel",
-        emissive: color,
-        emissiveStrength: intensity,
-        flicker,
+        albedo: off ? [0.46, 0.45, 0.40] : undefined,
+        emissive: off ? [0, 0, 0] : color,
+        emissiveStrength: off ? 0 : intensity,
+        flicker: off ? 0 : flicker,
       });
 
-    // Downward-facing glowing diffuser quad slightly below housing underside
+    // Downward-facing prismatic diffuser quad cleanly inset within bezel frame
+    const dx = Math.max(0.04, bx - bezel);
+    const dz = Math.max(0.04, bz - bezel);
     const ly = y - h - 0.002;
-    const p0 = [cx - hw, ly, cz - hd];
-    const p1 = [cx + hw, ly, cz - hd];
-    const p2 = [cx + hw, ly, cz + hd];
-    const p3 = [cx - hw, ly, cz + hd];
+    const p0 = [cx - dx, ly, cz - dz];
+    const p1 = [cx + dx, ly, cz - dz];
+    const p2 = [cx + dx, ly, cz + dz];
+    const p3 = [cx - dx, ly, cz + dz];
     this.addQuad(p0, p1, p2, p3, mat, { u0: 0, v0: 0, u1: 1, v1: 1, priority: 0.25 });
 
-    // Lightmapper emitter slightly offset below diffuser so shadow rays clear bezel
-    const ey = y - h - 0.018;
-    this.addAreaLight([cx - hw, ey, cz - hd], [cx + hw, ey, cz - hd], [cx - hw, ey, cz + hd], color, intensity, { flicker });
+    if (!off && intensity > 0) {
+      // Lightmapper emitter slightly offset below diffuser so shadow rays clear bezel
+      const ey = y - h - 0.018;
+      this.addAreaLight([cx - dx, ey, cz - dz], [cx + dx, ey, cz - dz], [cx - dx, ey, cz + dz], color, intensity, { flicker });
+    }
     return this;
   }
 
-  // Suspended industrial fluorescent tube fixture (housing + glowing underside + area light).
+  // Suspended industrial fluorescent tube fixture (metal hood + optional ceiling suspension rods + glowing underside).
   tubeLight(cx, y, cz, length, axis = "x", opts = {}) {
     const color = opts.color ?? [0.90, 0.96, 1.0];
     const intensity = opts.intensity ?? 16.0;
     const width = opts.width ?? 0.16;
     const flicker = opts.flicker ?? 0;
+    const off = Boolean(opts.off);
     const hl = length * 0.5;
     const hw = width * 0.5;
     const hx = axis === "x" ? hl : hw;
     const hz = axis === "x" ? hw : hl;
 
-    // Metal shroud
-    this.box([cx - hx - 0.02, y, cz - hz - 0.02], [cx + hx + 0.02, y + 0.08, cz + hz + 0.02], "dark_metal", {
+    // Industrial steel reflector hood housing
+    this.box([cx - hx - 0.025, y, cz - hz - 0.025], [cx + hx + 0.025, y + 0.085, cz + hz + 0.025], "dark_metal", {
       solid: false,
       priority: 0.25,
     });
+
+    // Optional twin steel suspension rods anchoring the fixture solidly to the concrete ceiling
+    if (opts.hangY !== undefined && opts.hangY > y + 0.09) {
+      const rodSpan = Math.max(0.2, hl * 0.72);
+      const r = 0.012;
+      for (const s of [-1, 1]) {
+        const rx = axis === "x" ? cx + s * rodSpan : cx;
+        const rz = axis === "z" ? cz + s * rodSpan : cz;
+        this.box([rx - r, y + 0.085, rz - r], [rx + r, opts.hangY, rz + r], "dark_metal", {
+          solid: false,
+          skipFaces: ["ny", "py"],
+          priority: 0.15,
+        });
+      }
+    }
 
     const mat =
       opts.material ??
       this.material({
         base: "fluorescent_panel",
-        emissive: color,
-        emissiveStrength: intensity,
-        flicker,
+        albedo: off ? [0.42, 0.44, 0.44] : undefined,
+        emissive: off ? [0, 0, 0] : color,
+        emissiveStrength: off ? 0 : intensity,
+        flicker: off ? 0 : flicker,
       });
     const ly = y - 0.003;
     this.addQuad([cx - hx, ly, cz - hz], [cx + hx, ly, cz - hz], [cx + hx, ly, cz + hz], [cx - hx, ly, cz + hz], mat, {
       u0: 0, v0: 0, u1: 1, v1: 1, priority: 0.25,
     });
-    const ey = y - 0.02;
-    this.addAreaLight([cx - hx, ey, cz - hz], [cx + hx, ey, cz - hz], [cx - hx, ey, cz + hz], color, intensity, { flicker });
+    if (!off && intensity > 0) {
+      const ey = y - 0.02;
+      this.addAreaLight([cx - hx, ey, cz - hz], [cx + hx, ey, cz - hz], [cx - hx, ey, cz + hz], color, intensity, { flicker });
+    }
     return this;
   }
 

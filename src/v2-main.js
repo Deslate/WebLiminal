@@ -324,13 +324,16 @@ function tick(now) {
         speed: actualSpeed,
         side: contact.step % 2 ? 1 : -1,
       });
+      // Lock head-bob trough cleanly to each wading footstep plunge!
+      walkBobPhase = contact.step % 2 ? 0.35 : Math.PI + 0.35;
     }
   }
 
   audio.update(elapsed, actualSpeed, inWater);
 
-  // Subtle vertical walking head-bob (zero when standing still)
-  const bob = len > 0 ? Math.sin(walkBobPhase) * 0.020 : 0;
+  // Subtle vertical walking head-bob (zero when standing still; slightly heavier weight-shift when wading)
+  const bobAmp = inWater ? 0.026 : 0.018;
+  const bob = actualSpeed > 0.08 ? Math.sin(walkBobPhase) * bobAmp * Math.min(1, actualSpeed / 0.7) : 0;
   const renderPose = { ...pose, y: pose.y + bob };
   renderer.render(renderPose, elapsed, dt);
 

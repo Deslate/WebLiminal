@@ -198,7 +198,7 @@ struct TileMetric {
   slope: vec2f,  // exact metric surface gradient (flat face + tiny mounting tilt + narrow shoulder)
 };
 
-fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32) -> TileMetric {
+fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32, fwMax: f32) -> TileMetric {
   let cell = floor(uvM / tileSize);
   let center = (cell + 0.5) * tileSize;
   let q = uvM - center;
@@ -224,20 +224,24 @@ fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32) -> Ti
   let tiltMag = select(0.011, 0.015, preset == 16u);
   let tilt = (r - 0.5) * tiltMag;
 
-  // Outward-facing micro-shoulder gradient ONLY within the ~1.8 mm rounded lip.
+  // Outward-facing micro-shoulder gradient ONLY within the ~1.8 mm rounded lip,
+  // smoothly band-limited before Nyquist aliasing so tile edges never sparkle when panning!
   var ge = -sign(q) * select(vec2f(0.0, 1.0), vec2f(1.0, 0.0), d.x > d.y);
   if (any(d > vec2f(0.0))) {
     ge = -sign(q) * normalize(max(d, vec2f(1e-6)));
   }
   let u = clamp(edge / bevel, 0.0, 1.0);
-  // Bounded lip slope (~0.35 peak) so edges catch crisp razor glints without looking bulbous.
-  let lipSlope = ge * (0.36 * 4.0 * u * (1.0 - u));
+  let lipWeight = 1.0 - smoothstep(0.0018, 0.011, fwMax);
+  let lipSlope = ge * (0.34 * 4.0 * u * (1.0 - u) * lipWeight);
 
-  // Delicate organic kiln-fired glaze waviness & micro-texture (ported verbatim from v1 porcelain.wgsl).
+  // Band-limited kiln-fired glaze waviness & micro-texture: fade cleanly before Nyquist
+  // (unresolved variance is analytically folded into GGX roughness in evalAnalyticCeramicFull).
   let tSeed = vec2f(id * 173.1, seed * 13.71);
+  let waveWeight = 1.0 - smoothstep(0.0045, 0.022, fwMax);
+  let microWeight = 1.0 - smoothstep(0.0010, 0.0048, fwMax);
   let waviness = vec2f(vNoise2(uvM * 23.7 + tSeed), vNoise2(uvM * 27.1 - tSeed)) - 0.5;
   let micro = vec2f(vNoise2(uvM * 137.3 + tSeed), vNoise2(uvM * 143.7 - tSeed)) - 0.5;
-  let glaze = (waviness * 0.016 + micro * 0.020) * shoulder;
+  let glaze = (waviness * (0.015 * waveWeight) + micro * (0.018 * microWeight)) * shoulder;
 
   let totalSlope = (tilt * shoulder + lipSlope + glaze);
   return TileMetric(edge, bevel, id, totalSlope);
@@ -267,7 +271,7 @@ fn evalAnalyticCeramicFull(
   let fwMeters = clamp(fwUV, vec2f(0.00015), vec2f(0.06));
   let fwMax = max(fwMeters.x, fwMeters.y);
 
-  let t = ceramicMetricProfile(uv, tileSize, preset, seed);
+  let t = ceramicMetricProfile(uv, tileSize, preset, seed, fwMax);
   let tSeed = vec2f(t.id * 173.1, seed * 13.71);
 
   // Exact box-filtered grout coverage (silky smooth at every distance & grazing angle).
@@ -282,11 +286,16 @@ fn evalAnalyticCeramicFull(
   var secondMoment = vec2f(0.0);
   for (var qi = 0u; qi < 4u; qi++) {
     let qOff = vec2f(select(-1.0, 1.0, (qi & 1u) != 0u), select(-1.0, 1.0, (qi & 2u) != 0u));
-    let s = ceramicMetricProfile(uv + qOff * halfFoot * 0.577350269, tileSize, preset, seed).slope;
+    let s = ceramicMetricProfile(uv + qOff * halfFoot * 0.577350269, tileSize, preset, seed, fwMax).slope;
     meanSlope += s * 0.25;
     secondMoment += s * s * 0.25;
   }
-  let slopeVar = max(secondMoment - meanSlope * meanSlope, vec2f(0.0));
+  let waveWeight = 1.0 - smoothstep(0.0045, 0.022, fwMax);
+  let microWeight = 1.0 - smoothstep(0.0010, 0.0048, fwMax);
+  // Analytically fold faded sub-Nyquist glaze variance into GGX NDF broadening so glossy
+  // reflections stay physically consistent across distance with zero motion sparkle.
+  let fadedGlazeVar = (1.0 - microWeight * microWeight) * 0.000055 + (1.0 - waveWeight * waveWeight) * 0.000038;
+  let slopeVar = max(secondMoment - meanSlope * meanSlope, vec2f(0.0)) + vec2f(fadedGlazeVar);
   let slope = meanSlope * (1.0 - inGrout);
 
   // Authentic architectural porcelain color & weathering (ported from v1 porcelain.wgsl).

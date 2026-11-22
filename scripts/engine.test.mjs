@@ -272,5 +272,42 @@ test("poolrooms-v2 doorways are unobstructed, bookmarks are walkable, and slide/
   assert.equal(canStand(-9.4, -11.6, cp.collision), false, "Water slide tube should have solid collision");
 });
 
+test("level0 and level1 bookmarks, doorways, stairs, and EXIT sub-tunnel are cleanly navigable", () => {
+  const byId = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
+
+  // Level 0 verification: 4 walkable bookmarks + clear main & side passages
+  const m0 = createMap({ atlasSize: 512 });
+  byId.level0.build(m0);
+  const c0 = m0.compile({ atlasSize: 512 });
+  assert.equal(c0.bookmarks.length, 4);
+  for (const bm of c0.bookmarks) {
+    const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, c0.collision);
+    assert.equal(canStand(bm.spawn.x, bm.spawn.z, c0.collision, fy), true, `Level 0 bookmark '${bm.name}' blocked`);
+  }
+  assert.equal(canStand(-1.80, 4.32, c0.collision), true, "Level 0 main central doorway should be passable");
+  assert.equal(canStand(-9.60, 4.32, c0.collision), true, "Level 0 west soffit corridor doorway should be passable");
+  assert.equal(canStand(7.32, 1.20, c0.collision), true, "Level 0 east unlit wing doorway should be passable");
+  // Pass-through window sill (y=0..1.08) at x=-5.28, z=1.20 must block walking straight through
+  assert.equal(canStand(-5.28, 1.20, c0.collision), false, "Level 0 pass-through window sill should block walk-through");
+
+  // Level 1 verification: 4 walkable bookmarks + EXIT portal into deep sub-tunnel + mezzanine stair climb
+  const m1 = createMap({ atlasSize: 512 });
+  byId.level1.build(m1);
+  const c1 = m1.compile({ atlasSize: 512 });
+  assert.equal(c1.bookmarks.length, 4);
+  for (const bm of c1.bookmarks) {
+    const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, c1.collision);
+    assert.equal(canStand(bm.spawn.x, bm.spawn.z, c1.collision, fy), true, `Level 1 bookmark '${bm.name}' blocked`);
+  }
+  assert.equal(canStand(0.0, -9.90, c1.collision), true, "Level 1 EXIT portal into deep sub-tunnel should be passable");
+  assert.equal(canStand(-4.5, -16.0, c1.collision), true, "Level 1 deep sub-tunnel west turn should be walkable");
+  // Climb the 6-step loading mezzanine stairs smoothly from z=5.2 up onto DECK_Y=1.08
+  const pose = { x: 8.6, y: PLAYER_EYE_HEIGHT, z: 5.2, footY: 0 };
+  for (let i = 0; i < 65; i++) movePlayer(pose, 0, -0.09, c1.collision, 0.03);
+  assert(pose.z < 1.0 && Math.abs(sampleFloorHeight(pose.x, pose.z, c1.collision) - 1.08) < 1e-3,
+    `Expected smooth climb onto Level 1 mezzanine (z=${pose.z}, floor=${sampleFloorHeight(pose.x, pose.z, c1.collision)})`);
+});
+
+
 
 

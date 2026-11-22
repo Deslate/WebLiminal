@@ -237,6 +237,11 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let batch = env.counts.y;
   let spp = env.counts.z;
   var rng = idx * 1973u + batch * 9277u + 26699u;
+  // Per-texel Cranley-Patterson shift for low-discrepancy R2 quasi-random strata (much cleaner GI!).
+  var shiftRng = idx * 747796405u + 2891336453u;
+  let cpA = vec2f(rand01(&shiftRng), rand01(&shiftRng));
+  let cpB = vec2f(rand01(&shiftRng), rand01(&shiftRng));
+  let r2Alpha = vec2f(0.7548776662, 0.5698402910);
 
   var irradSum = vec3f(0.0);
   var dirSum = vec3f(0.0);
@@ -244,19 +249,23 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let wl = env.waterOptics.w;
 
   for (var s = 0u; s < spp; s++) {
+    let gs = f32(batch * spp + s + 1u);
+    let qHemi = fract(cpA + r2Alpha * gs);
+    let qAO = fract(cpB + r2Alpha * gs);
+
     // 1. Direct area lights & skylight portals at texel (stored as E / PI)
     var directDir = vec3f(0.0);
     irradSum += sampleDirectLighting(p0, n0, &rng, &directDir, false) * INV_PI;
     dirSum += directDir * INV_PI;
 
-    // 2. Short-range Ambient Occlusion ray (for crisp architectural corner crevices)
-    let aoDir = sampleCosineHemisphere(n0, rand01(&rng), rand01(&rng));
+    // 2. Short-range Ambient Occlusion ray (stratified R2 hemisphere for smooth crevice AO)
+    let aoDir = sampleCosineHemisphere(n0, qAO.x, qAO.y);
     let aoHit = traceShadow(p0, aoDir, env.extra.z);
     aoSum += select(1.0, 0.0, aoHit);
 
     // 3. Multi-bounce indirect GI path (3 bounces with physical water Beer-Lambert color bounce!)
     var ro = p0;
-    var rd = sampleCosineHemisphere(n0, rand01(&rng), rand01(&rng));
+    var rd = sampleCosineHemisphere(n0, qHemi.x, qHemi.y);
     let firstBounceDir = rd;
     var throughput = vec3f(1.0);
     var pathRad = vec3f(0.0);

@@ -57,11 +57,11 @@ export const MATERIAL_PRESETS = {
   },
   wallpaper_yellow: {
     presetId: 4,
-    albedo: [0.72, 0.65, 0.34],
+    albedo: [0.80, 0.72, 0.37],
     roughness: 0.84,
     metallic: 0.0,
     coat: 0.0,
-    tileScale: 0.85,
+    tileScale: 0.833333, // 1.20 m pattern cycle (exact 2 x 0.60 m wallpaper rolls)
     pomDepth: 0.003,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
@@ -70,7 +70,7 @@ export const MATERIAL_PRESETS = {
   },
   carpet_damp: {
     presetId: 5,
-    albedo: [0.44, 0.38, 0.21],
+    albedo: [0.48, 0.41, 0.22],
     roughness: 0.92,
     metallic: 0.0,
     coat: 0.0,
@@ -83,12 +83,12 @@ export const MATERIAL_PRESETS = {
   },
   ceiling_grid: {
     presetId: 6,
-    albedo: [0.76, 0.74, 0.66],
+    albedo: [0.82, 0.80, 0.72],
     roughness: 0.86,
     metallic: 0.0,
     coat: 0.0,
-    tileScale: 0.833333, // 1.2 m x 0.6 m commercial drop ceiling grid
-    pomDepth: 0.015,
+    tileScale: 0.833333, // 1.20 m x 0.60 m commercial drop ceiling grid
+    pomDepth: 0.009,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
     wetness: 0.0,
@@ -109,28 +109,28 @@ export const MATERIAL_PRESETS = {
   },
   concrete_raw: {
     presetId: 8,
-    albedo: [0.46, 0.47, 0.45],
+    albedo: [0.47, 0.48, 0.46],
     roughness: 0.82,
     metallic: 0.0,
     coat: 0.0,
-    tileScale: 0.4,
-    pomDepth: 0.008,
+    tileScale: 0.833333, // exact 1.20 m architectural formwork panel with centered tie cones
+    pomDepth: 0.007,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
-    wetness: 0.12,
+    wetness: 0.24,
     seed: 9.0,
   },
   concrete_floor: {
     presetId: 9,
-    albedo: [0.34, 0.35, 0.34],
+    albedo: [0.36, 0.37, 0.36],
     roughness: 0.56,
     metallic: 0.0,
     coat: 0.35,
-    tileScale: 0.35,
-    pomDepth: 0.006,
+    tileScale: 0.416667, // 2.40 m slab trowel variation matching 2.40 m saw-cut joints
+    pomDepth: 0.005,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
-    wetness: 0.55,
+    wetness: 0.75,
     seed: 10.0,
   },
   concrete_painted: {

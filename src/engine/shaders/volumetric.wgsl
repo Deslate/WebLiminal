@@ -110,7 +110,9 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
 
   let steps = 12;
   let dt = maxDist / f32(steps);
-  let jitter = ign(vec2f(gid.xy));
+  // Deterministic 2x2 ordered step phase (period 2 -> completely erased by the 5x5 Gaussian blur, zero shimmer!).
+  let b2 = array<f32, 4>(0.125, 0.625, 0.875, 0.375);
+  let jitter = b2[(gid.x & 1u) | ((gid.y & 1u) << 1u)];
 
   let hasSun = frame.sunColorInt.w > 0.5;
   let sunPhase = select(0.0, hgPhase(dot(rd, frame.sunDirRad.xyz), 0.62), hasSun);
@@ -132,34 +134,52 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
       }
     }
 
-    // 2. Power-weighted CDF importance-sampled BVH-occluded humid mist around skylights & windows.
-    // Eliminates variance spikes from uniform picking while cutting raymarch steps by 40%!
+    // 2. Deterministic top-2 strongest in-range BVH-occluded area/skylight mist scattering.
+    // Eliminates 100% of stochastic light-picking speckle when moving the camera!
     if (lightCount > 0u) {
-      let xi = fract(jitter + f32(s) * 0.61803399);
-      var pickIdx = lightCount - 1u;
+      var bestIdx0 = 255u;
+      var bestIdx1 = 255u;
+      var bestScore0 = 0.0;
+      var bestScore1 = 0.0;
       for (var k = 0u; k < lightCount; k++) {
-        if (xi <= lights[k].radianceCdf.w) {
-          pickIdx = k;
-          break;
+        let l = lights[k];
+        let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+        let toL = lCenter - p;
+        let dist2 = dot(toL, toL);
+        let isSky = l.edgeVKind.w > 0.5;
+        let maxR2 = select(54.0, 220.0, isSky);
+        if (dist2 >= maxR2 || dist2 <= 0.04) { continue; }
+        let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+        let cone = max(0.0, dot(lNorm, -toL * inverseSqrt(dist2)));
+        if (cone <= 0.04) { continue; }
+        let sc = l.edgeUPower.w * cone / (dist2 + 1.3);
+        if (sc > bestScore0) {
+          bestScore1 = bestScore0;
+          bestIdx1 = bestIdx0;
+          bestScore0 = sc;
+          bestIdx0 = k;
+        } else if (sc > bestScore1) {
+          bestScore1 = sc;
+          bestIdx1 = k;
         }
       }
-      let prevCdf = select(0.0, lights[pickIdx - 1u].radianceCdf.w, pickIdx > 0u);
-      let pdf = max(0.015, lights[pickIdx].radianceCdf.w - prevCdf);
-      let l = lights[pickIdx];
-      let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
-      let toL = lCenter - p;
-      let dist2 = dot(toL, toL);
-      let isSkylight = l.edgeVKind.w > 0.5;
-      let maxR2 = select(48.0, 220.0, isSkylight);
-      if (dist2 < maxR2 && dist2 > 0.04) {
+
+      for (var slot = 0u; slot < 2u; slot++) {
+        let pickIdx = select(bestIdx1, bestIdx0, slot == 0u);
+        if (pickIdx >= lightCount) { continue; }
+        let l = lights[pickIdx];
+        let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+        let toL = lCenter - p;
+        let dist2 = dot(toL, toL);
         let dist = sqrt(dist2);
         let dirL = toL / dist;
         let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
         let cone = max(0.0, dot(lNorm, -dirL));
-        if (cone > 0.04 && !traceShadowVol(p, dirL, max(0.02, dist - 0.12))) {
+        if (!traceShadowVol(p, dirL, max(0.02, dist - 0.12))) {
+          let isSky = l.edgeVKind.w > 0.5;
           let phase = mix(0.28, hgPhase(dot(rd, dirL), 0.52), 0.58);
-          let gain = select(0.095, 0.28, isSkylight);
-          inLight += l.radianceCdf.rgb * (l.originArea.w * cone * phase / (dist2 + 1.3)) * (gain / pdf);
+          let gain = select(0.11, 0.30, isSky);
+          inLight += l.radianceCdf.rgb * (l.originArea.w * cone * phase / (dist2 + 1.3)) * gain;
         }
       }
     }
