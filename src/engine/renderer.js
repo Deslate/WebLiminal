@@ -892,11 +892,12 @@ export async function createRenderer(canvas, options = {}) {
     const lmDirAView = lmDirA.createView();
     const lmDirBView = lmDirB.createView();
 
-    device.queue.writeBuffer(resolveParamBuf, 0, new Uint32Array([atlasSize, 1, 0, 0]));
-    device.queue.writeBuffer(denoiseParamBufs[0].buf, 0, new Uint32Array([atlasSize, 1, 0, 0]));
-    device.queue.writeBuffer(denoiseParamBufs[1].buf, 0, new Uint32Array([atlasSize, 2, 0, 0]));
-    device.queue.writeBuffer(denoiseParamBufs[2].buf, 0, new Uint32Array([atlasSize, 4, 0, 0]));
-    device.queue.writeBuffer(denoiseParamBufs[3].buf, 0, new Uint32Array([atlasSize, 8, 0, 0]));
+    const indirectMode = activeAtmosphere.sun ? 1 : 0;
+    device.queue.writeBuffer(resolveParamBuf, 0, new Uint32Array([atlasSize, 1, indirectMode, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[0].buf, 0, new Uint32Array([atlasSize, 1, indirectMode, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[1].buf, 0, new Uint32Array([atlasSize, 2, indirectMode, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[2].buf, 0, new Uint32Array([atlasSize, 4, indirectMode, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[3].buf, 0, new Uint32Array([atlasSize, 8, indirectMode, 0]));
 
     const lmBakeGroup = device.createBindGroup({
       layout: bakeLmPipe.getBindGroupLayout(0),

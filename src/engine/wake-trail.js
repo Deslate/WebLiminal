@@ -22,8 +22,8 @@ export function createWakeTrail() {
       if (waterLevel <= footY + 0.04 || d < 1e-5 || d > 0.4) return null;
       distance += d;
       const starting = foot === 0 || time - lastTime >= 0.9;
-      const reqDist = starting ? 0.16 : 0.48;
-      const reqInterval = starting ? 0.14 : 0.38;
+      const reqDist = starting ? 0.18 : 0.55;
+      const reqInterval = starting ? 0.14 : 0.44;
       if (distance < reqDist || time - lastTime < reqInterval) return null;
       distance = 0;
       lastTime = time;

@@ -51,6 +51,7 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
   }
 
   let step = i32(params.y);
+  let isSunlitIndirect = params.z > 0u;
   let sMax = i32(size) - 1;
   let kernel = array<f32, 3>(1.0, 0.66, 0.25);
 
@@ -61,7 +62,12 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
   var wAOSum = 0.0;
 
   let cLuma = dot(cI.rgb, vec3f(0.2126, 0.7152, 0.0722));
-  let maxDist2 = select(0.46, 0.24, step <= 2);
+  let maxDist2 = select(select(0.46, 0.24, step <= 2), select(2.8, 0.95, step <= 2), isSunlitIndirect);
+  let normMin = select(0.92, 0.84, isSunlitIndirect);
+  let planeTol = select(0.035, 0.14, isSunlitIndirect);
+  let distDecay = select(3.2, 0.85, isSunlitIndirect);
+  let lumaDecay = select(2.1, 0.55, isSunlitIndirect);
+  let aoStepMax = select(2, 4, isSunlitIndirect);
 
   for (var dy = -2; dy <= 2; dy++) {
     for (var dx = -2; dx <= 2; dx++) {
@@ -70,30 +76,29 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
       let pq = lmPos[qIdx];
       if (pq.w < 0.25) { continue; }
       let nq = normalize(lmNorm[qIdx].xyz);
-      if (dot(n0, nq) < 0.92) { continue; }
+      if (dot(n0, nq) < normMin) { continue; }
       let dp = pq.xyz - p0.xyz;
-      if (abs(dot(dp, n0)) > 0.035) { continue; }
+      if (abs(dot(dp, n0)) > planeTol) { continue; }
       let dist2 = dot(dp, dp);
       if (dist2 > maxDist2) { continue; }
 
       let qI = textureLoad(srcIrrad, q, 0);
       let qD = textureLoad(srcDir, q, 0);
       let qLuma = dot(qI.rgb, vec3f(0.2126, 0.7152, 0.0722));
-      let lumaDiff = abs(qLuma - cLuma) / max(0.28, cLuma + qLuma);
+      let lumaDiff = abs(qLuma - cLuma) / max(select(0.28, 0.45, isSunlitIndirect), cLuma + qLuma);
 
       let kw = kernel[abs(dx)] * kernel[abs(dy)];
-      let pw = exp(-dist2 * 3.2);
-      let lw = exp(-lumaDiff * 2.1);
+      let pw = exp(-dist2 * distDecay);
+      let lw = exp(-lumaDiff * lumaDecay);
       let w = kw * pw * lw;
 
       sumI += qI.rgb * w;
       sumD += qD.rgb * w;
       wSum += w;
 
-      // Keep short-range crevice AO crisp on fine passes (step <= 2) so wall/baseboard junctions stay sharp!
-      if (step <= 2 && dist2 < 0.14) {
+      if (step <= aoStepMax && dist2 < select(0.14, 0.65, isSunlitIndirect)) {
         let aoDiff = abs(qD.a - cD.a);
-        let wAO = kw * exp(-dist2 * 10.0) * exp(-aoDiff * 3.5);
+        let wAO = kw * exp(-dist2 * select(10.0, 2.5, isSunlitIndirect)) * exp(-aoDiff * select(3.5, 1.8, isSunlitIndirect));
         sumAO += qD.a * wAO;
         wAOSum += wAO;
       }
@@ -102,7 +107,7 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
 
   let finalI = select(cI.rgb, sumI / wSum, wSum > 1e-5);
   let finalD = select(cD.rgb, sumD / wSum, wSum > 1e-5);
-  let finalAO = select(cD.a, sumAO / wAOSum, step <= 2 && wAOSum > 1e-5);
+  let finalAO = select(cD.a, sumAO / wAOSum, step <= aoStepMax && wAOSum > 1e-5);
   textureStore(outIrrad, c, vec4f(finalI, p0.w));
   textureStore(outDir, c, vec4f(finalD, finalAO));
 }

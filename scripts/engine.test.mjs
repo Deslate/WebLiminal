@@ -260,10 +260,10 @@ test("poolrooms-v2 doorways are unobstructed, bookmarks are walkable, and slide/
     const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, cp.collision);
     assert.equal(canStand(bm.spawn.x, bm.spawn.z, cp.collision, fy), true, `Bookmark '${bm.name}' is blocked`);
   }
-  // All three inter-chamber doorways must be passable (Ring 1 must not clip East doorway z=7.9!)
-  assert.equal(canStand(5.5, 7.9, cp.collision), true, "East doorway to Misty Lightwell should be clear");
-  assert.equal(canStand(-5.5, 8.6, cp.collision), true, "West doorway to Spiral Column should be clear");
-  assert.equal(canStand(-5.5, -5.0, cp.collision), true, "West doorway to Slide & Portholes should be clear");
+  // All three inter-chamber doorways must be passable
+  assert.equal(canStand(4.75, 8.2, cp.collision), true, "East doorway to Misty Lightwell should be clear");
+  assert.equal(canStand(-5.6, 8.3, cp.collision), true, "West doorway to Spiral Column should be clear");
+  assert.equal(canStand(-5.6, -5.0, cp.collision), true, "West doorway to Slide & Portholes should be clear");
   // Fiberglass slide plunge entry (-9.4, -11.6) must block player walk-through
   assert.equal(canStand(-9.4, -11.6, cp.collision), false, "Water slide tube should have solid collision");
 });

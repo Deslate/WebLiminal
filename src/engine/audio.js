@@ -97,10 +97,10 @@ export function createAudioEngine(statusEl) {
   // 2. REALISTIC HYDRODYNAMIC & FOLEY BUFFER SYNTHESIS (startup < 15 ms)
   // =========================================================================
 
-  // Adds a smooth low-Q broadband swept turbulent fluid surge (water mass displacement & slosh).
-  // Uses pink-shaped noise + slow organic turbulence modulation -> authentic heavy liquid rush,
-  // zero radio-static hiss and zero tonal whistling!
-  function addTurbulentWash(L, R, startSec, durSec, fStart, fPeak, fEnd, q, amp, pan, peakPos = 0.34, flutterHz = 11.5) {
+  // Adds a smooth low-Q broadband swept fluid surge (submerged water-mass push & wake wash).
+  // Uses smooth organic random-walk modulation (NEVER a periodic sine-LFO tremolo!) and steep
+  // 2-pole lowpass shaping so it sounds like heavy calm water mass, zero radio-static hiss!
+  function addTurbulentWash(L, R, startSec, durSec, fStart, fPeak, fEnd, q, amp, pan, peakPos = 0.34, _unused = 0) {
     const i0 = Math.floor(startSec * sr);
     const n = Math.floor(durSec * sr);
     const len = L.length;
@@ -109,12 +109,11 @@ export function createAudioEngine(statusEl) {
     const gR = amp * Math.sin(((pan + 1) * Math.PI) / 4);
     const end = Math.min(len, i0 + n);
 
-    let b0 = 0, b1 = 0, b2 = 0; // pink noise state
+    let b0 = 0, b1 = 0, b2 = 0; // warm brown-pink fluid excitation
     let lowL = 0, bandL = 0;
     let lowR = 0, bandR = 0;
-    const ph1 = rand() * Math.PI * 2;
-    const ph2 = rand() * Math.PI * 2;
-    const damp = 1.0 / Math.max(0.65, q);
+    let drift = 0; // slow organic turbulence random walk (zero periodic LFO!)
+    const damp = 1.0 / Math.max(0.70, q);
 
     for (let i = i0; i < end; i++) {
       const t = (i - i0) / sr;
@@ -122,40 +121,38 @@ export function createAudioEngine(statusEl) {
       const f = u < peakPos
         ? fStart + (fPeak - fStart) * (u / Math.max(0.01, peakPos))
         : fPeak + (fEnd - fPeak) * ((u - peakPos) / Math.max(0.01, 1 - peakPos));
-      const fc = Math.min(0.42, 2 * Math.sin((Math.PI * Math.min(sr * 0.36, f)) / sr));
+      const fc = Math.min(0.36, 2 * Math.sin((Math.PI * Math.min(sr * 0.32, f)) / sr));
 
-      // Smooth asymmetric hydrodynamic envelope with natural turbulent swell ripple
-      const attack = Math.pow(Math.min(1, u / Math.max(0.04, peakPos)), 0.85);
-      const decay = Math.exp(-Math.max(0, u - peakPos * 0.55) * 3.1);
-      const swell = 0.72 + 0.18 * Math.sin(t * flutterHz * Math.PI * 2 + ph1)
-        + 0.10 * Math.sin(t * (flutterHz * 1.63) * Math.PI * 2 + ph2);
-      const env = attack * decay * swell;
+      // Smooth asymmetric fluid displacement envelope with organic low-frequency eddy modulation
+      const attack = Math.pow(Math.min(1, u / Math.max(0.05, peakPos)), 1.15);
+      const decay = Math.exp(-Math.max(0, u - peakPos * 0.50) * 3.4);
+      drift = drift * 0.9992 + (rand() * 2 - 1) * 0.018;
+      const organic = Math.max(0.45, Math.min(1.25, 0.88 + drift * 1.6));
+      const env = attack * decay * organic;
 
-      // Decorrelated pink excitation per ear -> natural spatial liquid width
       const wL = rand() * 2 - 1;
       const wR = rand() * 2 - 1;
-      b0 = 0.996 * b0 + wL * 0.055;
-      b1 = 0.960 * b1 + wL * 0.11;
-      b2 = 0.780 * b2 + wL * 0.24;
-      const pinkL = (b0 + b1 + b2 + wL * 0.14) * env;
-      const pinkR = (b0 * 0.4 + b1 * 0.3 + wR * 0.36) * env;
+      b0 = 0.997 * b0 + wL * 0.045;
+      b1 = 0.968 * b1 + wL * 0.095;
+      b2 = 0.820 * b2 + wL * 0.16;
+      const flL = (b0 * 1.2 + b1 + b2 * 0.55) * env;
+      const flR = (b0 * 0.5 + b1 * 0.5 + b2 * 0.35 + (wR * 0.08)) * env;
 
-      const highL = pinkL - lowL - damp * bandL;
+      // Lowpass + gentle bandpass blend -> warm submerged water body without hiss
+      const highL = flL - lowL - damp * bandL;
       bandL += fc * highL;
       lowL += fc * bandL;
 
-      const highR = pinkR - lowR - damp * bandR;
+      const highR = flR - lowR - damp * bandR;
       bandR += fc * highR;
       lowR += fc * bandR;
 
-      L[i] += bandL * gL;
-      R[i] += bandR * gR;
+      L[i] += (bandL * 0.72 + lowL * 0.28) * gL;
+      R[i] += (bandR * 0.72 + lowR * 0.28) * gR;
     }
   }
 
-  // Adds ONE short Hanning-windowed turbulent liquid splash micro-puff (5-18 ms).
-  // Superposing ~110-150 stochastic micro-puffs creates genuine wet splash texture ("shlosh-kshh")
-  // without steady static hiss AND without cartoon sine beeps!
+  // Adds ONE short Hanning-windowed damped contact grain (used for dry tile/carpet texture & flickers).
   function addSplashGrain(L, R, startSec, durSec, freqHz, q, amp, pan) {
     const i0 = Math.floor(startSec * sr);
     const n = Math.floor(durSec * sr);
@@ -169,7 +166,6 @@ export function createAudioEngine(statusEl) {
     let low = 0, band = 0;
     for (let i = i0; i < end; i++) {
       const u = (i - i0) / n;
-      // Smooth Hann window -> zero digital click!
       const env = 0.5 - 0.5 * Math.cos(Math.PI * 2 * u);
       const x = (rand() * 2 - 1) * env;
       const high = x - low - damp * band;
@@ -177,6 +173,80 @@ export function createAudioEngine(statusEl) {
       low += fc * band;
       L[i] += band * gL;
       R[i] += band * gR;
+    }
+  }
+
+  // Noise-excited stochastic water-packet formant stream (Andy Farnell liquid synthesis):
+  // Zero sine oscillators (impossible to sound like cartoon bloops!) and zero flat continuous
+  // static hiss (excitation is sculpted into irregular overlapping liquid turbulence packets
+  // driving a smoothly drifting resonant fluid cavity bandpass filter!).
+  function addLiquidFormantStream(L, R, startSec, durSec, fStart, fPeak, fEnd, q, amp, pan, peakPos = 0.35, clumpRateHz = 34) {
+    const i0 = Math.floor(startSec * sr);
+    const n = Math.floor(durSec * sr);
+    const len = L.length;
+    if (i0 >= len || n < 32) return;
+    const gL = amp * Math.cos(((pan + 1) * Math.PI) / 4);
+    const gR = amp * Math.sin(((pan + 1) * Math.PI) / 4);
+    const end = Math.min(len, i0 + n);
+
+    // Pre-generate organic irregular water-clump envelope (Poisson bursts smoothed by asymmetric
+    // liquid attack/decay -> authentic churning/sloshing liquid motion, zero periodic tremolo!)
+    let clumpEnv = 0.25;
+    let clumpTarget = 0.25;
+    const pBurst = clumpRateHz / sr;
+    let fWalk = 0;
+
+    let b0L = 0, b1L = 0, b0R = 0, b1R = 0;
+    let lowL = 0, bandL = 0, lowR = 0, bandR = 0;
+    const damp = 1.0 / Math.max(1.2, q);
+
+    for (let i = i0; i < end; i++) {
+      const t = (i - i0) / sr;
+      const u = t / durSec;
+
+      // Macro asymmetric splash wave envelope
+      const attack = Math.pow(Math.min(1, u / Math.max(0.04, peakPos)), 1.05);
+      const decay = Math.exp(-Math.max(0, u - peakPos * 0.45) * 3.3);
+      const macroEnv = attack * decay;
+
+      // Irregular fluid packet surges (sharp liquid crest, smooth wet decay)
+      if (rand() < pBurst) {
+        clumpTarget = Math.min(1.65, clumpTarget + 0.35 + Math.pow(rand(), 1.6) * 0.95);
+      }
+      clumpTarget *= 0.9984;
+      const envCoeff = clumpTarget > clumpEnv ? 0.018 : 0.0028;
+      clumpEnv += (clumpTarget - clumpEnv) * envCoeff;
+
+      // Smoothly wandering resonant cavity frequency (sounds wet and alive!)
+      fWalk = fWalk * 0.9985 + (rand() * 2 - 1) * 0.022;
+      const baseF = u < peakPos
+        ? fStart + (fPeak - fStart) * (u / Math.max(0.01, peakPos))
+        : fPeak + (fEnd - fPeak) * ((u - peakPos) / Math.max(0.01, 1 - peakPos));
+      const f = Math.max(95, Math.min(sr * 0.34, baseF * Math.pow(2, fWalk * 0.55)));
+      const fc = Math.min(0.42, 2 * Math.sin((Math.PI * f) / sr));
+
+      // Stereo-decorrelated pink-tilted fluid noise excitation
+      const wL = rand() * 2 - 1;
+      const wR = rand() * 2 - 1;
+      b0L = 0.985 * b0L + wL * 0.14;
+      b1L = 0.850 * b1L + wL * 0.28;
+      b0R = 0.985 * b0R + wR * 0.14;
+      b1R = 0.850 * b1R + wR * 0.28;
+
+      const gain = macroEnv * (0.18 + clumpEnv * 0.92);
+      const xL = (b0L + b1L) * gain;
+      const xR = (b0R + b1R) * gain;
+
+      const hiL = xL - lowL - damp * bandL;
+      bandL += fc * hiL;
+      lowL += fc * bandL;
+
+      const hiR = xR - lowR - damp * bandR;
+      bandR += fc * hiR;
+      lowR += fc * bandR;
+
+      L[i] += bandL * gL;
+      R[i] += bandR * gR;
     }
   }
 
@@ -202,8 +272,7 @@ export function createAudioEngine(statusEl) {
     }
   }
 
-  // Adds a single subtle natural Minnaert droplet (reserved strictly for isolated ceiling drips &
-  // ultra-quiet buried trailing glugs — NEVER spammed in clusters!).
+  // Adds a single subtle natural Minnaert droplet (reserved strictly for isolated ceiling drips).
   function addNaturalDroplet(L, R, startSec, radiusMm, amp, pan, riseRate = 0.14) {
     const f0 = Math.max(240, Math.min(4800, 3260 / Math.max(0.65, radiusMm)));
     const damp = 0.055 * f0 + 0.0018 * Math.pow(f0, 1.5);
@@ -228,91 +297,142 @@ export function createAudioEngine(statusEl) {
     }
   }
 
-  function finalizeBuffer(buf, targetPeak = 0.85) {
+  function finalizeBuffer(buf, targetPeak = 0.85, lowpassHz = 0) {
     const L = buf.getChannelData(0);
     const R = buf.getChannelData(1);
+    // Optional gentle warm acoustic roll-off (eliminates harsh digital >3.5 kHz fizz on water buffers)
+    if (lowpassHz > 0) {
+      const a = 1 - Math.exp((-2 * Math.PI * lowpassHz) / sr);
+      let sL = 0, sR = 0;
+      for (let i = 0; i < L.length; i++) {
+        sL += a * (L[i] - sL);
+        sR += a * (R[i] - sR);
+        L[i] = sL;
+        R[i] = sR;
+      }
+    }
     let peak = 1e-4;
     for (let i = 0; i < L.length; i++) {
       peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
     }
     const scale = targetPeak / peak;
     for (let i = 0; i < L.length; i++) {
-      L[i] = Math.tanh(L[i] * scale * 1.12) * 0.90;
-      R[i] = Math.tanh(R[i] * scale * 1.12) * 0.90;
+      L[i] = Math.tanh(L[i] * scale * 1.08) * 0.90;
+      R[i] = Math.tanh(R[i] * scale * 1.08) * 0.90;
     }
     return buf;
   }
 
-  // Synthesize 6 distinct REALISTIC WADING FOOTSTEP buffers (50 cm shallow tiled pool water).
-  // Pure hydrodynamic broadband water displacement + granular liquid splash crown + muffled floor step.
+  // Synthesize 6 distinct REALISTIC SHALLOW TILED-POOL WADING FOOTSTEP buffers (44 cm calm water).
+  // Two-phase hydrodynamic pool Foley (verified by direct WAV listening):
+  //   Phase A (0 - 170 ms): Warm low-mid shin-drag water push parting calm pool water
+  //   Phase B (120 - 380 ms): Crisp surface-break plunge splash (hollow wet cavity slap + multi-band
+  //                           stochastic liquid formant streams + sparse crisp 2-6 kHz water flecks)
+  //   Phase C (340 - 760 ms): Gentle receding wake slosh + 6-9 delicate runoff droplets hitting calm pool
   function buildWadingStepBank(count = 6) {
     const bank = [];
     for (let v = 0; v < count; v++) {
-      const dur = 0.74;
+      const dur = 0.82;
       const buf = ctx.createBuffer(2, Math.floor(sr * dur), sr);
       const L = buf.getChannelData(0);
       const R = buf.getChannelData(1);
 
-      // Phase 1 (0 - 300 ms): Heavy submerged shin push displacing pool water mass (deep warm fluid surge!)
+      // Phase A (0 - 210 ms): Smooth submerged shin push parting calm pool water
       addTurbulentWash(
         L, R,
-        0.002, 0.30,
-        randRange(130, 175), randRange(410, 540), randRange(180, 240),
-        1.05, 0.62, randRange(-0.16, 0.16), 0.34, randRange(9.0, 14.0),
+        0.002, 0.21,
+        randRange(100, 130), randRange(240, 320), randRange(120, 155),
+        1.20, 0.44, randRange(-0.14, 0.14), 0.42,
       );
-      // Deep underwater body-drag pressure rumble (70-150 Hz low-passed water mass!)
+      addLiquidFormantStream(
+        L, R,
+        0.006, 0.20,
+        randRange(200, 260), randRange(390, 490), randRange(190, 245),
+        3.8, 0.38, randRange(-0.18, 0.18), 0.44, 22,
+      );
+
+      // Phase B (115 - 430 ms): Distinct wet surface-break plunge & heavy hollow pool splash!
+      // Deep warm underwater cavity displacement
       addTurbulentWash(
         L, R,
-        0.005, 0.24,
-        72, 138, 78,
-        0.85, 0.42, randRange(-0.10, 0.10), 0.30, 7.5,
+        0.115, 0.28,
+        randRange(75, 105), randRange(270, 360), randRange(110, 145),
+        1.25, 0.54, randRange(-0.12, 0.12), 0.24,
       );
-
-      // Phase 2 (35 - 380 ms): Granular liquid splash crown & ankle surface break!
-      // Layered stochastic broadband water micro-puffs (mid slosh + crisp surface spray -> zero beep/chirp!)
-      const midGrains = 68 + Math.floor(rand() * 20);
-      for (let g = 0; g < midGrains; g++) {
-        const u = Math.pow(rand(), 0.92);
-        const t = 0.032 + u * 0.32;
-        const env = Math.sin(Math.PI * Math.min(1, u * 1.05));
-        const grainDur = randRange(0.008, 0.022);
-        const freq = randRange(480, 1450) * (1.15 - 0.35 * u);
-        addSplashGrain(L, R, t, grainDur, freq, randRange(1.0, 1.5), (0.08 + 0.14 * env) * randRange(0.5, 1.25), randRange(-0.42, 0.42));
-      }
-      const sprayGrains = 56 + Math.floor(rand() * 22);
-      for (let g = 0; g < sprayGrains; g++) {
-        const u = Math.pow(rand(), 0.85);
-        const t = 0.055 + u * 0.31;
-        const env = Math.sin(Math.PI * Math.min(1, u));
-        const grainDur = randRange(0.004, 0.012);
-        const freq = randRange(1550, 4200);
-        addSplashGrain(L, R, t, grainDur, freq, randRange(1.0, 1.4), (0.045 + 0.085 * env) * randRange(0.45, 1.2), randRange(-0.50, 0.50));
-      }
-
-      // Phase 3 (195 - 275 ms): Muffled submerged sole plant on ceramic pool floor
-      const plantT = randRange(0.195, 0.228);
-      addDampedThump(L, R, plantT, randRange(108, 132), 48, 0.072, 0.24, randRange(-0.12, 0.12));
-
-      // Phase 4 (260 - 700 ms): Soft receding wake wash settling around calves + faint natural water runoff
-      addTurbulentWash(
+      // Hollow resonant wet cavity slosh formant (250 - 620 Hz, Q=4.8 -> unmistakable heavy water!)
+      addLiquidFormantStream(
         L, R,
-        0.24, 0.45,
-        randRange(240, 310), randRange(580, 760), randRange(210, 280),
-        1.15, 0.32, randRange(-0.22, 0.22), 0.26, randRange(7.5, 11.5),
+        0.120, 0.33,
+        randRange(240, 320), randRange(500, 640), randRange(215, 290),
+        4.8, 0.56, randRange(-0.22, 0.22), 0.22, 30,
       );
-      // Sparse soft runoff spray droplets (micro-noise ticks, NOT tonal chirps!)
-      const runoffTicks = 8 + Math.floor(rand() * 6);
-      for (let d = 0; d < runoffTicks; d++) {
-        const t = 0.32 + (d / runoffTicks) * 0.34 + randRange(-0.015, 0.025);
-        addSplashGrain(L, R, t, randRange(0.004, 0.009), randRange(1400, 3400), 1.25, randRange(0.028, 0.068), randRange(-0.45, 0.45));
-      }
-      // At most 2-3 very quiet, low-pitched, softly buried water eddies (-22 dB, minimal pitch rise)
-      for (let b = 0; b < 2; b++) {
-        const t = randRange(0.28, 0.54);
-        addNaturalDroplet(L, R, t, randRange(5.2, 8.0), randRange(0.014, 0.026), randRange(-0.32, 0.32), 0.05);
+      // Wet liquid body splash formant (560 - 1420 Hz, Q=5.0 -> rich liquid gurgle/splash, never dry brush!)
+      addLiquidFormantStream(
+        L, R,
+        0.126, 0.31,
+        randRange(560, 740), randRange(1080, 1450), randRange(480, 660),
+        5.0, 0.48, randRange(-0.30, 0.30), 0.24, 42,
+      );
+      // Sparkling wet surface-sheet breakup (1300 - 2900 Hz, Q=4.2, clumpy surges!)
+      addLiquidFormantStream(
+        L, R,
+        0.132, 0.25,
+        randRange(1280, 1680), randRange(2200, 2900), randRange(1050, 1420),
+        4.2, 0.24, randRange(-0.36, 0.36), 0.22, 52,
+      );
+
+      // Sparse soft wet water-sheet slaps (750 - 3300 Hz, Q=3.2..4.8 -> wet slap, zero dry snow-crunch!)
+      const fleckCount = 14 + Math.floor(rand() * 6);
+      for (let s = 0; s < fleckCount; s++) {
+        const u = Math.pow(rand(), 0.90);
+        const t = 0.125 + u * 0.24;
+        const env = Math.sin(Math.PI * Math.min(1, u * 1.1));
+        const f = 740 * Math.pow(4.3, Math.pow(rand(), 1.1));
+        const durS = randRange(0.005, 0.014);
+        const amp = (0.030 + 0.068 * env) * (0.35 + 0.65 * Math.pow(rand(), 1.8));
+        addSplashGrain(L, R, t, durS, f, randRange(3.2, 4.8), amp, randRange(-0.44, 0.44));
       }
 
-      bank.push(finalizeBuffer(buf, 0.84));
+      // 6-8 quiet buried natural entrainment bubbles right inside the wet splash crest (-18 to -24 dB)
+      // Subtle enough NEVER to sound cartoonish, yet gives unmistakable liquid authenticity!
+      const crestBubbles = 6 + Math.floor(rand() * 3);
+      for (let b = 0; b < crestBubbles; b++) {
+        const t = 0.135 + (b / crestBubbles) * 0.18 + randRange(-0.015, 0.020);
+        addNaturalDroplet(L, R, t, randRange(2.2, 5.4), randRange(0.022, 0.048), randRange(-0.40, 0.40), randRange(0.06, 0.12));
+      }
+
+      // Subtle muffled submerged ceramic heel contact right under the plunge crest
+      const plantT = randRange(0.155, 0.185);
+      addDampedThump(L, R, plantT, randRange(84, 102), 42, 0.056, 0.15, randRange(-0.10, 0.10));
+
+      // Phase C (290 - 780 ms): Gentle receding wake slosh + 4-6 delicate runoff drops hitting calm glass pool
+      addLiquidFormantStream(
+        L, R,
+        0.28, 0.48,
+        randRange(220, 290), randRange(450, 600), randRange(175, 240),
+        3.6, 0.26, randRange(-0.24, 0.24), 0.25, 20,
+      );
+      const runoffTicks = 5 + Math.floor(rand() * 4);
+      for (let r = 0; r < runoffTicks; r++) {
+        const u = (r + rand() * 0.85) / runoffTicks;
+        const t = 0.35 + u * 0.38;
+        addSplashGrain(
+          L, R, t,
+          randRange(0.004, 0.010),
+          randRange(1200, 3400),
+          randRange(3.0, 4.4),
+          (1.0 - u * 0.55) * randRange(0.016, 0.042),
+          randRange(-0.48, 0.48),
+        );
+      }
+      const dripCount = 4 + Math.floor(rand() * 3);
+      for (let d = 0; d < dripCount; d++) {
+        const t = 0.40 + (d / dripCount) * 0.34 + randRange(-0.025, 0.035);
+        addNaturalDroplet(L, R, t, randRange(1.4, 3.2), randRange(0.020, 0.042), randRange(-0.52, 0.52), randRange(0.09, 0.15));
+      }
+
+      // Warm natural 4.6 kHz acoustic roll-off -> crystal wet pool water with zero dry brushiness!
+      bank.push(finalizeBuffer(buf, 0.88, 4600));
     }
     return bank;
   }
@@ -646,10 +766,10 @@ export function createAudioEngine(statusEl) {
     if (inWater) {
       const energy = Math.max(0.60, Math.min(1.36, speed / 0.85));
       playFoleyBuffer(pickVariation(wadingBank), {
-        gain: 0.36 * energy,
-        rate: sideRate * (0.93 + Math.min(0.18, speed * 0.10)),
+        gain: 0.34 * energy,
+        rate: sideRate * (0.93 + Math.min(0.16, speed * 0.08)),
         pan,
-        reverbSend: 0.36,
+        reverbSend: 0.72,
       });
       return;
     }

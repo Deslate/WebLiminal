@@ -201,7 +201,7 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
     } else {
       var weights: array<f32, 64>;
       var sumW = 0.0;
-      let maxDist2 = select(324.0, 169.0, isBounce);
+      let maxDist2 = select(440.0, 289.0, isBounce);
       for (var li = 0u; li < lightCount; li++) {
         let l = lights[li];
         let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
@@ -227,7 +227,7 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
       }
 
       if (sumW > 1e-6) {
-        let pickSamples = select(2u, 1u, isBounce);
+        let pickSamples = select(select(2u, 1u, isBounce), select(3u, 2u, isBounce), lightCount <= 20u);
         let invS = 1.0 / f32(pickSamples);
         for (var s = 0u; s < pickSamples; s++) {
           // Stratified discrete CDF pick across local visible lights (100% unbiased!)
@@ -246,7 +246,7 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
           let pdf = wPick / sumW;
           var wi = vec3f(0.0);
           let contrib = evalAreaLight(p, n, lights[li], rand01(rng), rand01(rng), &wi) * (invS / pdf);
-          let clamped = min(contrib, select(vec3f(26.0), vec3f(12.0), isBounce));
+          let clamped = min(contrib, select(vec3f(28.0), vec3f(14.0), isBounce));
           total += clamped;
           *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
         }
@@ -326,17 +326,18 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       let hitPos = ro + rd * h.t + h.n * 0.008;
 
       // Physical underwater path absorption during GI bounce:
-      // Rays going from ceiling/wall down into a sunlit pool and back out naturally tint the
-      // bounced GI luminous emerald-turquoise — matching photographic Poolrooms ceiling bounce!
+      // Shallow clear pool water transmits with exact Beer-Lambert aquamarine optics while grazing
+      // Fresnel surface reflection preserves warm daylight neutral bounce onto walls and arches.
       if (wl > -50.0) {
         let roSub = ro.y < wl;
         let hitSub = hitPos.y < wl;
         if (roSub && hitSub) {
-          throughput *= exp(-env.waterOptics.rgb * min(h.t, 4.0));
+          throughput *= exp(-env.waterOptics.rgb * min(h.t, 2.6));
         } else if (roSub != hitSub) {
           let tCross = clamp((wl - ro.y) / select(rd.y, 1e-5, abs(rd.y) < 1e-5), 0.0, h.t);
           let subLen = select(h.t - tCross, tCross, roSub);
-          throughput *= exp(-env.waterOptics.rgb * min(subLen, 4.0));
+          let waterTint = exp(-env.waterOptics.rgb * min(subLen, 2.4));
+          throughput *= mix(waterTint, vec3f(1.0), 0.24);
         }
       }
 
