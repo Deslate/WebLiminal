@@ -443,8 +443,8 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let bakedAO = clamp(lmD.a, 0.0, 1.0);
   let indoorDirect = (u32(frame.waterInfo.w + 0.5) & 4u) != 0u;
   // On dry baked-area-light interiors (Level 0), lightmap irradiance already integrates physical occlusion;
-  // on Poolrooms, balance baked AO (0.44..1.0) so corners anchor cleanly without muddying sunlit walls.
-  let aoFloor = select(0.44, 0.66, !hasWater && !indoorDirect);
+  // on Poolrooms, keep broad baked AO airy (0.52..1.0) while Contact GTAO grounds tight column/deck seams.
+  let aoFloor = select(0.52, 0.66, !hasWater && !indoorDirect);
   let ao = mix(aoFloor, 1.0, bakedAO) * mix(0.68, 1.0, texAO);
 
   // Directional normal modulation from lightmap dominant incoming light vector.

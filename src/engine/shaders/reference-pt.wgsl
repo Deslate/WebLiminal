@@ -364,9 +364,46 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     var throughput = vec3f(1.0);
     var pathRad = vec3f(0.0);
     var specularBounce = true;
+    let hasWater = frame.waterInfo.y > 0.5;
+    let wl = frame.waterInfo.x;
+    var inWater = hasWater && ro.y < wl;
 
-    for (var bounce = 0u; bounce < 3u; bounce++) {
+    for (var bounce = 0u; bounce < 5u; bounce++) {
       let h = tracePT(ro, rd, 140.0);
+      let maxHitT = select(140.0, h.t, h.hit);
+
+      // Physical dielectric water surface interaction (Fresnel reflection + Snell refraction + Beer-Lambert)
+      if (hasWater && abs(rd.y) > 1e-4) {
+        let tW = (wl - ro.y) / rd.y;
+        if (tW > 0.002 && tW < maxHitT) {
+          let wp = ro + rd * tW;
+          if (inWater) {
+            throughput *= exp(-vec3f(0.34, 0.075, 0.040) * tW);
+          }
+          // Gentle organic ripple normal matching Poolrooms live water slope scale
+          let s1 = vec2f(sin(wp.x * 5.2 + wp.z * 3.1), cos(wp.x * 2.9 - wp.z * 4.8)) * 0.022;
+          let s2 = vec2f(cos(wp.x * 11.4 - wp.z * 8.7), sin(wp.x * 9.3 + wp.z * 12.1)) * 0.014;
+          let slope = s1 + s2;
+          var Nw = normalize(vec3f(-slope.x, 1.0, -slope.y));
+          let entering = !inWater;
+          if (!entering) { Nw = -Nw; }
+          let eta = select(1.333, 1.0 / 1.333, entering);
+          let cosI = clamp(dot(-rd, Nw), 0.001, 1.0);
+          let sin2T = eta * eta * (1.0 - cosI * cosI);
+          let Fw = select(exactDielectricFresnel(cosI, 1.333), 1.0, sin2T >= 1.0);
+          if (rand01(&rng) < Fw) {
+            rd = reflect(rd, Nw);
+            ro = wp + Nw * 0.004;
+          } else {
+            rd = normalize(refract(rd, Nw, eta));
+            ro = wp - Nw * 0.004;
+            inWater = !inWater;
+          }
+          specularBounce = true;
+          continue;
+        }
+      }
+
       if (!h.hit) {
         pathRad += throughput * evalSkyRadiance(
           rd,
@@ -377,6 +414,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
           frame.sunColorInt.w > 0.5,
         );
         break;
+      }
+
+      if (inWater) {
+        throughput *= exp(-vec3f(0.34, 0.075, 0.040) * h.t);
       }
 
       let hitPos = ro + rd * h.t;
@@ -395,7 +436,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       var emissiveMask = select(0.0, 1.0, m.emissive.w > 0.01);
       var nXY = vec2f(0.0);
 
-      if (bounce == 0u) {
+      if (bounce == 0u || (bounce == 1u && specularBounce)) {
         let intr = evalAnalyticInterior(h.uv, hitPos, m, fwUV);
         if (intr.handled) {
           albedo = intr.albedo;
@@ -417,7 +458,12 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
           coat = mt.g;
           emissiveMask = mt.b;
           nXY = (nh.rg * 2.0 - 1.0) * 0.65;
-          let cer = evalAnalyticCeramicFull(h.uv, m, ar.rgb, ar.a, fwUV, hitPos.y, frame.waterInfo.x, frame.waterInfo.y > 0.5);
+          var cerUV = h.uv;
+          if (isCeramicPreset(preset) && h.t < 11.0 && bounce == 0u) {
+            let cerTileSize = 1.0 / max(ceramicGridFreq(preset, m.albedoScale.w), 0.25);
+            cerUV = ceramicReliefUV(h.uv, cerTileSize, preset, m.extra.z, V, h.T, h.B, h.n, fwUV, h.t);
+          }
+          let cer = evalAnalyticCeramicFull(cerUV, m, ar.rgb, ar.a, fwUV, hitPos.y, wl, hasWater);
           if (cer.isCeramic) {
             albedo = cer.albedo;
             rough = cer.rough;
@@ -446,9 +492,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       let Fv = fresnelSchlickPT(ndv, f0);
       let kD = (vec3f(1.0) - Fv) * (1.0 - metallic);
 
-      // Next-Event Estimation: 1 local-importance area-light sample per bounce (32+ area samples/px across SPP!)
+      // Next-Event Estimation: 1 local-importance area-light sample per bounce
       let direct = sampleDirectLightsPT(hitPos, h.n, N, V, albedo, rough, f0, kD, &rng, 1u);
-      pathRad += throughput * select(min(direct, vec3f(12.0)), direct, bounce == 0u);
+      let subAtten = select(vec3f(1.0), exp(-vec3f(0.34, 0.075, 0.040) * max(0.0, wl - hitPos.y) * 1.25), inWater);
+      pathRad += throughput * subAtten * select(min(direct, vec3f(14.0)), direct, bounce == 0u);
 
       // Choose next bounce direction (Fresnel-weighted split between GGX specular and cosine diffuse)
       let fMax = max(Fv.r, max(Fv.g, Fv.b));
@@ -480,8 +527,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
         specularBounce = false;
       }
 
-      // Russian roulette termination after bounce 1 for unbiased energy conservation
-      if (bounce >= 1u) {
+      // Russian roulette termination after bounce 2 for unbiased energy conservation
+      if (bounce >= 2u) {
         let survive = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.12, 0.94);
         if (rand01(&rng) > survive) { break; }
         throughput /= survive;

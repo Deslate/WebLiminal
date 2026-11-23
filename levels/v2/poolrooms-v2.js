@@ -28,14 +28,14 @@ export default {
       direction: [0.75, 0.60, 0.25],
       color: [1.0, 0.975, 0.93],
       intensity: 17.5,
-      angularRadius: 0.0060,
+      angularRadius: 0.0092,
     },
     exposure: 0.88,
     bloomStrength: 0.16,
     volumetricStrength: 0.18,
     ambientFloor: 0.00005,
-    bounceBoost: 0.94,
-    aoRadius: 1.05,
+    bounceBoost: 1.06,
+    aoRadius: 0.78,
   },
 
   build(m) {
@@ -207,7 +207,7 @@ export default {
     // Wet white deck + emerald dado + columns + backlit pill windows & curved water slide!
     // =========================================================================
     const H4 = 5.80;
-    const deckY = 0.80;
+    const deckY = 0.72; // Exact 4 x 0.18 m full ceramic tile courses above pool floor!
     // Recessed south-bay architectural skylight well (clears the slide cleanly)
     // pouring crisp overhead daylight & angled sunbeams onto the wet walkway deck, emerald dado & columns!
     const c4Sky = [-14.80, -7.40, -7.80, -4.00];
@@ -231,19 +231,36 @@ export default {
     m.ceiling(-21.60, -9.80, -19.80, -7.40, 3.60, plasterMat);
     m.floor(-21.60, -9.80, -19.40, -7.40, deckY, whiteTile, { walkable: true });
 
-    // Raised wet white-tiled walkway deck + flush pool-to-deck access stairs
-    m.box([-19.40, 0, -16.00], [-15.20, deckY, -3.60], whiteTile, { walkable: true, skipFaces: ["nx", "ny", "nz", "pz"] });
-    m.stairs([-15.20, 0, -4.40], [-13.60, deckY, -3.60], "-x", 4, whiteTile);
+    // Exact 0.18 m-grid square column bands (3 x 3 full tiles = 0.54 x 0.54 m, aligned flush to deck edge x=-15.12!)
+    // Cut out plinth footprints from the deck top quad so zero buried floor geometry bleeds across column bases!
+    const colBands = [[-6.48, -5.94], [-9.36, -8.82], [-12.24, -11.70], [-14.58, -14.04]];
+    const plinthPad = 0.024;
+    const colHoles = colBands.map(([z0, z1]) => [-15.66 - plinthPad, z0 - plinthPad, -15.12, z1 + plinthPad]);
+
+    // Raised wet white-tiled walkway deck (cutout top + pool vertical wall + architectural coping overhang + access stairs)
+    m.floor(-19.40, -16.00, -15.12, -3.60, deckY, whiteTile, { walkable: true, priority: 1.45, holes: colHoles });
+    m.addQuad([-15.12, 0, -3.60], [-15.12, 0, -16.00], [-15.12, deckY, -16.00], [-15.12, deckY, -3.60], whiteTile, {
+      u0: 3.60, v0: 0, u1: 16.00, v1: deckY, priority: 1.25,
+    });
+    m.box([-15.12, deckY - 0.055, -16.00], [-15.085, deckY, -4.32], whiteTile, { solid: false, skipFaces: ["nx"], priority: 1.15 });
+    m.stairs([-15.12, 0, -4.32], [-13.68, deckY, -3.60], "-x", 4, whiteTile);
     m.box([-19.40, deckY, -16.00], [-19.36, deckY + 0.80, -9.60], dadoGreen, { solid: false, skipFaces: ["nx", "ny"], priority: 0.9 });
     m.box([-19.40, deckY, -7.60], [-19.36, deckY + 0.80, -3.60], dadoGreen, { solid: false, skipFaces: ["nx", "ny"], priority: 0.9 });
 
-    // Row of architectural square columns + sleek stainless-steel deck safety rails between bays
-    for (const pz of [-6.30, -9.10, -11.90, -14.30]) {
-      m.box([-15.80, deckY, pz - 0.30], [-15.20, H4, pz + 0.30], whiteTile, { skipFaces: ["ny", "py"] });
+    // Grounded 3x3-tile columns with stepped 1-tile-tall (0.18 m) ceramic plinth collars + stainless-steel bay rails
+    for (const [z0, z1] of colBands) {
+      m.box([-15.66 - plinthPad, deckY, z0 - plinthPad], [-15.12, deckY + 0.18, z1 + plinthPad], whiteTile, {
+        skipFaces: ["ny"],
+        priority: 1.45,
+      });
+      m.box([-15.66, deckY + 0.18, z0], [-15.12, H4, z1], whiteTile, {
+        skipFaces: ["ny", "py"],
+        priority: 1.35,
+      });
     }
-    m.handrail([-15.32, -8.76], [-15.32, -6.64], deckY, 0.88, { material: steel, postSpacing: 1.06 });
-    m.handrail([-15.32, -11.56], [-15.32, -9.44], deckY, 0.88, { material: steel, postSpacing: 1.06 });
-    m.handrail([-15.32, -13.96], [-15.32, -12.24], deckY, 0.88, { material: steel, postSpacing: 0.90 });
+    m.handrail([-15.26, -8.78], [-15.26, -6.52], deckY, 0.88, { material: steel, postSpacing: 1.08 });
+    m.handrail([-15.26, -11.66], [-15.26, -9.40], deckY, 0.88, { material: steel, postSpacing: 1.08 });
+    m.handrail([-15.26, -14.00], [-15.26, -12.28], deckY, 0.88, { material: steel, postSpacing: 0.86 });
 
     // Far backlit window wall (clean neutral milk-glass daylight, zero yellow cast)
     const winX = [-14.80, -12.40, -10.00, -7.60];

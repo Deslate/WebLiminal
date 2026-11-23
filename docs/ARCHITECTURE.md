@@ -44,7 +44,7 @@ Per frame, the renderer executes six passes (internal resolution capped at `<= 1
 
 ## 5. Lazy Parallel Offline Ground-Truth Path Tracer (`reference-pt.wgsl`)
 
-Exposed via `window.__WEBLIMINAL__.renderReferencePT({ spp, batchSpp })` and allocated lazily (zero memory and zero frame cost during normal gameplay). Traces unbiased 3-bounce Monte Carlo paths with local-importance NEE over all scene area lights, Fresnel-split GGX + Lambertian BSDF, and shared `evalAnalyticInterior` / `evalAnalyticCeramicFull`, then feeds the resolved HDR image through the identical bloom, depth fog, and `present` pass for apples-to-apples real-time quality calibration.
+Exposed via `window.__WEBLIMINAL__.renderReferencePT({ spp, batchSpp })` and allocated lazily (zero memory and zero frame cost during normal gameplay). Traces unbiased 5-bounce Monte Carlo paths with local-importance NEE over all scene area lights and direct sun, physical dielectric water Fresnel reflection & Snell refraction with Beer-Lambert absorption, Fresnel-split GGX + Lambertian BSDF, and shared `evalAnalyticInterior` / `ceramicReliefUV` / `evalAnalyticCeramicFull`, then feeds the resolved HDR image through the identical bloom, depth fog, and `present` pass for apples-to-apples real-time quality calibration across both dry interiors and flooded Poolrooms chambers.
 
 ## 6. Motion-Driven Physical Procedural Audio & Classic Backrooms BGM (`src/engine/audio.js`, `src/engine/bgm.js`)
 
