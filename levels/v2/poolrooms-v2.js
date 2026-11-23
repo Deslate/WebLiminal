@@ -34,8 +34,8 @@ export default {
     bloomStrength: 0.16,
     volumetricStrength: 0.18,
     ambientFloor: 0.00005,
-    bounceBoost: 1.06,
-    aoRadius: 0.78,
+    bounceBoost: 1.00,
+    aoRadius: 0.90,
   },
 
   build(m) {
@@ -208,15 +208,19 @@ export default {
     // =========================================================================
     const H4 = 5.80;
     const deckY = 0.72; // Exact 4 x 0.18 m full ceramic tile courses above pool floor!
-    // Recessed south-bay architectural skylight well (clears the slide cleanly)
-    // pouring crisp overhead daylight & angled sunbeams onto the wet walkway deck, emerald dado & columns!
-    const c4Sky = [-14.80, -7.40, -7.80, -4.00];
-    m.ceiling(-19.40, -16.00, -5.80, -3.60, H4, plasterMat, { holes: [c4Sky] });
-    m.box([-15.20, H4, -7.40], [-14.80, H4 + 0.85, -4.00], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-7.80, H4, -7.40], [-7.40, H4 + 0.85, -4.00], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-15.20, H4, -7.80], [-7.40, H4 + 0.85, -7.40], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-15.20, H4, -4.00], [-7.40, H4 + 0.85, -3.60], whiteTile, { solid: false, priority: 0.4 });
-    m.skylight(-14.80, -7.40, -7.80, -4.00, H4 + 0.80, { color: [0.95, 0.98, 1.00], intensity: 4.6 });
+    // Deep baffled overcast natatorium lightwell (3.8 m tall east baffle blocks harsh noon glare,
+    // bathing the wet walkway, columns & emerald dado in soft cool humid Poolrooms twilight while
+    // letting the far glowing backlit pill windows & portholes dominate as the ethereal key light!)
+    const c4Sky = [-17.60, -7.00, -12.60, -4.20];
+    const c4WellH = 3.80;
+    // Keep the entire visible north ceiling (-16.00..-7.00) one seamless continuous UV2 sheet (zero chart seam!)
+    m.ceiling(-19.40, -16.00, -5.80, -7.00, H4, plasterMat, { priority: 1.25 });
+    m.ceiling(-19.40, -7.00, -5.80, -3.60, H4, plasterMat, { holes: [c4Sky], priority: 0.75 });
+    m.box([-18.00, H4, -7.00], [-17.60, H4 + c4WellH, -4.20], whiteTile, { solid: false, priority: 0.35 });
+    m.box([-12.60, H4, -7.00], [-12.20, H4 + c4WellH, -4.20], whiteTile, { solid: false, priority: 0.35 });
+    m.box([-18.00, H4, -7.40], [-12.20, H4 + c4WellH, -7.00], whiteTile, { solid: false, priority: 0.35 });
+    m.box([-18.00, H4, -4.20], [-12.20, H4 + c4WellH, -3.80], whiteTile, { solid: false, priority: 0.35 });
+    m.skylight(-17.60, -7.00, -12.60, -4.20, H4 + c4WellH - 0.05, { color: [0.88, 0.96, 1.00], intensity: 2.35 });
     m.box([-19.80, 0, -3.60], [-5.80, H4, -3.00], whiteTile, { skipFaces: ["ny"] });
     m.box([-5.80, H1, -16.60], [-5.40, H4, -3.00], whiteTile, { solid: false, skipFaces: ["ny"] });
     m.wallWithArch([-19.80, 0, -16.00], [-19.40, H4, -3.60], {
@@ -231,38 +235,39 @@ export default {
     m.ceiling(-21.60, -9.80, -19.80, -7.40, 3.60, plasterMat);
     m.floor(-21.60, -9.80, -19.40, -7.40, deckY, whiteTile, { walkable: true });
 
-    // Exact 0.18 m-grid square column bands (3 x 3 full tiles = 0.54 x 0.54 m, aligned flush to deck edge x=-15.12!)
-    // Cut out plinth footprints from the deck top quad so zero buried floor geometry bleeds across column bases!
+    // Exact 0.18 m-grid flush 3x3-tile columns (0.54 x 0.54 m, aligned cleanly to deck edge x=-15.12!)
+    // Cut out exact column footprints from the deck top quad so zero buried geometry bleeds across bases.
     const colBands = [[-6.48, -5.94], [-9.36, -8.82], [-12.24, -11.70], [-14.58, -14.04]];
-    const plinthPad = 0.024;
-    const colHoles = colBands.map(([z0, z1]) => [-15.66 - plinthPad, z0 - plinthPad, -15.12, z1 + plinthPad]);
+    const colHoles = colBands.map(([z0, z1]) => [-15.66, z0, -15.11, z1]);
+    const groutSeamMat = m.material({ base: "plaster_warm", albedo: [0.055, 0.060, 0.058], roughness: 0.94, coat: 0.0 });
 
-    // Raised wet white-tiled walkway deck (cutout top + pool vertical wall + architectural coping overhang + access stairs)
+    // Raised wet white-tiled walkway deck (flush cutout top + pool vertical wall + access stairs)
     m.floor(-19.40, -16.00, -15.12, -3.60, deckY, whiteTile, { walkable: true, priority: 1.45, holes: colHoles });
     m.addQuad([-15.12, 0, -3.60], [-15.12, 0, -16.00], [-15.12, deckY, -16.00], [-15.12, deckY, -3.60], whiteTile, {
       u0: 3.60, v0: 0, u1: 16.00, v1: deckY, priority: 1.25,
     });
-    m.box([-15.12, deckY - 0.055, -16.00], [-15.085, deckY, -4.32], whiteTile, { solid: false, skipFaces: ["nx"], priority: 1.15 });
     m.stairs([-15.12, 0, -4.32], [-13.68, deckY, -3.60], "-x", 4, whiteTile);
     m.box([-19.40, deckY, -16.00], [-19.36, deckY + 0.80, -9.60], dadoGreen, { solid: false, skipFaces: ["nx", "ny"], priority: 0.9 });
     m.box([-19.40, deckY, -7.60], [-19.36, deckY + 0.80, -3.60], dadoGreen, { solid: false, skipFaces: ["nx", "ny"], priority: 0.9 });
 
-    // Grounded 3x3-tile columns with stepped 1-tile-tall (0.18 m) ceramic plinth collars + stainless-steel bay rails
+    // Flush straight 3x3-tile columns with razor-thin 6 mm dark mortar/silicone expansion seam at floor junction (no bulky plinth!)
     for (const [z0, z1] of colBands) {
-      m.box([-15.66 - plinthPad, deckY, z0 - plinthPad], [-15.12, deckY + 0.18, z1 + plinthPad], whiteTile, {
-        skipFaces: ["ny"],
-        priority: 1.45,
-      });
-      m.box([-15.66, deckY + 0.18, z0], [-15.12, H4, z1], whiteTile, {
+      m.box([-15.66, deckY + 0.006, z0], [-15.12, H4, z1], whiteTile, {
         skipFaces: ["ny", "py"],
         priority: 1.35,
+      });
+      // Crisp 6 mm dark waterproof cement/caulk floor-to-column grout joint flush inside the column perimeter
+      m.box([-15.657, deckY, z0 + 0.003], [-15.12, deckY + 0.006, z1 - 0.003], groutSeamMat, {
+        solid: false,
+        skipFaces: ["ny", "py"],
+        priority: 0.35,
       });
     }
     m.handrail([-15.26, -8.78], [-15.26, -6.52], deckY, 0.88, { material: steel, postSpacing: 1.08 });
     m.handrail([-15.26, -11.66], [-15.26, -9.40], deckY, 0.88, { material: steel, postSpacing: 1.08 });
     m.handrail([-15.26, -14.00], [-15.26, -12.28], deckY, 0.88, { material: steel, postSpacing: 0.86 });
 
-    // Far backlit window wall (clean neutral milk-glass daylight, zero yellow cast)
+    // Far glowing backlit milk-glass window wall (dominant ethereal Poolrooms key light!)
     const winX = [-14.80, -12.40, -10.00, -7.60];
     m.box([-19.40, 0, -16.60], [-16.00, H4, -16.00], whiteTile, { skipFaces: ["ny", "py"] });
     m.box([-6.40, 0, -16.60], [-5.80, H4, -16.00], whiteTile, { skipFaces: ["ny", "py"] });
@@ -275,8 +280,8 @@ export default {
         headY: 3.20,
         facing: "+",
         tileModule: 0.18,
-        lightColor: [0.96, 0.98, 1.00],
-        lightIntensity: 14.5,
+        lightColor: [0.95, 0.99, 1.00],
+        lightIntensity: 18.5,
       });
       m.ringWall([wx - 1.20, 3.60, -16.60], [wx + 1.20, H4, -16.00], {
         material: whiteTile,
@@ -287,8 +292,8 @@ export default {
         tileModule: 0.18,
         glassMaterial: frostedWin,
         glassFacing: "+",
-        lightColor: [0.96, 0.98, 1.00],
-        lightIntensity: 11.5,
+        lightColor: [0.95, 0.99, 1.00],
+        lightIntensity: 15.0,
       });
     }
 

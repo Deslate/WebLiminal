@@ -43,6 +43,7 @@ struct PTParams {
 @group(0) @binding(9) var extraTex: texture_2d_array<f32>;
 @group(0) @binding(10) var<storage, read_write> accumBuf: array<vec4f>;
 @group(0) @binding(11) var outHdr: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(12) var<storage, read_write> ptGuideBuf: array<vec4f>;
 
 struct PTHit {
   t: f32,
@@ -348,14 +349,22 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (gid.x >= pt.width || gid.y >= pt.height) { return; }
   let pxIdx = gid.y * pt.width + gid.x;
   var rng = pxIdx * 1973u + pt.batchIndex * 9277u + 747796405u;
+  // Cranley-Patterson per-pixel shift for R2 low-discrepancy quasi-random stratification
+  var shiftRng = pxIdx * 374761393u + 668265263u;
+  let cpAA = vec2f(rand01(&shiftRng), rand01(&shiftRng));
+  let cpHemi = vec2f(rand01(&shiftRng), rand01(&shiftRng));
+  let r2 = vec2f(0.7548776662, 0.5698402910);
 
   var radSum = vec3f(0.0);
+  var guideAlbSum = vec3f(0.0);
+  var guideCount = 0.0;
   let resF = vec2f(f32(pt.width), f32(pt.height));
 
   for (var s = 0u; s < pt.batchSpp; s++) {
-    let jx = rand01(&rng);
-    let jy = rand01(&rng);
-    let uv = (vec2f(gid.xy) + vec2f(jx, jy)) / resF;
+    let gs = f32(pt.batchIndex * pt.batchSpp + s + 1u);
+    let qAA = fract(cpAA + r2 * gs);
+    let qHemi = fract(cpHemi + r2 * (gs + 17.0));
+    let uv = (vec2f(gid.xy) + qAA) / resF;
     let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
     let wp = frame.invViewProj * vec4f(ndc, 1.0, 1.0);
     var ro = frame.cameraPos.xyz;
@@ -364,11 +373,13 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     var throughput = vec3f(1.0);
     var pathRad = vec3f(0.0);
     var specularBounce = true;
+    var hadDiffuse = false;
+    var hitWaterFirst = false;
     let hasWater = frame.waterInfo.y > 0.5;
     let wl = frame.waterInfo.x;
     var inWater = hasWater && ro.y < wl;
 
-    for (var bounce = 0u; bounce < 5u; bounce++) {
+    for (var bounce = 0u; bounce < 4u; bounce++) {
       let h = tracePT(ro, rd, 140.0);
       let maxHitT = select(140.0, h.t, h.hit);
 
@@ -376,6 +387,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       if (hasWater && abs(rd.y) > 1e-4) {
         let tW = (wl - ro.y) / rd.y;
         if (tW > 0.002 && tW < maxHitT) {
+          if (bounce == 0u) { hitWaterFirst = true; }
           let wp = ro + rd * tW;
           if (inWater) {
             throughput *= exp(-vec3f(0.34, 0.075, 0.040) * tW);
@@ -405,7 +417,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       }
 
       if (!h.hit) {
-        pathRad += throughput * evalSkyRadiance(
+        let skyR = evalSkyRadiance(
           rd,
           frame.skyTop.rgb,
           frame.skyHorizon.rgb,
@@ -413,6 +425,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
           frame.sunColorInt.rgb,
           frame.sunColorInt.w > 0.5,
         );
+        pathRad += throughput * select(skyR, min(skyR, vec3f(6.0)), hadDiffuse);
         break;
       }
 
@@ -476,14 +489,24 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
         albedo = clamp(m.albedoScale.rgb * select(1.0, 0.90, preset == 4u || preset == 5u), vec3f(0.02), vec3f(0.90));
       }
 
+      // Path Roughness Regularization: broaden secondary glossy lobes after diffuse hits to prevent GGX fireflies!
+      if (hadDiffuse) {
+        rough = max(rough, 0.38);
+      }
+
       let nZ = sqrt(max(0.04, 1.0 - min(0.90, dot(nXY, nXY))));
       var N = normalize(h.T * nXY.x + h.B * nXY.y + h.n * nZ);
       if (dot(N, V) < 0.01) { N = h.n; }
 
       // Direct emission: counted on camera hit or specular bounce (diffuse bounces already NEE-sample lights!)
       let emissive = m.emissive.rgb * m.emissive.w * emissiveMask;
+      let isEmissiveHit = max(emissive.r, max(emissive.g, emissive.b)) > 0.05;
+      if (bounce == 0u && !hitWaterFirst && !isEmissiveHit && metallic < 0.5) {
+        guideAlbSum += clamp(albedo, vec3f(0.04), vec3f(1.0));
+        guideCount += 1.0;
+      }
       if (specularBounce && max(emissive.r, max(emissive.g, emissive.b)) > 1e-4) {
-        pathRad += throughput * emissive;
+        pathRad += throughput * select(emissive, min(emissive, vec3f(5.5)), hadDiffuse);
       }
 
       let ndv = max(dot(N, V), 0.001);
@@ -492,14 +515,15 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       let Fv = fresnelSchlickPT(ndv, f0);
       let kD = (vec3f(1.0) - Fv) * (1.0 - metallic);
 
-      // Next-Event Estimation: 1 local-importance area-light sample per bounce
-      let direct = sampleDirectLightsPT(hitPos, h.n, N, V, albedo, rough, f0, kD, &rng, 1u);
+      // Next-Event Estimation: 2 stratified area-light samples on primary hit, 1 on secondary bounces
+      let direct = sampleDirectLightsPT(hitPos, h.n, N, V, albedo, rough, f0, kD, &rng, select(1u, 2u, bounce == 0u));
       let subAtten = select(vec3f(1.0), exp(-vec3f(0.34, 0.075, 0.040) * max(0.0, wl - hitPos.y) * 1.25), inWater);
-      pathRad += throughput * subAtten * select(min(direct, vec3f(14.0)), direct, bounce == 0u);
+      let directClamped = select(min(direct, vec3f(5.5)), min(direct, vec3f(18.0)), bounce == 0u && !hadDiffuse);
+      pathRad += throughput * subAtten * directClamped;
 
       // Choose next bounce direction (Fresnel-weighted split between GGX specular and cosine diffuse)
       let fMax = max(Fv.r, max(Fv.g, Fv.b));
-      let pSpec = select(clamp(fMax * (1.0 - rough * 0.65), 0.04, 0.92), 0.0, rough > 0.62 && metallic < 0.1);
+      let pSpec = select(clamp(fMax * (1.0 - rough * 0.65), 0.04, 0.90), 0.0, (rough > 0.56 || hadDiffuse) && metallic < 0.1);
       let uBranch = rand01(&rng);
 
       if (uBranch < pSpec) {
@@ -514,22 +538,25 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
         let k2 = k * k * 0.125;
         let G = (ndv / (ndv * (1.0 - k2) + k2)) * (ndl / (ndl * (1.0 - k2) + k2));
         let specW = (F * G * vdh) / max(ndv * ndh * pSpec, 1e-4);
-        throughput *= min(specW, vec3f(4.0));
+        throughput *= min(specW, vec3f(2.6));
         rd = wi;
         specularBounce = true;
       } else {
         let pDiff = max(1.0 - pSpec, 0.05);
         throughput *= (kD * albedo) / pDiff;
-        rd = sampleCosineHemisphere(N, rand01(&rng), rand01(&rng));
+        let u1 = select(rand01(&rng), qHemi.x, bounce == 0u);
+        let u2 = select(rand01(&rng), qHemi.y, bounce == 0u);
+        rd = sampleCosineHemisphere(N, u1, u2);
         if (dot(rd, h.n) <= 0.001) {
           rd = sampleCosineHemisphere(h.n, rand01(&rng), rand01(&rng));
         }
         specularBounce = false;
+        hadDiffuse = true;
       }
 
-      // Russian roulette termination after bounce 2 for unbiased energy conservation
-      if (bounce >= 2u) {
-        let survive = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.12, 0.94);
+      // Russian roulette termination after bounce 1 for unbiased energy conservation
+      if (bounce >= 1u) {
+        let survive = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.15, 0.94);
         if (rand01(&rng) > survive) { break; }
         throughput /= survive;
       }
@@ -537,16 +564,163 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       ro = hitPos + h.n * 0.010;
     }
 
-    radSum += min(pathRad, vec3f(40.0));
+    radSum += min(pathRad, vec3f(22.0));
   }
 
   var prev = vec4f(0.0);
+  var prevGuide = vec4f(0.0);
   if (pt.batchIndex > 0u) {
     prev = accumBuf[pxIdx];
+    prevGuide = ptGuideBuf[pxIdx];
   }
   let next = prev + vec4f(radSum, f32(pt.batchSpp));
   accumBuf[pxIdx] = next;
+  ptGuideBuf[pxIdx] = prevGuide + vec4f(guideAlbSum, guideCount);
 
   let resolved = next.rgb / max(1.0, next.a);
   textureStore(outHdr, vec2i(gid.xy), vec4f(resolved, 1.0));
+}
+
+// ============================================================================
+// Albedo-Demodulated Edge-Preserving À-Trous PT Denoiser (Lazy Offline Only!)
+// Demodulates primary opaque albedo on pass 1, filters pure smooth irradiance
+// across steps 1/2/4, and remodulates on the final pass — keeping every 1-pixel
+// ceramic grout seam, dark column joint, emerald dado tile & water reflection
+// razor-sharp while completely eliminating Monte Carlo variance!
+// ============================================================================
+@group(1) @binding(0) var<storage, read> ptSrc: array<vec4f>;
+@group(1) @binding(1) var<storage, read_write> ptDst: array<vec4f>;
+@group(1) @binding(2) var ptNormTex: texture_2d<f32>;
+@group(1) @binding(3) var ptDepthTex: texture_depth_2d;
+@group(1) @binding(4) var ptOutHdr: texture_storage_2d<rgba16float, write>;
+@group(1) @binding(5) var<storage, read> ptGuide: array<vec4f>;
+
+fn linearDepthPT(d: f32) -> f32 {
+  return (0.06 * 140.0) / max(140.0 - d * (140.0 - 0.06), 1e-4);
+}
+
+fn lumaPT(c: vec3f) -> f32 {
+  return dot(c, vec3f(0.2126, 0.7152, 0.0722));
+}
+
+fn demodAlbedoAt(idx: u32) -> vec3f {
+  let g = ptGuide[idx];
+  let rawAlb = clamp(g.rgb / max(g.a, 1.0), vec3f(0.04), vec3f(1.0));
+  return max(rawAlb, vec3f(0.08));
+}
+
+fn loadDenoiseSample(c: vec2i, w: i32, h: i32, firstPass: bool) -> vec4f {
+  let cc = clamp(c, vec2i(0), vec2i(w - 1, h - 1));
+  let idx = u32(cc.y * w + cc.x);
+  let v = ptSrc[idx];
+  if (!firstPass) {
+    return v;
+  }
+  let spp = max(1.0, v.a);
+  let rad = v.rgb / spp;
+  let g = ptGuide[idx];
+  let isDemod = g.a > 0.5 * spp;
+  if (isDemod) {
+    return vec4f(rad / demodAlbedoAt(idx), 1.0);
+  }
+  return vec4f(rad, 0.0);
+}
+
+@compute @workgroup_size(8, 8)
+fn denoisePT(@builtin(global_invocation_id) gid: vec3u) {
+  let w = i32(pt.width);
+  let h = i32(pt.height);
+  if (i32(gid.x) >= w || i32(gid.y) >= h) { return; }
+
+  let stepSize = i32(max(1u, pt.batchIndex));
+  let firstPass = stepSize == 1;
+  let writeHdr = pt.batchSpp != 0u;
+  let px = vec2i(gid.xy);
+  let maxP = vec2i(w - 1, h - 1);
+  let idx = u32(px.y * w + px.x);
+
+  let cSamp = loadDenoiseSample(px, w, h, firstPass);
+  var cVal = cSamp.rgb;
+  let cIsDemod = cSamp.a > 0.5;
+  let cD = textureLoad(ptDepthTex, px, 0);
+
+  // Pass 0 (step == 1): 3x3 outlier firefly suppression in demodulated irradiance (or water radiance) space
+  if (firstPass) {
+    var nbSum = vec3f(0.0);
+    var nbCnt = 0.0;
+    for (var oy = -1; oy <= 1; oy++) {
+      for (var ox = -1; ox <= 1; ox++) {
+        if (ox == 0 && oy == 0) { continue; }
+        let s = loadDenoiseSample(px + vec2i(ox, oy), w, h, true);
+        if ((s.a > 0.5) != cIsDemod) { continue; }
+        nbSum += s.rgb;
+        nbCnt += 1.0;
+      }
+    }
+    if (nbCnt >= 3.0) {
+      let nbAvg = nbSum / nbCnt;
+      let avgL = lumaPT(nbAvg);
+      let cL = lumaPT(cVal);
+      if (avgL < 2.8 && cL > max(avgL * 1.90, avgL + 0.35)) {
+        let scale = max(avgL * 1.60, avgL + 0.18) / max(cL, 1e-4);
+        cVal *= scale;
+      }
+    }
+  }
+
+  // Pass through sky pixels unchanged, and skip wide step>=4 blur on water/emissive so reflections stay sharp
+  if (cD >= 0.9999 || (!cIsDemod && stepSize >= 4)) {
+    ptDst[idx] = vec4f(cVal, select(0.0, 1.0, cIsDemod));
+    if (writeHdr) {
+      let outHdrCol = select(cVal, cVal * demodAlbedoAt(idx), cIsDemod);
+      textureStore(ptOutHdr, px, vec4f(outHdrCol, 1.0));
+    }
+    return;
+  }
+
+  let cLinD = linearDepthPT(cD);
+  let cNR = textureLoad(ptNormTex, px, 0);
+  let cN = normalize(cNR.xyz);
+  let cLuma = lumaPT(cVal);
+  let invDepthScale = 1.0 / max(cLinD * 0.045, 0.06);
+  let sigmaL = select(max(cLuma * 0.32 + 0.08, 0.10), max(cLuma * 0.55 + 0.14, 0.16), cIsDemod);
+
+  let kW = array<f32, 5>(0.0625, 0.25, 0.375, 0.25, 0.0625);
+  var sumVal = cVal * (kW[2] * kW[2]);
+  var sumW = kW[2] * kW[2];
+
+  for (var dy = -2; dy <= 2; dy++) {
+    let wy = kW[dy + 2];
+    for (var dx = -2; dx <= 2; dx++) {
+      if (dx == 0 && dy == 0) { continue; }
+      let sc = clamp(px + vec2i(dx, dy) * stepSize, vec2i(0), maxP);
+      let sD = textureLoad(ptDepthTex, sc, 0);
+      if (sD >= 0.9999) { continue; }
+      let relD = abs(linearDepthPT(sD) - cLinD) * invDepthScale;
+      if (relD > 2.0) { continue; }
+
+      let sSamp = loadDenoiseSample(sc, w, h, firstPass);
+      if ((sSamp.a > 0.5) != cIsDemod) { continue; }
+
+      let sNR = textureLoad(ptNormTex, sc, 0);
+      let sN = normalize(sNR.xyz);
+      let nDot = max(dot(cN, sN), 0.0);
+      if (nDot < 0.85) { continue; }
+
+      let dL = abs(lumaPT(sSamp.rgb) - cLuma) / sigmaL;
+      let wDepth = exp(-relD * relD * 1.9);
+      let wNorm = pow(nDot, 22.0);
+      let wCol = exp(-dL * dL * 1.35);
+      let wt = (kW[dx + 2] * wy) * wDepth * wNorm * wCol;
+      sumVal += sSamp.rgb * wt;
+      sumW += wt;
+    }
+  }
+
+  let outVal = sumVal / max(sumW, 1e-5);
+  ptDst[idx] = vec4f(outVal, select(0.0, 1.0, cIsDemod));
+  if (writeHdr) {
+    let outHdrCol = select(outVal, outVal * demodAlbedoAt(idx), cIsDemod);
+    textureStore(ptOutHdr, px, vec4f(outHdrCol, 1.0));
+  }
 }

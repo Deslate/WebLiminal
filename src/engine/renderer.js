@@ -1317,10 +1317,11 @@ export async function createRenderer(canvas, options = {}) {
   }
 
   let referencePtPipe = null;
+  let referencePtDenoisePipe = null;
 
   // Lazy offline Ground-Truth Monte Carlo Path Tracer (0 bytes & 0 ms during normal gameplay).
   // Renders the exact same BVH, analytic materials, area lights, depth fog, volumetric haze,
-  // bloom, and AgX Filmic tone mapping so the real-time renderer can be calibrated side-by-side.
+  // bloom, and Filmic tone mapping + edge-preserving À-trous PT denoise for noise-free inspection.
   async function renderReferencePT(view, elapsed = 0, { spp = 96, batchSpp = 8 } = {}) {
     if (!rt || !sceneRes) return;
     if (!referencePtPipe) {
@@ -1329,6 +1330,11 @@ export async function createRenderer(canvas, options = {}) {
         label: "reference-pt",
         layout: "auto",
         compute: { module: mod, entryPoint: "main" },
+      });
+      referencePtDenoisePipe = await device.createComputePipelineAsync({
+        label: "reference-pt-denoise",
+        layout: "auto",
+        compute: { module: mod, entryPoint: "denoisePT" },
       });
     }
 
@@ -1413,6 +1419,16 @@ export async function createRenderer(canvas, options = {}) {
       size: width * height * 16,
       usage: GPUBufferUsage.STORAGE,
     });
+    const ptTempBuf = device.createBuffer({
+      label: "pt-temp",
+      size: width * height * 16,
+      usage: GPUBufferUsage.STORAGE,
+    });
+    const ptGuideBuf = device.createBuffer({
+      label: "pt-guide",
+      size: width * height * 16,
+      usage: GPUBufferUsage.STORAGE,
+    });
 
     const ptBindGroup = device.createBindGroup({
       layout: referencePtPipe.getBindGroupLayout(0),
@@ -1429,6 +1445,33 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 9, resource: sceneRes.metaView },
         { binding: 10, resource: { buffer: ptAccumBuf } },
         { binding: 11, resource: rt.hdrCompositeView },
+        { binding: 12, resource: { buffer: ptGuideBuf } },
+      ],
+    });
+    const ptDenoiseGroup0 = device.createBindGroup({
+      layout: referencePtDenoisePipe.getBindGroupLayout(0),
+      entries: [{ binding: 1, resource: { buffer: ptParamBuf } }],
+    });
+    const ptDenoiseA2B = device.createBindGroup({
+      layout: referencePtDenoisePipe.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: { buffer: ptAccumBuf } },
+        { binding: 1, resource: { buffer: ptTempBuf } },
+        { binding: 2, resource: rt.gNormalRoughView },
+        { binding: 3, resource: rt.depthView },
+        { binding: 4, resource: rt.hdrCompositeView },
+        { binding: 5, resource: { buffer: ptGuideBuf } },
+      ],
+    });
+    const ptDenoiseB2A = device.createBindGroup({
+      layout: referencePtDenoisePipe.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: { buffer: ptTempBuf } },
+        { binding: 1, resource: { buffer: ptAccumBuf } },
+        { binding: 2, resource: rt.gNormalRoughView },
+        { binding: 3, resource: rt.depthView },
+        { binding: 4, resource: rt.hdrCompositeView },
+        { binding: 5, resource: { buffer: ptGuideBuf } },
       ],
     });
 
@@ -1452,7 +1495,26 @@ export async function createRenderer(canvas, options = {}) {
         doneSpp += curSpp;
       }
 
-      // Run identical Bloom + Present (AgX Filmic Tone Mapping + Fog + Vignette) onto canvas!
+      // 3-pass albedo-demodulated edge-preserving firefly-rejecting À-trous PT denoise (steps 1, 2, 4)
+      const denoiseSteps = [
+        { step: 1, writeHdr: 0, grp1: ptDenoiseA2B },
+        { step: 2, writeHdr: 0, grp1: ptDenoiseB2A },
+        { step: 4, writeHdr: 1, grp1: ptDenoiseA2B },
+      ];
+      for (const ds of denoiseSteps) {
+        device.queue.writeBuffer(ptParamBuf, 0, new Uint32Array([ds.step, ds.writeHdr, width, height]));
+        const enc = device.createCommandEncoder({ label: `pt-denoise-${ds.step}` });
+        const cpass = enc.beginComputePass({ label: `pt-denoise-${ds.step}` });
+        cpass.setPipeline(referencePtDenoisePipe);
+        cpass.setBindGroup(0, ptDenoiseGroup0);
+        cpass.setBindGroup(1, ds.grp1);
+        cpass.dispatchWorkgroups(wgX, wgY);
+        cpass.end();
+        device.queue.submit([enc.finish()]);
+        await device.queue.onSubmittedWorkDone();
+      }
+
+      // Run identical Bloom + Present (Filmic Tone Mapping + Fog + Vignette) onto canvas!
       const enc = device.createCommandEncoder({ label: "pt-present" });
       {
         const bWgX = Math.ceil(rt.halfW / 8);
@@ -1500,6 +1562,8 @@ export async function createRenderer(canvas, options = {}) {
     } finally {
       ptParamBuf.destroy();
       ptAccumBuf.destroy();
+      ptTempBuf.destroy();
+      ptGuideBuf.destroy();
     }
     return { spp: doneSpp, width, height };
   }
