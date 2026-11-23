@@ -193,12 +193,13 @@ fn filteredGridCoverage(g: vec2f, fw: vec2f, lineW: f32) -> f32 {
 
 struct TileMetric {
   edge: f32,     // meters inward from recessed mortar shoulder (<0 inside grout)
-  bevel: f32,    // narrow rounded shoulder width in meters (~1.4..2.4 mm)
+  bevel: f32,    // rounded ceramic glaze shoulder width in meters (~5.2..6.8 mm)
   id: f32,       // stable per-tile hash [0..1]
-  slope: vec2f,  // exact metric surface gradient (flat face + tiny mounting tilt + narrow shoulder)
+  slope: vec2f,  // exact outward metric normal offset (-grad(h): tilt + convex lip + glaze contour)
 };
 
-fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32, fwMax: f32) -> TileMetric {
+// Fast ALU-only 3D ceramic tile height field (meters; nominal tile face ~0, mortar bed -3.6 mm).
+fn ceramicHeight(uvM: vec2f, tileSize: f32, preset: u32, seed: f32) -> f32 {
   let cell = floor(uvM / tileSize);
   let center = (cell + 0.5) * tileSize;
   let q = uvM - center;
@@ -209,41 +210,113 @@ fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32, fwMax
     vHash2(cell + vec2f(28.7, 9.1 + seed * 11.0)),
   );
 
-  // Authentic ~5.0 mm full grout joint on 200-250 mm architectural tiles (~2.8 mm on 125 mm mosaic), matching v1.
-  let groutHalf = select(0.0025, 0.0014, preset == 2u);
+  let groutHalf = select(0.0016, 0.0011, preset == 2u);
   let halfSize = max(tileSize * 0.5 - groutHalf, 0.01);
-  let cornerR = 0.0018 + 0.0010 * id;
+  let cornerR = 0.0022 + 0.0010 * id;
   let d = abs(q) - halfSize + cornerR;
   let edge = -(length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0) - cornerR);
 
-  // Crisp ~3.2-4.6 mm fired porcelain rounded glaze shoulder (flat 96% tile face, zero pillow bulge, catches real edge glints!).
-  let bevel = 0.0032 + 0.0014 * r.y;
+  let bevel = 0.0052 + 0.0016 * r.y;
+  let shoulder = smoothstep(0.0, bevel, edge);
+  let face = (id - 0.5) * 0.0016 - dot(q, (r - 0.5) * 0.018);
+  let bed = -0.0036;
+  return mix(bed, face, shoulder);
+}
+
+// Primary-ray 3D ceramic height-field parallax march (recessed mortar grooves & protruding glazed lips).
+fn ceramicReliefUV(
+  uvM: vec2f,
+  tileSize: f32,
+  preset: u32,
+  seed: f32,
+  V: vec3f,
+  T: vec3f,
+  B: vec3f,
+  Ngeom: vec3f,
+  fwUV: vec2f,
+  camDist: f32,
+) -> vec2f {
+  let fwAvg = 0.5 * (fwUV.x + fwUV.y);
+  let lod = (1.0 - smoothstep(3.8, 9.5, camDist)) * (1.0 - smoothstep(0.009, 0.028, fwAvg));
+  if (lod <= 0.005) { return uvM; }
+  let nv = max(abs(dot(V, Ngeom)), 0.22);
+  let rayTan = vec2f(-dot(V, T), -dot(V, B)) / nv;
+  let zStart = 0.0014 * lod;
+  let zEnd = -0.0034 * lod;
+
+  var zPrev = zStart;
+  var zHit = 0.0;
+  var found = false;
+  for (var k = 1; k <= 10; k++) {
+    let zCur = mix(zStart, zEnd, f32(k) * 0.1);
+    let uCur = uvM - rayTan * zCur;
+    let hCur = ceramicHeight(uCur, tileSize, preset, seed) * lod;
+    if (zCur <= hCur) {
+      var lo = zCur;
+      var hi = zPrev;
+      for (var bi = 0; bi < 4; bi++) {
+        let mid = 0.5 * (lo + hi);
+        let hMid = ceramicHeight(uvM - rayTan * mid, tileSize, preset, seed) * lod;
+        if (mid <= hMid) { lo = mid; } else { hi = mid; }
+      }
+      zHit = 0.5 * (lo + hi);
+      found = true;
+      break;
+    }
+    zPrev = zCur;
+  }
+  if (!found) { zHit = zEnd; }
+  return uvM - rayTan * zHit;
+}
+
+fn ceramicMetricProfile(uvM: vec2f, tileSize: f32, preset: u32, seed: f32, fwMeters: vec2f) -> TileMetric {
+  let cell = floor(uvM / tileSize);
+  let center = (cell + 0.5) * tileSize;
+  let q = uvM - center;
+
+  let id = vHash2(cell + vec2f(seed * 17.19, 0.0));
+  let r = vec2f(
+    vHash2(cell + vec2f(13.1 + seed * 31.0, 7.3)),
+    vHash2(cell + vec2f(28.7, 9.1 + seed * 11.0)),
+  );
+
+  // Unified ~3.2 mm recessed mortar joint on 180-250 mm tiles (~2.2 mm on mosaic) matching ceramicHeight.
+  let groutHalf = select(0.0016, 0.0011, preset == 2u);
+  let halfSize = max(tileSize * 0.5 - groutHalf, 0.01);
+  let cornerR = 0.0022 + 0.0010 * id;
+  let d = abs(q) - halfSize + cornerR;
+  let edge = -(length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0) - cornerR);
+
+  // Authentic ~5.2-6.8 mm kiln-fired rounded ceramic glaze shoulder curving down into the recessed mortar.
+  let bevel = 0.0052 + 0.0016 * r.y;
   let shoulder = smoothstep(0.0, bevel, edge);
 
-  // Authentic hand-laid ceramic mounting micro-tilt (~±0.9 deg per tile) so specular reflections
-  // break subtly across individual tiles instead of forming a continuous flat bathroom-mirror sheet!
-  let tiltMag = select(0.032, 0.028, preset == 16u);
+  // Hand-laid per-tile mortar mounting micro-tilt (~±1.4 deg per tile; constant across each tile, zero aliasing).
+  let tiltMag = select(0.048, 0.036, preset == 16u);
   let tilt = (r - 0.5) * tiltMag;
 
-  // Outward-facing glazed shoulder gradient along the rounded ceramic lip, band-limited smoothly before Nyquist.
-  var ge = -sign(q) * select(vec2f(0.0, 1.0), vec2f(1.0, 0.0), d.x > d.y);
+  // Outward-facing convex glaze shoulder normal offset (+sign(q) matches gbuffer-pbr's +T*nXY.x + B*nXY.y!).
+  // Band-limited independently per axis so horizontal joints stay 100% sharp even at extreme grazing corridor angles!
+  var ge = sign(q) * select(vec2f(0.0, 1.0), vec2f(1.0, 0.0), d.x > d.y);
   if (any(d > vec2f(0.0))) {
-    ge = -sign(q) * normalize(max(d, vec2f(1e-6)));
+    ge = sign(q) * normalize(max(d, vec2f(1e-6)));
   }
   let u = clamp(edge / bevel, 0.0, 1.0);
-  let lipWeight = 1.0 - smoothstep(0.0035, 0.024, fwMax);
-  let lipSlope = ge * (0.48 * 4.0 * u * (1.0 - u) * lipWeight);
+  let lipW = vec2f(1.0) - smoothstep(vec2f(0.007), vec2f(0.038), fwMeters);
+  let lipSlope = ge * lipW * (0.72 * 4.0 * u * (1.0 - u));
 
-  // Band-limited kiln-fired glaze waviness & micro-texture: fade cleanly before Nyquist
-  // (unresolved variance is analytically folded into GGX roughness in evalAnalyticCeramicFull).
+  // Subtle kiln glaze crown & organic fired undulation (breaks flat-sheet uniformity under raking corridor light).
   let tSeed = vec2f(id * 173.1, seed * 13.71);
-  let waveWeight = 1.0 - smoothstep(0.0045, 0.022, fwMax);
-  let microWeight = 1.0 - smoothstep(0.0010, 0.0048, fwMax);
-  let waviness = vec2f(vNoise2(uvM * 23.7 + tSeed), vNoise2(uvM * 27.1 - tSeed)) - 0.5;
+  let crownW = vec2f(1.0) - smoothstep(vec2f(0.012), vec2f(0.048), fwMeters);
+  let waveW = vec2f(1.0) - smoothstep(vec2f(0.008), vec2f(0.038), fwMeters);
+  let microW = vec2f(1.0) - smoothstep(vec2f(0.0014), vec2f(0.0065), fwMeters);
+  let qNorm = clamp(q / halfSize, vec2f(-1.0), vec2f(1.0));
+  let glazeCrown = qNorm * (0.024 * crownW);
+  let waviness = vec2f(vNoise2(uvM * 21.3 + tSeed), vNoise2(uvM * 24.7 - tSeed)) - 0.5;
   let micro = vec2f(vNoise2(uvM * 137.3 + tSeed), vNoise2(uvM * 143.7 - tSeed)) - 0.5;
-  let glaze = (waviness * (0.028 * waveWeight) + micro * (0.022 * microWeight)) * shoulder;
+  let glaze = (glazeCrown + waviness * (0.042 * waveW) + micro * (0.022 * microW)) * shoulder;
 
-  let totalSlope = (tilt * shoulder + lipSlope + glaze);
+  let totalSlope = tilt * shoulder + lipSlope + glaze;
   return TileMetric(edge, bevel, id, totalSlope);
 }
 
@@ -269,45 +342,45 @@ fn evalAnalyticCeramicFull(
   let g = uv * freq;
   let fwGrid = fwUV * freq;
   let fwMeters = clamp(fwUV, vec2f(0.00015), vec2f(0.06));
-  let fwMax = max(fwMeters.x, fwMeters.y);
+  let fwMin = min(fwMeters.x, fwMeters.y);
 
-  let t = ceramicMetricProfile(uv, tileSize, preset, seed, fwMax);
+  let t = ceramicMetricProfile(uv, tileSize, preset, seed, fwMeters);
   let tSeed = vec2f(t.id * 173.1, seed * 13.71);
 
-  // Exact box-filtered grout coverage (delicate 1.35 mm v1 Ring Passage joint width, zero thick CAD grid!).
-  let groutHalf = select(0.00135, 0.0010, preset == 2u);
+  // Exact anisotropic box-filtered mortar coverage on the relief-displaced ceramic UV (zero speckle aliasing!).
+  let groutHalf = select(0.0016, 0.0011, preset == 2u);
   let lineWFrac = (groutHalf * 2.0) * freq;
   let inGrout = filteredGridCoverage(g, fwGrid, lineWFrac);
 
   // 4-tap footprint slope moments (ported from v1 porcelain.wgsl glazeMoments):
   // Unresolved bevel/micro-waviness variance smoothly broadens GGX roughness instead of shimmering!
-  let halfFoot = clamp(fwMeters * 0.5, vec2f(0.00012), vec2f(0.04));
+  let halfFoot = clamp(fwMeters * 0.5, vec2f(0.00012), vec2f(0.035));
   var meanSlope = vec2f(0.0);
   var secondMoment = vec2f(0.0);
   for (var qi = 0u; qi < 4u; qi++) {
     let qOff = vec2f(select(-1.0, 1.0, (qi & 1u) != 0u), select(-1.0, 1.0, (qi & 2u) != 0u));
-    let s = ceramicMetricProfile(uv + qOff * halfFoot * 0.577350269, tileSize, preset, seed, fwMax).slope;
+    let s = ceramicMetricProfile(uv + qOff * halfFoot * 0.577350269, tileSize, preset, seed, fwMeters).slope;
     meanSlope += s * 0.25;
     secondMoment += s * s * 0.25;
   }
-  let waveWeight = 1.0 - smoothstep(0.0045, 0.022, fwMax);
-  let microWeight = 1.0 - smoothstep(0.0010, 0.0048, fwMax);
-  let fadedGlazeVar = (1.0 - microWeight * microWeight) * 0.00008 + (1.0 - waveWeight * waveWeight) * 0.00009;
+  let waveWeight = 1.0 - smoothstep(0.008, 0.038, fwMin);
+  let microWeight = 1.0 - smoothstep(0.0014, 0.0065, fwMin);
+  let fadedGlazeVar = (1.0 - microWeight * microWeight) * 0.00009 + (1.0 - waveWeight * waveWeight) * 0.00012;
   let slopeVar = max(secondMoment - meanSlope * meanSlope, vec2f(0.0)) + vec2f(fadedGlazeVar);
   let slope = meanSlope * (1.0 - inGrout);
 
   // Clean neutral architectural porcelain kiln batch variation (ZERO yellow-ochre cast!).
-  let detail = 1.0 - smoothstep(0.0009, 0.006, fwMax);
-  let batchNeutral = mix(vec3f(0.86, 0.87, 0.86), vec3f(1.06, 1.06, 1.04), t.id * 0.68 + 0.16);
+  let detail = 1.0 - smoothstep(0.0012, 0.008, fwMin);
+  let batchNeutral = mix(vec3f(0.84, 0.85, 0.84), vec3f(1.07, 1.07, 1.05), t.id * 0.72 + 0.14);
   var color = baseAlbedo * batchNeutral;
   if (preset == 1u) {
     // Exact v1 porcelain.wgsl material==2u crystal turquoise-emerald submerged pool tile palette!
     color = mix(vec3f(0.37, 0.56, 0.48), vec3f(0.54, 0.68, 0.59), t.id);
   }
 
-  // Soft 3D porcelain glaze bevel shoulder darkening as the lip curves gently into the recessed mortar
-  let bevelShade = (1.0 - smoothstep(0.0, t.bevel * 1.15 + fwMax * 0.4, t.edge)) * (1.0 - inGrout);
-  color *= 1.0 - bevelShade * 0.12;
+  // Soft 3D porcelain glaze bevel shoulder darkening as the rounded lip dips into the recessed mortar.
+  let bevelShade = (1.0 - smoothstep(0.0, t.bevel * 1.10 + fwMin * 0.35, t.edge)) * (1.0 - inGrout);
+  color *= 1.0 - bevelShade * 0.14;
 
   // Edge mineral staining & subtle vertical water streaks.
   let mineral = smoothstep(0.43, 0.70, vFbm2(uv * 4.7 + tSeed)) * exp(-max(0.0, t.edge) / 0.025);
@@ -325,7 +398,7 @@ fn evalAnalyticCeramicFull(
   // Recessed neutral cement mortar (clean natural ceramic grout, zero yellow tint!).
   let dirt = vFbm2(uv * 71.9 + tSeed);
   let groutBase = select(
-    vec3f(0.17, 0.18, 0.175) * (0.70 + 0.30 * dirt) * (1.0 - waterline * 0.22),
+    vec3f(0.15, 0.16, 0.155) * (0.68 + 0.32 * dirt) * (1.0 - waterline * 0.24),
     vec3f(0.030, 0.078, 0.065) * (0.72 + 0.28 * dirt),
     preset == 16u,
   );
@@ -334,9 +407,9 @@ fn evalAnalyticCeramicFull(
   // Per-tile satin-glazed porcelain roughness (~0.22..0.32 like v1 cleanPorcelain!) + slope-moment broadening.
   let baseTileRough = clamp(baseRough + (t.id - 0.5) * 0.10 + scaleDeposit * 0.10 + mineral * 0.05, 0.14, 0.54);
   let momentRough = min(0.92, pow(pow(baseTileRough, 4.0) + slopeVar.x + slopeVar.y, 0.25));
-  let rough = mix(momentRough, 0.90, inGrout);
+  let rough = mix(momentRough, 0.92, inGrout);
   let coat = mix(m.pbr.z, 0.0, inGrout);
-  let ao = mix(1.0, 0.84, inGrout);
+  let ao = mix(1.0, 0.64, inGrout);
 
   return CeramicEval(true, albedo, rough, coat, ao, slope, inGrout);
 }

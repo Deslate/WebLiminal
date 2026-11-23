@@ -271,16 +271,21 @@ fn fsMain(i: VSOut) -> GBufferOut {
 
   var nXY = nh.rg * 2.0 - 1.0;
 
-  // Flat architectural glazed porcelain evaluation with 4-tap footprint slope-moment roughness compensation.
+  // Primary-ray 3D ceramic height-field relief intersection + 4-tap footprint slope-moment evaluation.
   let hasWater = frame.waterInfo.y > 0.5;
-  let cer = evalAnalyticCeramicFull(i.uv, m, ar.rgb, ar.a, fwUV2, i.worldPos.y, frame.waterInfo.x, hasWater);
+  var cerUV = i.uv;
+  if (isCeramicPreset(preset) && camDist < 11.0) {
+    let cerTileSize = 1.0 / max(ceramicGridFreq(preset, m.albedoScale.w), 0.25);
+    cerUV = ceramicReliefUV(i.uv, cerTileSize, preset, m.extra.z, V, T, B, Ngeom, fwUV2, camDist);
+  }
+  let cer = evalAnalyticCeramicFull(cerUV, m, ar.rgb, ar.a, fwUV2, i.worldPos.y, frame.waterInfo.x, hasWater);
   let intr = evalAnalyticInterior(i.uv, i.worldPos, m, fwUV2);
   if (cer.isCeramic) {
     albedo = cer.albedo;
     rough = cer.rough;
     coat = cer.coat;
     texAO *= cer.ao;
-    // Use pure world-metric ceramic slope (flat face + tiny tilt + delicate glaze waviness),
+    // Use pure world-metric ceramic slope (flat/tilted face + rounded convex bevel lip + kiln waviness),
     // never superimposing coarse 256px baked texture bump!
     nXY = cer.slope;
   } else if (intr.handled) {
@@ -443,14 +448,16 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let ao = mix(aoFloor, 1.0, bakedAO) * mix(0.68, 1.0, texAO);
 
   // Directional normal modulation from lightmap dominant incoming light vector.
+  // Preserves strong raking-light relief across 3D ceramic tile bevels, kiln tilts & recessed mortar grooves!
   let irradLuma = max(0.002, dot(irrad, vec3f(0.2126, 0.7152, 0.0722)));
   let dirLen = length(lmD.rgb);
   let dirStrength = clamp(dirLen / irradLuma, 0.0, 1.0);
   let domDir = select(Ngeom, lmD.rgb / max(dirLen, 1e-4), dirLen > 1e-4);
   let ndlBump = max(dot(N, domDir), 0.0);
-  let ndlGeom = max(dot(Ngeom, domDir), 0.25);
-  let dirRatio = clamp(ndlBump / ndlGeom, 0.35, 1.55);
-  let directionalFactor = mix(1.0, dirRatio, dirStrength * 0.72);
+  let ndlGeom = max(dot(Ngeom, domDir), 0.16);
+  let dirRatio = clamp(ndlBump / ndlGeom, 0.18, 2.35);
+  let directionalFactor = mix(1.0, dirRatio, dirStrength * 0.90);
+  let grooveOcc = mix(1.0, 0.34 + 0.66 * clamp(dot(Ngeom, domDir) * 1.8, 0.0, 1.0), cer.inGrout);
 
   let ndv = max(dot(N, V), 0.001);
   // Physical Fresnel F0: glazed porcelain ~0.046 (v1 coat=0.047), matte mortar/plaster ~0.014, metals use albedo.
@@ -459,10 +466,10 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let Fv = fresnelSchlick(ndv, f0);
   let kD = (vec3f(1.0) - Fv) * (1.0 - metallic);
 
-  // 1. Indirect GI + Baked Area Lights Diffuse & Energy-Conserving Dominant Specular
-  var diffuse = kD * albedo * irrad * directionalFactor * ao;
-  let specRough = clamp(mix(rough, max(rough, 0.24), 1.0 - dirStrength * 0.65), 0.06, 0.96);
-  var specular = evalGGXSpec(N, V, domDir, specRough, f0) * irrad * dirStrength * ao * 0.75;
+  // 1. Indirect GI + Baked Area Lights Diffuse & Broad Satin Specular (extended-aperture lobe, zero plastic spotlight!)
+  var diffuse = kD * albedo * irrad * directionalFactor * ao * grooveOcc;
+  let specRough = clamp(mix(max(rough, 0.28), max(rough, 0.42), 1.0 - dirStrength * 0.65), 0.14, 0.96);
+  var specular = evalGGXSpec(N, V, domDir, specRough, f0) * irrad * dirStrength * ao * (1.0 - cer.inGrout * 0.88) * 0.88;
 
   // 2. Per-Pixel Direct Sunlight (1-ray deterministic center visibility -> edge-only 12-tap Vogel penumbra in compositeSSR)
   var sunDirectRGB = vec3f(0.0);
@@ -624,6 +631,9 @@ fn fsMain(i: VSOut) -> GBufferOut {
     let Rvec = reflect(-V, N);
     for (var li = 0u; li < lightCount; li++) {
       let l = lights[li];
+      // Skip virtual sky/bounce portals (kind == 1): their reflections belong to full-scene BVH SSR
+      // and baked directional GI, not single-ray-shadowed MRP lamp cutouts!
+      if (l.edgeVKind.w > 0.5) { continue; }
       let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
       let toC = lCenter - i.worldPos;
       let cDist2 = dot(toC, toC);

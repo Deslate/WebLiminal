@@ -141,12 +141,15 @@ export default {
     // =========================================================================
     const H2 = 4.00;
     const H2Well = 9.20;
-    m.box([4.90, 0, 6.20], [13.40, H2, 6.60], whiteTile, { skipFaces: ["ny", "nx"] });
-    m.box([4.90, 0, 9.80], [13.40, H2, 10.20], whiteTile, { skipFaces: ["ny", "nx"] });
-    m.ceiling(4.90, 6.60, 13.40, 9.80, H2, whiteTile);
+    m.box([4.90, 0, 6.20], [13.40, H2, 6.60], whiteTile, { skipFaces: ["ny", "nx"], priority: 1.35 });
+    m.box([4.90, 0, 9.80], [13.40, H2, 10.20], whiteTile, { skipFaces: ["ny", "nx"], priority: 1.35 });
+    m.ceiling(4.90, 6.60, 13.40, 9.80, H2, whiteTile, { priority: 1.25 });
     // Narrow vertical tiled portal piers flush inside corridor (1.40 m wide slot, zero Z-fighting!)
-    m.box([12.20, 0, 6.60], [13.40, H2, 7.50], whiteTile, { skipFaces: ["ny", "nz", "py"] });
-    m.box([12.20, 0, 8.90], [13.40, H2, 9.80], whiteTile, { skipFaces: ["ny", "pz", "py"] });
+    m.box([12.20, 0, 6.60], [13.40, H2, 7.50], whiteTile, { skipFaces: ["ny", "nz", "py"], priority: 1.35 });
+    m.box([12.20, 0, 8.90], [13.40, H2, 9.80], whiteTile, { skipFaces: ["ny", "pz", "py"], priority: 1.35 });
+    // Broad sunlit atrium bounce portal set well back inside the misty lightwell (x=15.80, 2.4 m east of piers)
+    // so portal jambs stay physically exposed while casting a silky soft raking daylight gradient down the corridor!
+    m.addAreaLight([15.80, 0.55, 4.40], [15.80, 0.55, 11.80], [15.80, 5.20, 4.40], [0.96, 0.99, 1.00], 1.65, { kind: 1 });
 
     // Fully enclosed misty lightwell atrium (sealed lower west wings behind corridor + full upper shaft!)
     m.box([13.40, 0, 4.00], [13.80, H2, 6.60], whiteTile, { skipFaces: ["ny", "py"] });
