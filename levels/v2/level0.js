@@ -175,10 +175,10 @@ export default {
     });
     wallOutlet(1.74, 7.40 + W, "+z");
 
-    // Iconic freestanding open-ended midground partition (Variant C pinstripe, stops cleanly below ceiling!)
-    m.box([-3.72, TH, -0.10], [-0.36, 2.42, -0.10 + W], wpStripe, { solid: false, skipFaces: ["ny"] });
+    // Iconic freestanding open-ended midground partition (Variant C pinstripe, reaches full drop-ceiling height H!)
+    m.box([-3.72, TH, -0.10], [-0.36, H, -0.10 + W], wpStripe, { solid: false, skipFaces: ["ny", "py"] });
     m.baseboardWrap([-3.72, 0, -0.10], [-0.36, TH, -0.10 + W], trimTan, { depth: TD, priority: 0.48 });
-    m.solids.push({ kind: "box", minX: -3.72, maxX: -0.36, minY: 0, maxY: 2.42, minZ: -0.10, maxZ: -0.10 + W });
+    m.solids.push({ kind: "box", minX: -3.72, maxX: -0.36, minY: 0, maxY: H, minZ: -0.10, maxZ: -0.10 + W });
 
     // Chamber 1 fluorescent troffers (4 receding bright panels + foreground wash)
     troffer(-2, 16, { color: col4100, intensity: 19.0, material: lampMain });
@@ -206,14 +206,14 @@ export default {
       ],
     });
 
-    // Monumental thick architectural Baroque-damask piers (matches image_3.png & image_2.png proportions!)
-    pier(6.80, -10.80, 9.00, -8.40);     // Massive foreground right pier block (2.2 x 2.4 m!)
+    // Monumental thick architectural Baroque-damask piers (snapped to 1.20 m T-bar grid lines — zero troffer slicing!)
+    pier(7.20, -10.80, 9.20, -8.40);     // Massive foreground right pier block (2.0 x 2.4 m, clears troffer(5,-18)!)
     pier(2.60, -11.40, 4.40, -9.80);     // Mid-right thick structural pier (1.8 x 1.6 m)
     pier(-3.60, -13.60, -0.40, -12.00);  // Far-left long solid baffle pier (3.2 x 1.6 m)
     pier(1.20, -16.80, 2.40, -15.60);    // Deep central square column (1.2 x 1.2 m)
     pier(-3.80, -8.80, -2.40, -7.40);    // Left-mid pier framing sightline
     pier(6.40, -16.20, 8.20, -14.60);    // Mid-north chunky pier creating shadowy vertical slits
-    pier(11.60, -15.00, 13.80, -13.20);  // East wing thick pier
+    pier(12.00, -15.00, 14.20, -13.20);  // East wing thick pier (clears troffer(9,-24) cleanly!)
     pier(12.20, -9.00, 14.40, -7.20);    // SE pier framing Bookmark 2 entry
 
     // Iconic dense 3x5 regular receding grid of bright glowing ceiling troffers (image_3.png!)
@@ -272,16 +272,16 @@ export default {
       // Dark architectural header bulkhead framing each corridor bay down into the distance
       m.box([-15.90, H - 0.40, pz - 0.22], [-13.60, H, pz + 0.22], wpDamask, { solid: false, skipFaces: ["py"], priority: 0.4 });
     }
-    // Moody shadowed right-side L-pier wall beneath the broken dark ceiling (image_5.png right side!)
-    pier(-9.20, 2.40, -6.00, 4.80);
+    // Moody shadowed right-side L-pier wall snapped cleanly to x=-8.40 under solid ceiling tiles (never under Hole A!)
+    pier(-8.40, 2.40, -6.00, 4.80);
     pier(-10.80, -7.20, -7.80, -5.40);   // Deep center background wall pier
 
     // Chamber 3 fluorescent troffers (bright left colonnade + bright center background + dark shadow under broken tiles!)
     troffer(-13, 12, { color: colGold, intensity: 26.0, material: lampGold }); // Blazing bright foreground colonnade lamp!
     troffer(-13, 7, { color: colGold, intensity: 26.0, material: lampGold });  // Washes central pier pure cream-yellow!
-    troffer(-13, -1, { color: colGold, intensity: 22.0, material: lampGold });
+    troffer(-13, -2, { color: colGold, intensity: 22.0, material: lampGold });
     troffer(-13, -13, { color: colGold, intensity: 22.0, material: lampGold });
-    troffer(-13, -27, { color: colGold, intensity: 26.0, material: lampGold }); // Glowing far corridor end!
+    troffer(-13, -29, { color: colGold, intensity: 26.0, material: lampGold }); // Glowing far corridor end!
     troffer(-10, -3, { color: colGold, intensity: 23.0, material: lampGold });  // Bright background hall behind missing tiles!
     troffer(-10, -15, { color: colGold, intensity: 22.0, material: lampGold });
     troffer(-10, -25, { color: colGold, intensity: 20.0, material: lampGold });

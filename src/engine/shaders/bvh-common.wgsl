@@ -702,38 +702,47 @@ fn evalAnalyticInterior(
     return InteriorEval(true, col, rough, m.pbr.z, 0.0, 0.95 + 0.05 * macroTone, vec2f(sx, sy), 0.0);
   }
 
-  // --- Preset 5: Level 0 Commercial Damp Broadloom Cut-Pile Carpet (seamless tactile wool pile, NEVER clay!) ---
+  // --- Preset 5: Level 0 Authentic Flat Commercial Broadloom Carpet (crisp fine heathered wool grain, ZERO bumpy hills!) ---
   if (preset == 5u) {
     let pXZ = worldPos.xz;
-    let microW = 1.0 - smoothstep(0.0025, 0.018, fwMax);
-    let medW = 1.0 - smoothstep(0.007, 0.048, fwMax);
-    let broadW = 1.0 - smoothstep(0.018, 0.095, fwMax);
+    let fwMin = min(fwUV.x, fwUV.y);
+    // Anisotropic Nyquist band-limiting so fine fabric grain stays crisp at 2-12 m without shimmer or flat clay!
+    let ribW = 1.0 - smoothstep(0.0035, 0.015, fwUV.x);
+    let fineW = 1.0 - smoothstep(0.005, 0.024, fwMin);
+    let medW = 1.0 - smoothstep(0.012, 0.055, fwMin);
 
-    // Multi-scale woven commercial loop-pile tufts (7 mm, 18 mm, and 45 mm organic cut-pile clumping)
-    let tuftFine = (vNoise2(pXZ * 132.0 + vec2f(seed * 3.1, 1.7)) - 0.5) * microW;
-    let tuftMed = (vNoise2(pXZ * 54.0 + vec2f(-4.2, seed * 2.3)) - 0.5) * medW;
-    let tuftBroad = (vNoise2(pXZ * 20.0 + vec2f(8.1, -3.4)) - 0.5) * broadW;
-    let nap = vFbm2(pXZ * 0.85 + vec2f(3.1, 7.4));
-    let macroWear = vFbm2(pXZ * 0.24 + vec2f(-6.8, 2.5));
-    let dampPatch = smoothstep(0.50, 0.80, vFbm2(pXZ * 0.34 + vec2f(19.2, -5.8)));
+    // Subtle machine-tufted commercial level-loop weave (~8 mm rib gauge along X) + fine woven fiber grain
+    let ribPhase = pXZ.x * 125.0 * 6.2831853;
+    let rib = sin(ribPhase) * ribW;
+    let fiberFine = (vNoise2(vec2f(pXZ.x * 145.0, pXZ.y * 175.0) + vec2f(seed * 3.1, 1.7)) - 0.5) * fineW;
+    let fiberMed = (vNoise2(vec2f(pXZ.x * 64.0, pXZ.y * 78.0) + vec2f(-4.2, seed * 2.3)) - 0.5) * medW;
+    let heather = (vNoise2(vec2f(pXZ.x * 30.0, pXZ.y * 36.0) + vec2f(7.3, -2.9)) - 0.5) * medW;
 
-    var col = baseCol * (0.82 + 0.28 * macroWear) * (0.89 + 0.20 * nap);
-    col *= (1.0 + tuftFine * 0.26 + tuftMed * 0.20 + tuftBroad * 0.13);
-    col = mix(col, col * vec3f(0.68, 0.65, 0.56), dampPatch * 0.42);
+    // Multi-tone commercial Berber/broadloom salt-and-pepper yarn flecks (dark brown-taupe & pale oat fibers)
+    let speckNoise = vNoise2(vec2f(pXZ.x * 110.0, pXZ.y * 130.0) + vec2f(13.4, seed * 5.2));
+    let darkFlecks = smoothstep(0.68, 0.92, speckNoise) * fineW + smoothstep(0.70, 0.94, vNoise2(pXZ * 52.0 + vec2f(3.7, 9.1))) * 0.45 * medW;
+    let lightFlecks = smoothstep(0.72, 0.94, vNoise2(vec2f(pXZ.x * 115.0, pXZ.y * 135.0) + vec2f(-9.1, 4.3))) * fineW;
 
-    // Band-limited fibrous pile normal perturbation (velvety tactile light catch at near AND mid-distance!)
-    let eps = max(fwMax * 0.65, 0.0025);
-    let hX = vNoise2((pXZ + vec2f(eps, 0.0)) * 132.0) - vNoise2((pXZ - vec2f(eps, 0.0)) * 132.0);
-    let hY = vNoise2((pXZ + vec2f(0.0, eps)) * 132.0) - vNoise2((pXZ - vec2f(0.0, eps)) * 132.0);
-    let mX = vNoise2((pXZ + vec2f(eps * 2.0, 0.0)) * 54.0) - vNoise2((pXZ - vec2f(eps * 2.0, 0.0)) * 54.0);
-    let mY = vNoise2((pXZ + vec2f(0.0, eps * 2.0)) * 54.0) - vNoise2((pXZ - vec2f(0.0, eps * 2.0)) * 54.0);
-    let bX = vNoise2((pXZ + vec2f(eps * 3.0, 0.0)) * 20.0) - vNoise2((pXZ - vec2f(eps * 3.0, 0.0)) * 20.0);
-    let bY = vNoise2((pXZ + vec2f(0.0, eps * 3.0)) * 20.0) - vNoise2((pXZ - vec2f(0.0, eps * 3.0)) * 20.0);
-    let slope = vec2f(hX, hY) * (0.38 * microW) + vec2f(mX, mY) * (0.26 * medW) + vec2f(bX, bY) * (0.14 * broadW);
+    // Subtle flat commercial broadloom vacuum-pass nap tracks (0.55 m parallel bands) & gentle traffic tone
+    let vacTrack = sin(pXZ.x * (6.2831853 / 1.10)) * 0.5 + 0.5;
+    let broadTone = vFbm2(pXZ * 0.22 + vec2f(-4.1, 6.3));
+    let faintWear = smoothstep(0.62, 0.88, vFbm2(pXZ * 0.34 + vec2f(14.7, -8.2)));
 
-    let rough = clamp(mix(0.95, 0.78, dampPatch) - tuftMed * 0.06, 0.74, 0.99);
-    let ao = clamp(0.84 + 0.16 * (0.5 + tuftFine + tuftMed * 0.7 + tuftBroad * 0.4), 0.55, 1.0);
-    return InteriorEval(true, col, rough, dampPatch * 0.06, 0.0, ao, slope, 0.0);
+    var col = baseCol * (0.93 + 0.10 * broadTone) * (0.975 + 0.048 * vacTrack);
+    col *= 1.0 + rib * 0.032 + fiberFine * 0.22 + fiberMed * 0.16 + heather * 0.08;
+    col = mix(col, col * vec3f(0.64, 0.59, 0.48), clamp(darkFlecks * 0.34, 0.0, 0.38));
+    col = mix(col, col * vec3f(1.16, 1.14, 1.06), lightFlecks * 0.20);
+    col = mix(col, col * vec3f(0.84, 0.80, 0.70), faintWear * 0.22);
+
+    // Virtually FLAT surface normal (tiny <=0.038 high-freq fiber micro-roughness ONLY — zero lumpy macro bumps!)
+    let eps = max(fwMin * 0.7, 0.003);
+    let fX = (vNoise2((pXZ + vec2f(eps, 0.0)) * 125.0) - vNoise2((pXZ - vec2f(eps, 0.0)) * 125.0)) * (0.038 * fineW);
+    let fY = (vNoise2((pXZ + vec2f(0.0, eps)) * 125.0) - vNoise2((pXZ - vec2f(0.0, eps)) * 125.0)) * (0.038 * fineW);
+    let slope = vec2f(fX + cos(ribPhase) * (0.025 * ribW), fY);
+
+    let rough = clamp(0.93 - faintWear * 0.04 - fiberFine * 0.05, 0.85, 0.98);
+    let ao = clamp(0.93 + 0.07 * (0.5 + fiberFine * 0.8 + fiberMed * 0.5), 0.86, 1.0);
+    return InteriorEval(true, col, rough, 0.0, 0.0, ao, slope, 0.0);
   }
 
   // --- Preset 6: Level 0 Commercial Drop Ceiling (recessed 1.20 x 0.60 m glossy T-bars + fissured acoustic tiles!) ---

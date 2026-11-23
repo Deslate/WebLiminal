@@ -75,7 +75,7 @@ export const MATERIAL_PRESETS = {
     metallic: 0.0,
     coat: 0.0,
     tileScale: 1.5,
-    pomDepth: 0.011,
+    pomDepth: 0.0,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
     wetness: 0.14,
