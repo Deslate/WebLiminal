@@ -346,7 +346,7 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
   // grazing reflections across a wide microfacet cone instead of mirroring corridors like glass!
   let isMetal = step(0.85, reflMask) * step(0.02, length(ar.rgb - vec3f(1.0)));
   let rawDielecF = exactDielectricFresnel(nv, 1.52);
-  let roughDielecF = mix(rawDielecF, min(rawDielecF, 0.042), smoothstep(0.10, 0.26, rough));
+  let roughDielecF = mix(rawDielecF, min(rawDielecF, 0.056), smoothstep(0.10, 0.26, rough));
   let metalF = 0.74 + 0.26 * pow(1.0 - nv, 5.0);
   let F = mix(roughDielecF, metalF, isMetal);
 
@@ -360,7 +360,7 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
 
 // Shared separable 1D roughness- & hit-distance-adaptive bilateral filter (half-res).
 // Projects the GGX angular lobe radius into half-res pixels so glazed ceramic tiles receive soft,
-// satin-diffused porcelain sheen while breaking cleanly across individual tile tilts & mortar lines.
+// satin-diffused porcelain sheen while glossy fiberglass/steel keep crisp window reflections!
 fn filterSSR1D(gid: vec3u, axis: vec2i) {
   let dims = textureDimensions(outSSR);
   if (gid.x >= dims.x || gid.y >= dims.y) { return; }
@@ -385,12 +385,17 @@ fn filterSSR1D(gid: vec3u, axis: vec2i) {
   let cRough = cNR.w;
   let cLinD = linearDepthSSR(cD);
 
-  // Physical GGX cone blur sigma in half-res pixels: broad soft blur for satin glazed tiles (~0.25 rough)
-  // so reflections read as soft ceramic glaze sheen rather than sharp flat mirror cutouts!
+  // Physical GGX cone blur sigma in half-res pixels: tight crisp reflections on glossy fiberglass/steel (~0.14),
+  // broad soft satin blur on glazed ceramic tiles (~0.26) so walls never look like sharp flat mirrors!
   let alpha = cRough * cRough;
   let focalHalfPx = f32(dims.y) * 0.74;
   let coneFrac = min(center.a, 35.0) / max(cLinD + min(center.a, 35.0), 0.25);
-  let sigma = clamp(max(0.65, alpha * focalHalfPx * coneFrac * 1.65), 0.65, 7.5);
+  let glossyScale = mix(0.42, 1.65, smoothstep(0.15, 0.24, cRough));
+  let sigma = clamp(alpha * focalHalfPx * coneFrac * glossyScale, 0.35, 7.5);
+  if (sigma < 0.50) {
+    textureStore(outSSR, c, center);
+    return;
+  }
 
   let radius = min(7, i32(ceil(sigma * 2.0)));
   let inv2Sig2 = 0.5 / (sigma * sigma);

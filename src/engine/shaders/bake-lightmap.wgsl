@@ -227,7 +227,7 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
       }
 
       if (sumW > 1e-6) {
-        let pickSamples = select(select(2u, 1u, isBounce), select(3u, 2u, isBounce), lightCount <= 20u);
+        let pickSamples = select(select(2u, 1u, isBounce), select(4u, 2u, isBounce), lightCount <= 20u);
         let invS = 1.0 / f32(pickSamples);
         for (var s = 0u; s < pickSamples; s++) {
           // Stratified discrete CDF pick across local visible lights (100% unbiased!)
@@ -342,7 +342,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       }
 
       let mat = materials[h.matId];
-      let diffuseAlbedo = clamp(mat.albedoScale.rgb * (1.0 - mat.pbr.y * 0.85), vec3f(0.02), vec3f(0.88));
+      let preset = u32(mat.extra.x + 0.5);
+      let isCer = preset == 0u || preset == 1u || preset == 2u || preset == 16u;
+      // Match reference-pt area-average porcelain reflectance (Fresnel kD ~0.94 x tile-grout avg ~0.95)
+      let diffuseAlbedo = clamp(mat.albedoScale.rgb * (1.0 - mat.pbr.y * 0.85) * select(1.0, 0.89, isCer), vec3f(0.02), vec3f(0.88));
       throughput *= diffuseAlbedo;
 
       var unusedDir = vec3f(0.0);

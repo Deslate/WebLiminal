@@ -45,7 +45,7 @@ export default {
     const ringTile = m.material({ base: "tile_white", tint: [0.97, 0.98, 0.97], roughness: 0.26, coat: 0.78, tileScale: 1.3889 });
     const poolFloor = m.material({ base: "tile_pool", tint: [0.85, 0.96, 0.90], roughness: 0.22, coat: 0.78, tileScale: 1.3889 });
     const plasterMat = m.material({ base: "plaster_warm", tint: [0.93, 0.94, 0.92], roughness: 0.84, coat: 0.02 });
-    const dadoGreen = m.material({ base: "tile_dado_green", roughness: 0.20, coat: 0.82, tileScale: 1.25 });
+    const dadoGreen = m.material({ base: "tile_dado_green", roughness: 0.28, coat: 0.65, tileScale: 1.25 });
     const frostedWin = m.material({ base: "frosted_window", emissive: [0.96, 0.98, 1.00], emissiveStrength: 16.5 });
     const slideMat = m.material({ base: "fiberglass_slide", roughness: 0.14, coat: 0.92 });
     const steel = m.material({ base: "stainless_steel", roughness: 0.14 });
@@ -214,7 +214,7 @@ export default {
     const c4Sky = [-17.60, -7.00, -12.60, -4.20];
     const c4WellH = 3.80;
     // Keep the entire visible north ceiling (-16.00..-7.00) one seamless continuous UV2 sheet (zero chart seam!)
-    m.ceiling(-19.40, -16.00, -5.80, -7.00, H4, plasterMat, { priority: 1.25 });
+    m.ceiling(-19.40, -16.00, -5.80, -7.00, H4, plasterMat, { priority: 1.55 });
     m.ceiling(-19.40, -7.00, -5.80, -3.60, H4, plasterMat, { holes: [c4Sky], priority: 0.75 });
     m.box([-18.00, H4, -7.00], [-17.60, H4 + c4WellH, -4.20], whiteTile, { solid: false, priority: 0.35 });
     m.box([-12.60, H4, -7.00], [-12.20, H4 + c4WellH, -4.20], whiteTile, { solid: false, priority: 0.35 });
@@ -222,7 +222,7 @@ export default {
     m.box([-18.00, H4, -4.20], [-12.20, H4 + c4WellH, -3.80], whiteTile, { solid: false, priority: 0.35 });
     m.skylight(-17.60, -7.00, -12.60, -4.20, H4 + c4WellH - 0.05, { color: [0.88, 0.96, 1.00], intensity: 2.35 });
     m.box([-19.80, 0, -3.60], [-5.80, H4, -3.00], whiteTile, { skipFaces: ["ny"] });
-    m.box([-5.80, H1, -16.60], [-5.40, H4, -3.00], whiteTile, { solid: false, skipFaces: ["ny"] });
+    m.box([-5.80, H1, -16.60], [-5.40, H4, -3.00], whiteTile, { solid: false, skipFaces: ["ny"], priority: 1.25 });
     m.wallWithArch([-19.80, 0, -16.00], [-19.40, H4, -3.60], {
       material: whiteTile,
       tileModule: 0.18,
@@ -242,7 +242,7 @@ export default {
     const groutSeamMat = m.material({ base: "plaster_warm", albedo: [0.055, 0.060, 0.058], roughness: 0.94, coat: 0.0 });
 
     // Raised wet white-tiled walkway deck (flush cutout top + pool vertical wall + access stairs)
-    m.floor(-19.40, -16.00, -15.12, -3.60, deckY, whiteTile, { walkable: true, priority: 1.45, holes: colHoles });
+    m.floor(-19.40, -16.00, -15.12, -3.60, deckY, whiteTile, { walkable: true, priority: 1.65, holes: colHoles });
     m.addQuad([-15.12, 0, -3.60], [-15.12, 0, -16.00], [-15.12, deckY, -16.00], [-15.12, deckY, -3.60], whiteTile, {
       u0: 3.60, v0: 0, u1: 16.00, v1: deckY, priority: 1.25,
     });
@@ -269,7 +269,7 @@ export default {
 
     // Far glowing backlit milk-glass window wall (dominant ethereal Poolrooms key light!)
     const winX = [-14.80, -12.40, -10.00, -7.60];
-    m.box([-19.40, 0, -16.60], [-16.00, H4, -16.00], whiteTile, { skipFaces: ["ny", "py"] });
+    m.box([-19.40, 0, -16.60], [-16.00, H4, -16.00], whiteTile, { skipFaces: ["ny", "py"], priority: 1.35 });
     m.box([-6.40, 0, -16.60], [-5.80, H4, -16.00], whiteTile, { skipFaces: ["ny", "py"] });
     for (const wx of winX) {
       m.pillWindowBay([wx - 1.20, 0, -16.60], [wx + 1.20, 3.60, -16.00], {
@@ -320,6 +320,7 @@ export default {
         hollow: true,
         innerMaterial: slideInner,
         wallThickness: 0.042,
+        priority: 0.95,
         solid: true,
       },
     );

@@ -443,9 +443,10 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let bakedAO = clamp(lmD.a, 0.0, 1.0);
   let indoorDirect = (u32(frame.waterInfo.w + 0.5) & 4u) != 0u;
   // On dry baked-area-light interiors (Level 0), lightmap irradiance already integrates physical occlusion;
-  // on Poolrooms, keep broad baked AO airy (0.52..1.0) while Contact GTAO grounds tight column/deck seams.
-  let aoFloor = select(0.52, 0.66, !hasWater && !indoorDirect);
-  let ao = mix(aoFloor, 1.0, bakedAO) * mix(0.68, 1.0, texAO);
+  // on Poolrooms, lightmap GI + shadows are already raytraced — keep bakedAO gentle (0.84..1.0) so corners,
+  // far-wall window spill, and hollow slide interiors never double-darken compared to Ground-Truth PT!
+  let aoFloor = select(0.84, 0.66, !hasWater && !indoorDirect);
+  let ao = mix(aoFloor, 1.0, bakedAO) * mix(select(0.68, 0.82, cer.isCeramic), 1.0, texAO);
 
   // Directional normal modulation from lightmap dominant incoming light vector.
   // Preserves strong raking-light relief across 3D ceramic tile bevels, kiln tilts & recessed mortar grooves!
@@ -457,7 +458,7 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let ndlGeom = max(dot(Ngeom, domDir), 0.16);
   let dirRatio = clamp(ndlBump / ndlGeom, 0.18, 2.35);
   let directionalFactor = mix(1.0, dirRatio, dirStrength * 0.90);
-  let grooveOcc = mix(1.0, 0.34 + 0.66 * clamp(dot(Ngeom, domDir) * 1.8, 0.0, 1.0), cer.inGrout);
+  let grooveOcc = mix(1.0, 0.72 + 0.28 * clamp(dot(Ngeom, domDir) * 1.8, 0.0, 1.0), cer.inGrout);
 
   let ndv = max(dot(N, V), 0.001);
   // Physical Fresnel F0: glazed porcelain ~0.046 (v1 coat=0.047), matte mortar/plaster ~0.014, metals use albedo.
@@ -466,10 +467,21 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let Fv = fresnelSchlick(ndv, f0);
   let kD = (vec3f(1.0) - Fv) * (1.0 - metallic);
 
+  // Energy partition between BVH GGX reflection pass (ssr.wgsl) and analytic lightmap/MRP specular on Poolrooms:
+  // Glossy fiberglass/steel/dado get crisp exact BVH reflections of glowing windows instead of smeared triple-counted sheen!
+  let isReflCandidate = max(metallic, coat) > 0.12 && rough <= 0.52;
+  let reflMaskNow = clamp(max(metallic, coat * (1.0 - cer.inGrout)), 0.0, 1.0);
+  let ssrShare = select(0.0, clamp(pow(1.0 - smoothstep(0.08, 0.44, rough), 1.65) * reflMaskNow, 0.0, 1.0), hasWater && isReflCandidate);
+
   // 1. Indirect GI + Baked Area Lights Diffuse & Broad Satin Specular (extended-aperture lobe, zero plastic spotlight!)
-  var diffuse = kD * albedo * irrad * directionalFactor * ao * grooveOcc;
+  // Include physical incoming-Fresnel grazing transmission (1 - F_in) on Poolrooms matching reference-pt.wgsl
+  // so grazing walls (right pool wall, corridor walls & columns) preserve crisp dark-to-bright falloff!
+  let fInDom = fresnelSchlick(clamp(dot(Ngeom, domDir), 0.05, 1.0), f0);
+  let diffTrans = select(vec3f(1.0), mix(vec3f(1.0), vec3f(1.0) - fInDom, dirStrength * 0.90), hasWater);
+  var diffuse = kD * diffTrans * albedo * irrad * directionalFactor * ao * grooveOcc;
   let specRough = clamp(mix(max(rough, 0.28), max(rough, 0.42), 1.0 - dirStrength * 0.65), 0.14, 0.96);
-  var specular = evalGGXSpec(N, V, domDir, specRough, f0) * irrad * dirStrength * ao * (1.0 - cer.inGrout * 0.88) * 0.88;
+  let lmSpecWeight = select(0.88, mix(0.62, 0.06, ssrShare), hasWater);
+  var specular = evalGGXSpec(N, V, domDir, specRough, f0) * irrad * dirStrength * ao * (1.0 - cer.inGrout * 0.88) * lmSpecWeight;
 
   // 2. Per-Pixel Direct Sunlight (1-ray deterministic center visibility -> edge-only 12-tap Vogel penumbra in compositeSSR)
   var sunDirectRGB = vec3f(0.0);
@@ -628,51 +640,53 @@ fn fsMain(i: VSOut) -> GBufferOut {
       }
     }
   } else {
-    let Rvec = reflect(-V, N);
-    for (var li = 0u; li < lightCount; li++) {
-      let l = lights[li];
-      // Skip virtual sky/bounce portals (kind == 1): their reflections belong to full-scene BVH SSR
-      // and baked directional GI, not single-ray-shadowed MRP lamp cutouts!
-      if (l.edgeVKind.w > 0.5) { continue; }
-      let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
-      let toC = lCenter - i.worldPos;
-      let cDist2 = dot(toC, toC);
-      if (cDist2 > 196.0 || cDist2 < 0.04) { continue; }
-      let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
-      if (dot(lNorm, -toC) <= 0.01) { continue; }
+    let mrpWeight = select(0.52, (1.0 - ssrShare) * (1.0 - ssrShare) * 0.30, hasWater);
+    if (mrpWeight > 0.08) {
+      let Rvec = reflect(-V, N);
+      for (var li = 0u; li < lightCount; li++) {
+        let l = lights[li];
+        // Skip virtual sky/bounce portals (kind == 1): their reflections belong to full-scene BVH SSR
+        // and baked directional GI, not single-ray-shadowed MRP lamp cutouts!
+        if (l.edgeVKind.w > 0.5) { continue; }
+        let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+        let toC = lCenter - i.worldPos;
+        let cDist2 = dot(toC, toC);
+        if (cDist2 > 196.0 || cDist2 < 0.04) { continue; }
+        let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+        if (dot(lNorm, -toC) <= 0.01) { continue; }
 
-      // Most Representative Point (MRP): intersect reflection ray with panel plane & clamp onto [0..1]^2!
-      let denom = dot(Rvec, lNorm);
-      var mrp = lCenter;
-      if (abs(denom) > 1e-4) {
-        let tPlane = dot(l.originArea.xyz - i.worldPos, lNorm) / denom;
-        if (tPlane > 0.01) {
-          let hitP = i.worldPos + Rvec * min(tPlane, 24.0) - l.originArea.xyz;
-          let lenU2 = max(dot(l.edgeUPower.xyz, l.edgeUPower.xyz), 1e-4);
-          let lenV2 = max(dot(l.edgeVKind.xyz, l.edgeVKind.xyz), 1e-4);
-          let uCl = clamp(dot(hitP, l.edgeUPower.xyz) / lenU2, 0.0, 1.0);
-          let vCl = clamp(dot(hitP, l.edgeVKind.xyz) / lenV2, 0.0, 1.0);
-          mrp = l.originArea.xyz + l.edgeUPower.xyz * uCl + l.edgeVKind.xyz * vCl;
+        // Most Representative Point (MRP): intersect reflection ray with panel plane & clamp onto [0..1]^2!
+        let denom = dot(Rvec, lNorm);
+        var mrp = lCenter;
+        if (abs(denom) > 1e-4) {
+          let tPlane = dot(l.originArea.xyz - i.worldPos, lNorm) / denom;
+          if (tPlane > 0.01) {
+            let hitP = i.worldPos + Rvec * min(tPlane, 24.0) - l.originArea.xyz;
+            let lenU2 = max(dot(l.edgeUPower.xyz, l.edgeUPower.xyz), 1e-4);
+            let lenV2 = max(dot(l.edgeVKind.xyz, l.edgeVKind.xyz), 1e-4);
+            let uCl = clamp(dot(hitP, l.edgeUPower.xyz) / lenU2, 0.0, 1.0);
+            let vCl = clamp(dot(hitP, l.edgeVKind.xyz) / lenV2, 0.0, 1.0);
+            mrp = l.originArea.xyz + l.edgeUPower.xyz * uCl + l.edgeVKind.xyz * vCl;
+          }
         }
-      }
-      let toL = mrp - i.worldPos;
-      let dist2 = max(dot(toL, toL), 0.04);
-      let dist = sqrt(dist2);
-      let dirL = toL / dist;
-      let cosL = dot(lNorm, -dirL);
-      if (cosL <= 0.02 || dot(Ngeom, dirL) <= 0.0 || dot(N, dirL) <= 0.0) { continue; }
-      let atten = (cosL * l.originArea.w) / max(dist2, 0.25);
-      let areaSpecRough = clamp(rough + sqrt(l.originArea.w) * 0.075 / max(dist, 0.45), 0.065, 0.92);
-      let cand = evalGGXSpec(N, V, dirL, areaSpecRough, f0) * l.radianceCdf.rgb * atten * 0.52;
-      if (dot(cand, vec3f(0.2126, 0.7152, 0.0722)) < 0.016) { continue; }
-      if (!traceShadowPBR(shadowOrigin, dirL, max(0.02, dist - 0.06))) {
-        specular += cand;
+        let toL = mrp - i.worldPos;
+        let dist2 = max(dot(toL, toL), 0.04);
+        let dist = sqrt(dist2);
+        let dirL = toL / dist;
+        let cosL = dot(lNorm, -dirL);
+        if (cosL <= 0.02 || dot(Ngeom, dirL) <= 0.0 || dot(N, dirL) <= 0.0) { continue; }
+        let atten = (cosL * l.originArea.w) / max(dist2, 0.25);
+        let areaSpecRough = clamp(rough + sqrt(l.originArea.w) * 0.075 / max(dist, 0.45), 0.065, 0.92);
+        let cand = evalGGXSpec(N, V, dirL, areaSpecRough, f0) * l.radianceCdf.rgb * atten * mrpWeight;
+        if (dot(cand, vec3f(0.2126, 0.7152, 0.0722)) < 0.016) { continue; }
+        if (!traceShadowPBR(shadowOrigin, dirL, max(0.02, dist - 0.06))) {
+          specular += cand;
+        }
       }
     }
   }
 
   // Subtle fallback ambient specular only for matte/non-SSR surfaces (reflective ones get true BVH GGX!).
-  let isReflCandidate = max(metallic, coat) > 0.12 && rough <= 0.52;
   let envSpec = select(Fv * irrad * 0.12 * ao * (1.0 - rough * 0.65), vec3f(0.0), isReflCandidate);
 
   // Emissive contribution (with optional fluorescent ballast flicker).

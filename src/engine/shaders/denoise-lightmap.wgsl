@@ -62,12 +62,17 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
   var wAOSum = 0.0;
 
   let cLuma = dot(cI.rgb, vec3f(0.2126, 0.7152, 0.0722));
-  let maxDist2 = select(select(0.46, 0.24, step <= 2), select(2.8, 0.95, step <= 2), isSunlitIndirect);
-  let normMin = select(0.92, 0.84, isSunlitIndirect);
-  let planeTol = select(0.035, 0.14, isSunlitIndirect);
-  let distDecay = select(3.2, 0.85, isSunlitIndirect);
-  let lumaDecay = select(2.1, 0.55, isSunlitIndirect);
-  let aoStepMax = select(2, 4, isSunlitIndirect);
+  // On sunlit/water levels (Poolrooms), adapt bilateral radius & edge-stopping to local illumination:
+  //   - Low-luma multi-bounce indirect walls/tunnels (Chambers 1-3) get a wide smooth kernel (zero mottle!)
+  //   - Bright direct-area-light zones & shadow edges (Chamber 4 columns/ceiling/floor) stop sharply!
+  let cBright = smoothstep(0.14, 0.40, cLuma);
+  let sunMaxDist2 = mix(select(2.4, 0.85, step <= 2), select(0.52, 0.24, step <= 2), cBright);
+  let sunDistDecay = mix(0.95, 2.8, cBright);
+  let maxDist2 = select(select(0.46, 0.24, step <= 2), sunMaxDist2, isSunlitIndirect);
+  let normMin = select(0.92, 0.88, isSunlitIndirect);
+  let planeTol = select(0.035, mix(0.10, 0.045, cBright), isSunlitIndirect);
+  let distDecay = select(3.2, sunDistDecay, isSunlitIndirect);
+  let aoStepMax = select(2, select(4, 2, cBright > 0.35), isSunlitIndirect);
 
   for (var dy = -2; dy <= 2; dy++) {
     for (var dx = -2; dx <= 2; dx++) {
@@ -85,7 +90,12 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
       let qI = textureLoad(srcIrrad, q, 0);
       let qD = textureLoad(srcDir, q, 0);
       let qLuma = dot(qI.rgb, vec3f(0.2126, 0.7152, 0.0722));
-      let lumaDiff = abs(qLuma - cLuma) / max(select(0.28, 0.45, isSunlitIndirect), cLuma + qLuma);
+      let directEdge = smoothstep(0.16, 0.42, max(cLuma, qLuma));
+      let sunLumaDenom = mix(0.42, 0.16, directEdge);
+      let sunLumaDecay = mix(0.65, 3.0, directEdge);
+      let lumaDenom = select(0.28, sunLumaDenom, isSunlitIndirect);
+      let lumaDecay = select(2.1, sunLumaDecay, isSunlitIndirect);
+      let lumaDiff = abs(qLuma - cLuma) / max(lumaDenom, cLuma + qLuma);
 
       let kw = kernel[abs(dx)] * kernel[abs(dy)];
       let pw = exp(-dist2 * distDecay);
@@ -96,9 +106,9 @@ fn bilateralPass(@builtin(global_invocation_id) gid: vec3u) {
       sumD += qD.rgb * w;
       wSum += w;
 
-      if (step <= aoStepMax && dist2 < select(0.14, 0.65, isSunlitIndirect)) {
+      if (step <= aoStepMax && dist2 < select(0.14, mix(0.55, 0.20, cBright), isSunlitIndirect)) {
         let aoDiff = abs(qD.a - cD.a);
-        let wAO = kw * exp(-dist2 * select(10.0, 2.5, isSunlitIndirect)) * exp(-aoDiff * select(3.5, 1.8, isSunlitIndirect));
+        let wAO = kw * exp(-dist2 * select(10.0, mix(2.8, 7.0, cBright), isSunlitIndirect)) * exp(-aoDiff * select(3.5, mix(1.9, 3.0, cBright), isSunlitIndirect));
         sumAO += qD.a * wAO;
         wAOSum += wAO;
       }

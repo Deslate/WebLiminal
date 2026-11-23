@@ -1591,7 +1591,7 @@ export class MapBuilder {
     // 3. Optional hollow fiberglass interior tunnel + rolled open exit rim lip!
     if (opts.hollow) {
       const innerMat = opts.innerMaterial ?? matSpec;
-      const inChart = this._beginChart(TAU * innerR, Math.max(1, totalLen), (opts.priority ?? 0.65) * 0.7);
+      const inChart = this._beginChart(TAU * innerR, Math.max(1, totalLen), (opts.priority ?? 0.65) * 0.9);
       for (let i = 0; i < pts.length - 1; i++) {
         const pA = pts[i], pB = pts[i + 1];
         const fA = frames[i], fB = frames[i + 1];
@@ -1611,10 +1611,12 @@ export class MapBuilder {
           const q1 = [pA[0] + nA1[0] * innerR, pA[1] + nA1[1] * innerR, pA[2] + nA1[2] * innerR];
           const q2 = [pB[0] + nB1[0] * innerR, pB[1] + nB1[1] * innerR, pB[2] + nB1[2] * innerR];
           const q3 = [pB[0] + nB0[0] * innerR, pB[1] + nB0[1] * innerR, pB[2] + nB0[2] * innerR];
+          const su0 = u0 * TAU * innerR, su1 = u1 * TAU * innerR;
           this.addQuad(q0, q3, q2, q1, innerMat, {
-            u0: u0 * TAU * innerR, v0, u1: u1 * TAU * innerR, v1,
+            uvs: [[su0, v0], [su0, v1], [su1, v1], [su1, v0]],
             normals: [[-nA0[0], -nA0[1], -nA0[2]], [-nB0[0], -nB0[1], -nB0[2]], [-nB1[0], -nB1[1], -nB1[2]], [-nA1[0], -nA1[1], -nA1[2]]],
-            chart: inChart, lu0: u0, lv0, lu1: u1, lv1,
+            chart: inChart,
+            luvs: [[u0, lv0], [u0, lv1], [u1, lv1], [u1, lv0]],
           });
         }
       }
