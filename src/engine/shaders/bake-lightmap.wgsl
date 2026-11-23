@@ -80,6 +80,67 @@ fn traceClosest(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
   return res;
 }
 
+// Returns true when the closest triangle along (ro, rd) within maxT is hit from its back-face (det < 0).
+fn traceHitBackface(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
+  var bestT = maxT;
+  var hitBack = false;
+  let invD = 1.0 / select(rd, vec3f(1e-8), abs(rd) < vec3f(1e-8));
+  if (hitAABB(bvhNodes[0].minB, bvhNodes[0].maxB, ro, invD, bestT) >= bestT) {
+    return false;
+  }
+  var stack: array<u32, 32>;
+  var sp = 0u;
+  var cur = 0u;
+  loop {
+    let node = bvhNodes[cur];
+    if (node.triCount > 0u) {
+      let end = node.leftFirst + node.triCount;
+      for (var i = node.leftFirst; i < end; i++) {
+        let tri = bvhTris[i];
+        let pvec = cross(rd, tri.e2);
+        let det = dot(tri.e1, pvec);
+        if (abs(det) < 1e-8) { continue; }
+        let invDet = 1.0 / det;
+        let tvec = ro - tri.v0;
+        let u = dot(tvec, pvec) * invDet;
+        if (u < -1e-5 || u > 1.00001) { continue; }
+        let qvec = cross(tvec, tri.e1);
+        let v = dot(rd, qvec) * invDet;
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
+        let t = dot(tri.e2, qvec) * invDet;
+        if (t > 1e-4 && t < bestT) {
+          bestT = t;
+          hitBack = det < 0.0;
+        }
+      }
+      if (sp == 0u) { break; }
+      sp -= 1u;
+      cur = stack[sp];
+    } else {
+      let l = node.leftFirst;
+      let r = l + 1u;
+      let dL = hitAABB(bvhNodes[l].minB, bvhNodes[l].maxB, ro, invD, bestT);
+      let dR = hitAABB(bvhNodes[r].minB, bvhNodes[r].maxB, ro, invD, bestT);
+      let nearIdx = select(r, l, dL < dR);
+      let farIdx = select(l, r, dL < dR);
+      let nearD = min(dL, dR);
+      let farD = max(dL, dR);
+      if (nearD >= bestT) {
+        if (sp == 0u) { break; }
+        sp -= 1u;
+        cur = stack[sp];
+      } else {
+        if (farD < bestT && sp < 31u) {
+          stack[sp] = farIdx;
+          sp += 1u;
+        }
+        cur = nearIdx;
+      }
+    }
+  }
+  return hitBack;
+}
+
 fn traceShadow(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
   let invD = 1.0 / select(rd, vec3f(1e-8), abs(rd) < vec3f(1e-8));
   if (hitAABB(bvhNodes[0].minB, bvhNodes[0].maxB, ro, invD, maxT) >= maxT) {
@@ -271,6 +332,29 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
   let batch = env.counts.y;
   let spp = env.counts.z;
+  // Detect floor/ceiling or outer-wall texels trapped inside closed solid walls, piers, or abutting pilasters.
+  // Marking them invalid (accumIrrad.w = -1) lets dilateFinal fill them cleanly from visible neighbors with zero dark bleed!
+  if (batch == 0u) {
+    let onb = orthoBasis(n0);
+    var backCount = 0u;
+    if (traceHitBackface(p0, normalize(onb[0] + n0 * 0.22), 5.5)) { backCount += 1u; }
+    if (traceHitBackface(p0, normalize(-onb[0] + n0 * 0.22), 5.5)) { backCount += 1u; }
+    if (traceHitBackface(p0, normalize(onb[1] + n0 * 0.22), 5.5)) { backCount += 1u; }
+    if (traceHitBackface(p0, normalize(-onb[1] + n0 * 0.22), 5.5)) { backCount += 1u; }
+    var isBuried = false;
+    if (abs(n0.y) > 0.85) {
+      isBuried = backCount >= 3u;
+    } else if (backCount >= 2u) {
+      isBuried = traceHitBackface(p0, n0, 4.5);
+    }
+    if (isBuried) {
+      accumIrrad[idx] = vec4f(0.0, 0.0, 0.0, -1.0);
+      accumDir[idx] = vec4f(0.0, 1.0, 0.0, 1.0);
+      return;
+    }
+  } else if (accumIrrad[idx].w < -0.5) {
+    return;
+  }
   var rng = idx * 1973u + batch * 9277u + 26699u;
   // Per-texel Cranley-Patterson shift for low-discrepancy R2 quasi-random strata (much cleaner GI!).
   var shiftRng = idx * 747796405u + 2891336453u;

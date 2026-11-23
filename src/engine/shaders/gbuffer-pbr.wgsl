@@ -443,9 +443,9 @@ fn fsMain(i: VSOut) -> GBufferOut {
   let bakedAO = clamp(lmD.a, 0.0, 1.0);
   let indoorDirect = (u32(frame.waterInfo.w + 0.5) & 4u) != 0u;
   // On dry baked-area-light interiors (Level 0), lightmap irradiance already integrates physical occlusion;
-  // on Poolrooms, lightmap GI + shadows are already raytraced — keep bakedAO gentle (0.84..1.0) so corners,
-  // far-wall window spill, and hollow slide interiors never double-darken compared to Ground-Truth PT!
-  let aoFloor = select(0.84, 0.78, !hasWater && !indoorDirect);
+  // keep bakedAO subtle (0.92..1.0) so overhead-lit floor-to-baseboard seams never double-darken vs GTPT!
+  // On Poolrooms, keep gentle 0.84..1.0 so corners, far-wall spill, and hollow slide interiors stay clean.
+  let aoFloor = select(0.84, 0.92, !hasWater && !indoorDirect);
   let ao = mix(aoFloor, 1.0, bakedAO) * mix(select(0.68, 0.82, cer.isCeramic), 1.0, texAO);
 
   // Directional normal modulation from lightmap dominant incoming light vector.

@@ -605,10 +605,11 @@ fn compositeSSR(@builtin(global_invocation_id) gid: vec3u) {
     occSum += dirOcc;
   }
   let rawContactAO = clamp(1.0 - (occSum / 6.0) * 0.78, 0.36, 1.0);
-  // Protect HDR emissive panels & keep contact shading subtle and physical (no black cartoon outlines on baseboards!)
+  // Protect HDR emissive panels & keep dry-interior contact shading subtle (overhead troffers illuminate floors
+  // right up to baseboards, so strong GTAO creates unnatural black floor creases compared to unbiased GTPT).
   let cLuma = dot(finalCol, vec3f(0.2126, 0.7152, 0.0722));
   let emissiveKeep = smoothstep(2.2, 6.0, cLuma);
-  let aoStrength = select(0.30, 0.24, frame.waterInfo.y > 0.5) * (1.0 - emissiveKeep);
+  let aoStrength = select(0.12, 0.24, frame.waterInfo.y > 0.5) * (1.0 - emissiveKeep);
   finalCol *= mix(1.0, rawContactAO, aoStrength);
 
   textureStore(outHdr, px, vec4f(finalCol, 1.0));

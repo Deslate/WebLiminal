@@ -27,8 +27,8 @@ export default {
     bloomStrength: 0.28,
     volumetricStrength: 0.06,
     ambientFloor: 0.001,
-    bounceBoost: 1.00, // exact physical multi-bounce energy conservation matching unbiased Ground-Truth Path Tracing!
-    aoRadius: 0.52,
+    bounceBoost: 0.88, // accounts for printed wallpaper/ceiling pattern + Fresnel average reflectance vs GTPT
+    aoRadius: 0.24,
   },
 
   build(m) {
@@ -359,10 +359,10 @@ export default {
       // Build each of the 15 deep 3D rectangular abyssal pit shafts + invisible pit-edge safety guard collision!
       for (const [pz0, pz1] of pitRows) {
         // 4 inward-facing vertical pit shaft walls descending 5.5 m into pitch-black abyss
-        m.addQuad([px0, PIT_DEPTH, pz0], [px1, PIT_DEPTH, pz0], [px1, 0, pz0], [px0, 0, pz0], pitShaftMat, { u0: px0, v0: PIT_DEPTH, u1: px1, v1: 0, priority: 0.25 });
-        m.addQuad([px1, PIT_DEPTH, pz1], [px0, PIT_DEPTH, pz1], [px0, 0, pz1], [px1, 0, pz1], pitShaftMat, { u0: px1, v0: PIT_DEPTH, u1: px0, v1: 0, priority: 0.25 });
-        m.addQuad([px0, PIT_DEPTH, pz1], [px0, PIT_DEPTH, pz0], [px0, 0, pz0], [px0, 0, pz1], pitShaftMat, { u0: pz1, v0: PIT_DEPTH, u1: pz0, v1: 0, priority: 0.25 });
-        m.addQuad([px1, PIT_DEPTH, pz0], [px1, PIT_DEPTH, pz1], [px1, 0, pz1], [px1, 0, pz0], pitShaftMat, { u0: pz0, v0: PIT_DEPTH, u1: pz1, v1: 0, priority: 0.25 });
+        m.addQuad([px0, PIT_DEPTH, pz0], [px1, PIT_DEPTH, pz0], [px1, 0, pz0], [px0, 0, pz0], pitShaftMat, { u0: px0, v0: PIT_DEPTH, u1: px1, v1: 0, priority: 0.80 });
+        m.addQuad([px1, PIT_DEPTH, pz1], [px0, PIT_DEPTH, pz1], [px0, 0, pz1], [px1, 0, pz1], pitShaftMat, { u0: px1, v0: PIT_DEPTH, u1: px0, v1: 0, priority: 0.80 });
+        m.addQuad([px0, PIT_DEPTH, pz1], [px0, PIT_DEPTH, pz0], [px0, 0, pz0], [px0, 0, pz1], pitShaftMat, { u0: pz1, v0: PIT_DEPTH, u1: pz0, v1: 0, priority: 0.80 });
+        m.addQuad([px1, PIT_DEPTH, pz0], [px1, PIT_DEPTH, pz1], [px1, 0, pz1], [px1, 0, pz0], pitShaftMat, { u0: pz0, v0: PIT_DEPTH, u1: pz1, v1: 0, priority: 0.80 });
         // Pitch-black pit abyss floor
         m.addQuad([px0, PIT_DEPTH, pz1], [px1, PIT_DEPTH, pz1], [px1, PIT_DEPTH, pz0], [px0, PIT_DEPTH, pz0], pitAbyss, { u0: 0, v0: 0, u1: 1, v1: 1, priority: 0.1 });
         // Invisible collision boundary along the pit perimeter so players walk freely along every narrow bridge without getting trapped
