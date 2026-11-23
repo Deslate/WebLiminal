@@ -1256,7 +1256,7 @@ export class MapBuilder {
   }
 
   // Cantilevered spiral staircase wrapping a cylindrical column (clean non-overlapping slabs,
-  // world-elevation tile courses, and solid collision on lower reachable steps).
+  // distortion-free Euclidean square tile UVs aligned across treads, soffits & rims, and solid lower collision).
   spiralStairs(cx, cz, y0, y1, innerR, outerR, startAngle, sweepAngle, steps, matSpec, opts = {}) {
     const count = Math.max(4, Math.round(steps));
     const dy = (y1 - y0) / count;
@@ -1264,9 +1264,15 @@ export class MapBuilder {
     const tileMod = opts.tileModule ?? 0.20;
     const slabH = opts.slabThickness ?? dy;
     const treadW = outerR - innerR;
-    const treadTiles = Math.max(1, Math.round(treadW / tileMod)) * tileMod;
-    const arcOut = Math.abs(da) * outerR;
-    const arcTiles = Math.max(1, Math.round(arcOut / tileMod)) * tileMod;
+    const radialTiles = Math.max(1, Math.round(treadW / tileMod)) * tileMod;
+    const slabTiles = Math.max(1, Math.round(slabH / tileMod)) * tileMod;
+    const outerChord = 2 * outerR * Math.sin(Math.abs(da) * 0.5);
+    const outerTiles = Math.max(1, Math.round(outerChord / tileMod)) * tileMod;
+    // Scale radial U slightly (~1%) so inner->outer edge lands cleanly on a full tile joint with zero slivers.
+    const rScale = radialTiles / Math.max(treadW, 1e-4);
+    // Odd outer tile count centers a full tile on step midline (t=0); even count centers a joint on t=0.
+    const outerTileCount = Math.max(1, Math.round(outerChord / tileMod));
+    const vCenterShift = (outerTileCount & 1) ? 0.5 * tileMod : 0.0;
 
     for (let i = 0; i < count; i++) {
       const a0 = startAngle + i * da;
@@ -1288,10 +1294,22 @@ export class MapBuilder {
 
       const prio = opts.priority ?? 0.9;
       const aMid = 0.5 * (a0 + a1);
+      const rx = Math.cos(aMid), rz = Math.sin(aMid);
+      const tx = -rz, tz = rx;
       const rMid = 0.5 * (innerR + outerR);
-      const stepCenter = [cx + rMid * Math.cos(aMid), 0.5 * (yBot + yTop), cz + rMid * Math.sin(aMid)];
+      const stepCenter = [cx + rMid * rx, 0.5 * (yBot + yTop), cz + rMid * rz];
 
-      const emitOut = (q0, q1, q2, q3, u0, u1, v0, v1) => {
+      // Exact isometric 2D Euclidean UV projection on horizontal step faces -> 100% square undistorted tiles!
+      const horizUV = (p) => {
+        const dx = p[0] - cx;
+        const dz = p[2] - cz;
+        const rProj = (dx * rx + dz * rz - innerR) * rScale;
+        const tProj = dx * tx + dz * tz;
+        return [rProj, tProj + vCenterShift];
+      };
+
+      // Always keep every vertex paired with its exact UV even when winding flips!
+      const emitQuadUV = (q0, q1, q2, q3, uv0, uv1, uv2, uv3) => {
         const n = cross3(sub3(q1, q0), sub3(q3, q0));
         const qc = [
           0.25 * (q0[0] + q1[0] + q2[0] + q3[0]),
@@ -1300,18 +1318,20 @@ export class MapBuilder {
         ];
         const out = sub3(qc, stepCenter);
         if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] >= 0) {
-          this.addQuad(q0, q1, q2, q3, matSpec, { u0, v0, u1, v1, priority: prio });
+          this.addQuad(q0, q1, q2, q3, matSpec, { uvs: [uv0, uv1, uv2, uv3], priority: prio });
         } else {
-          this.addQuad(q0, q3, q2, q1, matSpec, { u0, v0, u1, v1, priority: prio });
+          this.addQuad(q0, q3, q2, q1, matSpec, { uvs: [uv0, uv3, uv2, uv1], priority: prio });
         }
       };
 
-      // Top tread, bottom soffit, outer arc riser, and front/back step risers — zero Z-fighting!
-      emitOut(in0T, out0T, out1T, in1T, 0, treadTiles, 0, arcTiles);
-      emitOut(in0B, in1B, out1B, out0B, 0, arcTiles, 0, treadTiles);
-      emitOut(out0B, out1B, out1T, out0T, i * arcTiles, (i + 1) * arcTiles, yBot, yTop);
-      emitOut(in0B, out0B, out0T, in0T, 0, treadTiles, yBot, yTop);
-      emitOut(out1B, in1B, in1T, out1T, 0, treadTiles, yBot, yTop);
+      // Top tread & bottom soffit: distortion-free Euclidean square tiles aligned to outer rim joints
+      emitQuadUV(in0T, out0T, out1T, in1T, horizUV(in0T), horizUV(out0T), horizUV(out1T), horizUV(in1T));
+      emitQuadUV(in0B, in1B, out1B, out0B, horizUV(in0B), horizUV(in1B), horizUV(out1B), horizUV(out0B));
+
+      // Outer rim & radial risers: exact full tile courses (zero horizontal sliver drift across steps!)
+      emitQuadUV(out0B, out1B, out1T, out0T, [0, 0], [outerTiles, 0], [outerTiles, slabTiles], [0, slabTiles]);
+      emitQuadUV(in0B, out0B, out0T, in0T, [0, 0], [radialTiles, 0], [radialTiles, slabTiles], [0, slabTiles]);
+      emitQuadUV(out1B, in1B, in1T, out1T, [0, 0], [radialTiles, 0], [radialTiles, slabTiles], [0, slabTiles]);
 
       // Register collision on lower reachable steps so the player cannot clip through the staircase.
       if (opts.solid !== false && yBot < y0 + 1.85) {
@@ -1497,23 +1517,17 @@ export class MapBuilder {
       frames.push({ u: curU, v: curV });
     }
 
+    const wallThick = opts.wallThickness ?? 0.042;
+    const innerR = Math.max(0.05, radius - wallThick);
     const chart = this._beginChart(TAU * radius, Math.max(1, totalLen), opts.priority ?? 0.65);
+
+    // 1. Smooth constant-radius outer fiberglass shell (zero soft organic worm-lumps!).
     for (let i = 0; i < pts.length - 1; i++) {
       const pA = pts[i], pB = pts[i + 1];
       const fA = frames[i], fB = frames[i + 1];
       const v0 = cumLen[i], v1 = cumLen[i + 1];
       const lv0 = v0 / Math.max(totalLen, 1e-4);
       const lv1 = v1 / Math.max(totalLen, 1e-4);
-      // Optional subtle smooth fiberglass joint collar every ~2.2m (zero sharp normal kinks)
-      const flangeAt = (idx) => {
-        if (!opts.flanges || idx <= 1) return radius;
-        const m = idx % 9;
-        if (m === 0) return radius * 1.032;
-        if (m === 1 || m === 8) return radius * 1.012;
-        return radius;
-      };
-      const rA = flangeAt(i);
-      const rB = flangeAt(i + 1);
 
       for (let j = 0; j < radialSegs; j++) {
         const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;
@@ -1525,15 +1539,106 @@ export class MapBuilder {
         const nB0 = [fB.u[0] * c0 + fB.v[0] * s0, fB.u[1] * c0 + fB.v[1] * s0, fB.u[2] * c0 + fB.v[2] * s0];
         const nB1 = [fB.u[0] * c1 + fB.v[0] * s1, fB.u[1] * c1 + fB.v[1] * s1, fB.u[2] * c1 + fB.v[2] * s1];
 
-        const q0 = [pA[0] + nA0[0] * rA, pA[1] + nA0[1] * rA, pA[2] + nA0[2] * rA];
-        const q1 = [pA[0] + nA1[0] * rA, pA[1] + nA1[1] * rA, pA[2] + nA1[2] * rA];
-        const q2 = [pB[0] + nB1[0] * rB, pB[1] + nB1[1] * rB, pB[2] + nB1[2] * rB];
-        const q3 = [pB[0] + nB0[0] * rB, pB[1] + nB0[1] * rB, pB[2] + nB0[2] * rB];
+        const q0 = [pA[0] + nA0[0] * radius, pA[1] + nA0[1] * radius, pA[2] + nA0[2] * radius];
+        const q1 = [pA[0] + nA1[0] * radius, pA[1] + nA1[1] * radius, pA[2] + nA1[2] * radius];
+        const q2 = [pB[0] + nB1[0] * radius, pB[1] + nB1[1] * radius, pB[2] + nB1[2] * radius];
+        const q3 = [pB[0] + nB0[0] * radius, pB[1] + nB0[1] * radius, pB[2] + nB0[2] * radius];
         this.addQuad(q0, q1, q2, q3, matSpec, {
           u0: u0 * TAU * radius, v0, u1: u1 * TAU * radius, v1,
           normals: [nA0, nA1, nB1, nB0],
           chart, lu0: u0, lv0, lu1: u1, lv1,
         });
+      }
+    }
+
+    // 2. Crisp rigid bolted fiberglass flange collars along tube sections (authentic aqua-park slide joints!).
+    if (opts.flanges) {
+      const flangeMat = opts.flangeMaterial ?? matSpec;
+      const flangeSpacing = opts.flangeSpacing ?? 2.05;
+      const hw = 0.028;
+      const rF = radius + 0.040;
+      let nextDist = 1.35;
+      for (let i = 2; i < pts.length - 2; i++) {
+        if (cumLen[i] < nextDist || totalLen - cumLen[i] < 0.55) continue;
+        nextDist = cumLen[i] + flangeSpacing;
+        const fChart = this._beginChart(TAU * rF, 0.25, 0.35);
+        const p = pts[i], t = tangents[i], f = frames[i];
+        const pBack = [p[0] - t[0] * hw, p[1] - t[1] * hw, p[2] - t[2] * hw];
+        const pFwd = [p[0] + t[0] * hw, p[1] + t[1] * hw, p[2] + t[2] * hw];
+        const nBack = [-t[0], -t[1], -t[2]];
+        for (let j = 0; j < radialSegs; j++) {
+          const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;
+          const a0 = u0 * TAU, a1 = u1 * TAU;
+          const c0 = Math.cos(a0), s0 = Math.sin(a0);
+          const c1 = Math.cos(a1), s1 = Math.sin(a1);
+          const n0 = [f.u[0] * c0 + f.v[0] * s0, f.u[1] * c0 + f.v[1] * s0, f.u[2] * c0 + f.v[2] * s0];
+          const n1 = [f.u[0] * c1 + f.v[0] * s1, f.u[1] * c1 + f.v[1] * s1, f.u[2] * c1 + f.v[2] * s1];
+          const bR0 = [pBack[0] + n0[0] * radius, pBack[1] + n0[1] * radius, pBack[2] + n0[2] * radius];
+          const bR1 = [pBack[0] + n1[0] * radius, pBack[1] + n1[1] * radius, pBack[2] + n1[2] * radius];
+          const bF0 = [pBack[0] + n0[0] * rF, pBack[1] + n0[1] * rF, pBack[2] + n0[2] * rF];
+          const bF1 = [pBack[0] + n1[0] * rF, pBack[1] + n1[1] * rF, pBack[2] + n1[2] * rF];
+          const fR0 = [pFwd[0] + n0[0] * radius, pFwd[1] + n0[1] * radius, pFwd[2] + n0[2] * radius];
+          const fR1 = [pFwd[0] + n1[0] * radius, pFwd[1] + n1[1] * radius, pFwd[2] + n1[2] * radius];
+          const fF0 = [pFwd[0] + n0[0] * rF, pFwd[1] + n0[1] * rF, pFwd[2] + n0[2] * rF];
+          const fF1 = [pFwd[0] + n1[0] * rF, pFwd[1] + n1[1] * rF, pFwd[2] + n1[2] * rF];
+          this.addQuad(bF0, bF1, fF1, fF0, flangeMat, { normals: [n0, n1, n1, n0], chart: fChart, lu0: u0, lv0: 0.3, lu1: u1, lv1: 0.7 });
+          this.addQuad(bR0, bR1, bF1, bF0, flangeMat, { normals: [nBack, nBack, nBack, nBack], chart: fChart, lu0: u0, lv0: 0.0, lu1: u1, lv1: 0.3 });
+          this.addQuad(fF0, fF1, fR1, fR0, flangeMat, { normals: [t, t, t, t], chart: fChart, lu0: u0, lv0: 0.7, lu1: u1, lv1: 1.0 });
+        }
+      }
+    }
+
+    // 3. Optional hollow fiberglass interior tunnel + rolled open exit rim lip!
+    if (opts.hollow) {
+      const innerMat = opts.innerMaterial ?? matSpec;
+      const inChart = this._beginChart(TAU * innerR, Math.max(1, totalLen), (opts.priority ?? 0.65) * 0.7);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const pA = pts[i], pB = pts[i + 1];
+        const fA = frames[i], fB = frames[i + 1];
+        const v0 = cumLen[i], v1 = cumLen[i + 1];
+        const lv0 = v0 / Math.max(totalLen, 1e-4);
+        const lv1 = v1 / Math.max(totalLen, 1e-4);
+        for (let j = 0; j < radialSegs; j++) {
+          const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;
+          const a0 = u0 * TAU, a1 = u1 * TAU;
+          const c0 = Math.cos(a0), s0 = Math.sin(a0);
+          const c1 = Math.cos(a1), s1 = Math.sin(a1);
+          const nA0 = [fA.u[0] * c0 + fA.v[0] * s0, fA.u[1] * c0 + fA.v[1] * s0, fA.u[2] * c0 + fA.v[2] * s0];
+          const nA1 = [fA.u[0] * c1 + fA.v[0] * s1, fA.u[1] * c1 + fA.v[1] * s1, fA.u[2] * c1 + fA.v[2] * s1];
+          const nB0 = [fB.u[0] * c0 + fB.v[0] * s0, fB.u[1] * c0 + fB.v[1] * s0, fB.u[2] * c0 + fB.v[2] * s0];
+          const nB1 = [fB.u[0] * c1 + fB.v[0] * s1, fB.u[1] * c1 + fB.v[1] * s1, fB.u[2] * c1 + fB.v[2] * s1];
+          const q0 = [pA[0] + nA0[0] * innerR, pA[1] + nA0[1] * innerR, pA[2] + nA0[2] * innerR];
+          const q1 = [pA[0] + nA1[0] * innerR, pA[1] + nA1[1] * innerR, pA[2] + nA1[2] * innerR];
+          const q2 = [pB[0] + nB1[0] * innerR, pB[1] + nB1[1] * innerR, pB[2] + nB1[2] * innerR];
+          const q3 = [pB[0] + nB0[0] * innerR, pB[1] + nB0[1] * innerR, pB[2] + nB0[2] * innerR];
+          this.addQuad(q0, q3, q2, q1, innerMat, {
+            u0: u0 * TAU * innerR, v0, u1: u1 * TAU * innerR, v1,
+            normals: [[-nA0[0], -nA0[1], -nA0[2]], [-nB0[0], -nB0[1], -nB0[2]], [-nB1[0], -nB1[1], -nB1[2]], [-nA1[0], -nA1[1], -nA1[2]]],
+            chart: inChart, lu0: u0, lv0, lu1: u1, lv1,
+          });
+        }
+      }
+      // Flared exit rim collar at pts[last] so the open slide mouth has crisp molded fiberglass thickness
+      const last = pts.length - 1;
+      const pEnd = pts[last], tEnd = tangents[last], fEnd = frames[last];
+      const rimR = radius + 0.022;
+      const lipChart = this._beginChart(TAU * rimR, 0.2, 0.45);
+      const pLip = [pEnd[0] + tEnd[0] * 0.04, pEnd[1] + tEnd[1] * 0.04, pEnd[2] + tEnd[2] * 0.04];
+      for (let j = 0; j < radialSegs; j++) {
+        const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;
+        const a0 = u0 * TAU, a1 = u1 * TAU;
+        const c0 = Math.cos(a0), s0 = Math.sin(a0);
+        const c1 = Math.cos(a1), s1 = Math.sin(a1);
+        const n0 = [fEnd.u[0] * c0 + fEnd.v[0] * s0, fEnd.u[1] * c0 + fEnd.v[1] * s0, fEnd.u[2] * c0 + fEnd.v[2] * s0];
+        const n1 = [fEnd.u[0] * c1 + fEnd.v[0] * s1, fEnd.u[1] * c1 + fEnd.v[1] * s1, fEnd.u[2] * c1 + fEnd.v[2] * s1];
+        const o0 = [pEnd[0] + n0[0] * radius, pEnd[1] + n0[1] * radius, pEnd[2] + n0[2] * radius];
+        const o1 = [pEnd[0] + n1[0] * radius, pEnd[1] + n1[1] * radius, pEnd[2] + n1[2] * radius];
+        const l0 = [pLip[0] + n0[0] * rimR, pLip[1] + n0[1] * rimR, pLip[2] + n0[2] * rimR];
+        const l1 = [pLip[0] + n1[0] * rimR, pLip[1] + n1[1] * rimR, pLip[2] + n1[2] * rimR];
+        const i0 = [pEnd[0] + n0[0] * innerR, pEnd[1] + n0[1] * innerR, pEnd[2] + n0[2] * innerR];
+        const i1 = [pEnd[0] + n1[0] * innerR, pEnd[1] + n1[1] * innerR, pEnd[2] + n1[2] * innerR];
+        this.addQuad(o0, o1, l1, l0, matSpec, { normals: [n0, n1, n1, n0], chart: lipChart, lu0: u0, lv0: 0, lu1: u1, lv1: 0.5 });
+        this.addQuad(l0, l1, i1, i0, matSpec, { normals: [tEnd, tEnd, tEnd, tEnd], chart: lipChart, lu0: u0, lv0: 0.5, lu1: u1, lv1: 1.0 });
       }
     }
 

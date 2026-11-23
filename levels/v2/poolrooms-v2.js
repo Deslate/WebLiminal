@@ -194,9 +194,10 @@ export default {
     m.box([-10.20, H3, 11.40], [-5.80, H3 + 1.80, 11.80], whiteTile, { solid: false, priority: 0.4 });
     m.skylight(-9.80, 4.00, -6.20, 11.40, H3 + 1.75, { color: [0.94, 0.97, 1.00], intensity: 3.4 });
 
-    // Seamless 48-segment cylindrical tiled column + grounded spiral stairs emerging cleanly from pool floor (y0=0.18 -> ZERO floating steps!)
+    // Seamless 48-segment cylindrical tiled column + grounded spiral stairs emerging cleanly from pool water
+    // (y0=0.28..4.60, 24 steps -> EXACT 0.180 m = 1 full tile per riser, zero floating gap & zero tile slivers!)
     m.cylinder(-13.40, 6.20, 0, H3, 1.20, whiteTile, { segments: 48, tileModule: 0.18 });
-    m.spiralStairs(-13.40, 6.20, 0.18, H3, 1.18, 2.78, Math.PI * 0.90, Math.PI * 1.48, 24, whiteTile, {
+    m.spiralStairs(-13.40, 6.20, 0.28, H3, 1.18, 2.78, Math.PI * 0.90, Math.PI * 1.48, 24, whiteTile, {
       slabThickness: 0.18,
       tileModule: 0.18,
     });
@@ -207,7 +208,7 @@ export default {
     // =========================================================================
     const H4 = 5.80;
     const deckY = 0.80;
-    // Recessed south-bay architectural skylight well (clears the slide entry at z <= -7.78 cleanly)
+    // Recessed south-bay architectural skylight well (clears the slide cleanly)
     // pouring crisp overhead daylight & angled sunbeams onto the wet walkway deck, emerald dado & columns!
     const c4Sky = [-14.80, -7.40, -7.80, -4.00];
     m.ceiling(-19.40, -16.00, -5.80, -3.60, H4, plasterMat, { holes: [c4Sky] });
@@ -236,10 +237,13 @@ export default {
     m.box([-19.40, deckY, -16.00], [-19.36, deckY + 0.80, -9.60], dadoGreen, { solid: false, skipFaces: ["nx", "ny"], priority: 0.9 });
     m.box([-19.40, deckY, -7.60], [-19.36, deckY + 0.80, -3.60], dadoGreen, { solid: false, skipFaces: ["nx", "ny"], priority: 0.9 });
 
-    // Row of architectural square columns
+    // Row of architectural square columns + sleek stainless-steel deck safety rails between bays
     for (const pz of [-6.30, -9.10, -11.90, -14.30]) {
       m.box([-15.80, deckY, pz - 0.30], [-15.20, H4, pz + 0.30], whiteTile, { skipFaces: ["ny", "py"] });
     }
+    m.handrail([-15.32, -8.76], [-15.32, -6.64], deckY, 0.88, { material: steel, postSpacing: 1.06 });
+    m.handrail([-15.32, -11.56], [-15.32, -9.44], deckY, 0.88, { material: steel, postSpacing: 1.06 });
+    m.handrail([-15.32, -13.96], [-15.32, -12.24], deckY, 0.88, { material: steel, postSpacing: 0.90 });
 
     // Far backlit window wall (clean neutral milk-glass daylight, zero yellow cast)
     const winX = [-14.80, -12.40, -10.00, -7.60];
@@ -271,24 +275,38 @@ export default {
       });
     }
 
-    // Smooth curved dark glossy fiberglass water slide tube anchored into ceiling and plunge floor with collision
+    // Engineered hollow aqua-teal fiberglass tube water slide emerging from the upper east tiled wall,
+    // sweeping smoothly down at a rideable ~24-28 deg curve, and leveling out into an open horizontal
+    // exit mouth skimming right above the turquoise splash pool with stainless-steel support stanchions!
+    const slideInner = m.material({ base: "fiberglass_slide", albedo: [0.58, 0.78, 0.80], roughness: 0.16, coat: 0.88 });
     m.curvedTube(
       [
-        [-12.6, 5.88, -8.4],
-        [-11.2, 4.95, -9.6],
-        [-9.8, 3.70, -10.6],
-        [-9.4, 2.10, -11.4],
-        [-9.4, 0.00, -11.6],
+        [-5.55, 4.35, -13.60],
+        [-7.50, 3.70, -13.55],
+        [-9.55, 2.75, -12.90],
+        [-10.90, 1.72, -11.65],
+        [-11.35, 1.06, -10.20],
+        [-11.45, 0.98, -9.10],
       ],
-      0.62,
+      0.48,
       slideMat,
-      { stepsPerSegment: 12, radialSegments: 24, flanges: true, solid: true },
+      {
+        stepsPerSegment: 10,
+        radialSegments: 24,
+        flanges: true,
+        flangeSpacing: 1.95,
+        hollow: true,
+        innerMaterial: slideInner,
+        wallThickness: 0.042,
+        solid: true,
+      },
     );
-    // Grounded plunge catch basin walls
-    m.box([-11.60, 0, -13.20], [-5.80, 1.00, -13.00], whiteTile, { skipFaces: ["ny", "px"] });
-    m.box([-11.60, 0, -10.20], [-5.80, 1.00, -10.00], whiteTile, { skipFaces: ["ny", "px"] });
-    m.box([-11.60, 0, -13.00], [-11.40, 1.00, -10.20], whiteTile, { skipFaces: ["ny", "nz", "pz"] });
-    m.handrail([-11.50, -10.10], [-6.00, -10.10], 1.00, 0.80, { material: steel, postSpacing: 1.10 });
+    // Rigid stainless-steel vertical support stanchions + base plates anchoring the slide to the pool floor
+    for (const [sx, sy, sz] of [[-7.55, 3.28, -13.54], [-10.32, 1.76, -12.22], [-11.34, 0.56, -10.22]]) {
+      m.pipe([sx, 0.0, sz], [sx, sy, sz], 0.075, steel, { segments: 14 });
+      m.cylinder(sx, sz, 0.0, 0.12, 0.14, steel, { segments: 14, solid: false });
+      m.solids.push({ kind: "circle", x: sx, z: sz, radius: 0.14, minY: 0, maxY: sy });
+    }
 
     // =========================================================================
     // SINGLE CONTINUOUS PHYSICAL WATER BODY COVERING ALL FOUR HALLS

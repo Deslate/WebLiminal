@@ -282,8 +282,8 @@ test("poolrooms-v2 doorways are unobstructed, bookmarks are walkable, and slide/
   assert.equal(canStand(4.75, 8.2, cp.collision), true, "East doorway to Misty Lightwell should be clear");
   assert.equal(canStand(-5.6, 8.3, cp.collision), true, "West doorway to Spiral Column should be clear");
   assert.equal(canStand(-5.6, -5.0, cp.collision), true, "West doorway to Slide & Portholes should be clear");
-  // Fiberglass slide plunge entry (-9.4, -11.6) must block player walk-through
-  assert.equal(canStand(-9.4, -11.6, cp.collision), false, "Water slide tube should have solid collision");
+  // Fiberglass slide runout exit (-11.40, -9.50) must block player walk-through
+  assert.equal(canStand(-11.40, -9.50, cp.collision), false, "Water slide tube should have solid collision");
 });
 
 test("level0 bookmarks, doorways, and Pitfalls walkways are cleanly navigable", () => {

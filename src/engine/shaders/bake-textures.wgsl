@@ -333,14 +333,13 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let col = baseCol * (0.95 + 0.05 * frost);
     return Sample(col, baseRough, 0.5 + (frost - 0.5) * 0.04, 1.0, 0.0, m.pbr.z, glow, 0.0, vec2f(0.0));
   }
-  // 18: fiberglass_slide (molded dark glossy fiberglass pool water slide)
+  // 18: fiberglass_slide (smooth molded aqua-teal natatorium fiberglass slide gelcoat)
   if (preset == 18u) {
     let grain = pFbm(uv, vec2f(6.0, 2.0), seed, 3);
-    let seam = 1.0 - smoothstep(0.015, 0.032, abs(fract(uv.y * 0.45) - 0.5));
-    let col = baseCol * (0.92 + 0.16 * grain) * (1.0 - seam * 0.28);
-    let h = 0.55 + (grain - 0.5) * 0.04 + seam * 0.14;
-    let rough = clamp(baseRough + (grain - 0.5) * 0.05 + seam * 0.10, 0.06, 0.55);
-    return Sample(col, rough, h, 1.0 - seam * 0.2, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
+    let col = baseCol * (0.95 + 0.10 * grain);
+    let h = 0.52 + (grain - 0.5) * 0.025;
+    let rough = clamp(baseRough + (grain - 0.5) * 0.035, 0.08, 0.40);
+    return Sample(col, rough, h, 0.98, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
   // 19: corrugated_metal (vertical galvanized steel ribs — Aquila Sector right partition wall!)
   if (preset == 19u) {

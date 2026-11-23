@@ -239,10 +239,10 @@ export const MATERIAL_PRESETS = {
   },
   fiberglass_slide: {
     presetId: 18,
-    albedo: [0.032, 0.105, 0.095], // dark glossy molded fiberglass pool slide
-    roughness: 0.13,
+    albedo: [0.13, 0.38, 0.44], // clean molded aqua-teal natatorium fiberglass slide gelcoat
+    roughness: 0.16,
     metallic: 0.0,
-    coat: 0.96,
+    coat: 0.90,
     tileScale: 1.0,
     pomDepth: 0.001,
     emissive: [0, 0, 0],
