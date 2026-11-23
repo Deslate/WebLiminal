@@ -370,12 +370,51 @@ export class MapBuilder {
       else this.box([x0, yb, a], [x1, yt, b], m, { solid: isSolid, skipFaces });
     };
     const internalSkip = alongX ? ["nx", "px"] : ["nz", "pz"];
+    const hasTrim = Boolean(opts.trim);
+    const th = hasTrim ? (opts.trimHeight ?? 0.10) : 0;
+    const td = hasTrim ? (opts.trimDepth ?? 0.008) : 0;
+    const wrapEnds = opts.trimWrapEnds ?? [false, false];
+    const trimPriority = opts.trimPriority ?? 0.48;
+
+    const emitSolidSeg = (a, b) => {
+      if (b - a < 1e-4) return;
+      if (!hasTrim) {
+        emitBox(a, b, y0, y1, opts.solid !== false);
+        return;
+      }
+      // Start upper wall cleanly at y0 + th (ZERO buried wall triangles inside the baseboard!),
+      // wrap non-buried slim baseboard strips around exposed faces & jambs, and keep exact full-height collision.
+      emitBox(a, b, y0 + th, y1, false, mat, ["ny", "py"]);
+      const isStart = Math.abs(a - spanStart) < 1e-4;
+      const isEnd = Math.abs(b - spanEnd) < 1e-4;
+      const wrapA = !isStart || wrapEnds[0];
+      const wrapB = !isEnd || wrapEnds[1];
+      if (alongX) {
+        this.baseboardWrap([a, y0, z0], [b, y0 + th, z1], opts.trim, {
+          depth: td,
+          sides: { nz: true, pz: true, nx: wrapA, px: wrapB },
+          priority: trimPriority,
+        });
+        if (opts.solid !== false) {
+          this.solids.push({ kind: "box", minX: a, maxX: b, minY: y0, maxY: y1, minZ: z0, maxZ: z1 });
+        }
+      } else {
+        this.baseboardWrap([x0, y0, a], [x1, y0 + th, b], opts.trim, {
+          depth: td,
+          sides: { nx: true, px: true, nz: wrapA, pz: wrapB },
+          priority: trimPriority,
+        });
+        if (opts.solid !== false) {
+          this.solids.push({ kind: "box", minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: a, maxZ: b });
+        }
+      }
+    };
 
     for (const op of openings) {
       const a = Math.max(cursor, op.a);
       const b = Math.min(spanEnd, op.b);
       if (a > cursor + 1e-4) {
-        emitBox(cursor, a, y0, y1, opts.solid !== false);
+        emitSolidSeg(cursor, a);
       }
       // Sill below opening (for windows)
       if (op.bottom > y0 + 1e-4) {
@@ -388,33 +427,40 @@ export class MapBuilder {
       cursor = Math.max(cursor, b);
     }
     if (spanEnd > cursor + 1e-4) {
-      emitBox(cursor, spanEnd, y0, y1, opts.solid !== false);
+      emitSolidSeg(cursor, spanEnd);
     }
 
-    // Optional baseboard trim along solid segments.
-    if (opts.trim) {
-      const th = opts.trimHeight ?? 0.12;
-      const td = opts.trimDepth ?? 0.025;
-      let c = spanStart;
-      const trimSeg = (a, b) => {
-        if (b - a < 1e-4) return;
-        if (alongX) {
-          this.box([a, y0, z0 - td], [b, y0 + th, z0], opts.trim, { solid: false, skipFaces: ["pz", "ny"] });
-          this.box([a, y0, z1], [b, y0 + th, z1 + td], opts.trim, { solid: false, skipFaces: ["nz", "ny"] });
-        } else {
-          this.box([x0 - td, y0, a], [x0, y0 + th, b], opts.trim, { solid: false, skipFaces: ["px", "ny"] });
-          this.box([x1, y0, a], [x1 + td, y0 + th, b], opts.trim, { solid: false, skipFaces: ["nx", "ny"] });
-        }
-      };
-      for (const op of openings) {
-        if (op.bottom <= y0 + th) {
-          trimSeg(c, op.a);
-          c = Math.max(c, op.b);
-        }
-      }
-      trimSeg(c, spanEnd);
-    }
+    return this;
+  }
 
+  // Emits strictly exterior perimeter baseboard strips around wall/pier footprint [x0..x1] x [z0..z1]
+  // so 0% of the baseboard top lip (py) is buried beneath the upper wall (eliminates 1 px dark lightmap seam!).
+  baseboardWrap(lo, hi, matSpec, opts = {}) {
+    const [x0, y0, z0] = lo;
+    const [x1, y1, z1] = hi;
+    const td = opts.depth ?? 0.008;
+    const s = opts.sides ?? { nx: true, px: true, nz: true, pz: true };
+    const p = opts.priority ?? 0.48;
+    const extNx = s.nx ? td : 0;
+    const extPx = s.px ? td : 0;
+    if (s.nz) {
+      const skip = ["ny", "pz"];
+      if (!s.nx) skip.push("nx");
+      if (!s.px) skip.push("px");
+      this.box([x0 - extNx, y0, z0 - td], [x1 + extPx, y1, z0], matSpec, { solid: false, skipFaces: skip, priority: p });
+    }
+    if (s.pz) {
+      const skip = ["ny", "nz"];
+      if (!s.nx) skip.push("nx");
+      if (!s.px) skip.push("px");
+      this.box([x0 - extNx, y0, z1], [x1 + extPx, y1, z1 + td], matSpec, { solid: false, skipFaces: skip, priority: p });
+    }
+    if (s.nx) {
+      this.box([x0 - td, y0, z0], [x0, y1, z1], matSpec, { solid: false, skipFaces: ["ny", "px", "nz", "pz"], priority: p });
+    }
+    if (s.px) {
+      this.box([x1, y0, z0], [x1 + td, y1, z1], matSpec, { solid: false, skipFaces: ["ny", "nx", "nz", "pz"], priority: p });
+    }
     return this;
   }
 

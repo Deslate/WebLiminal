@@ -605,10 +605,10 @@ fn compositeSSR(@builtin(global_invocation_id) gid: vec3u) {
     occSum += dirOcc;
   }
   let rawContactAO = clamp(1.0 - (occSum / 6.0) * 0.78, 0.36, 1.0);
-  // Protect HDR emissive panels & keep Poolrooms contact shading crisp and light (no muddy CG AO halo!)
+  // Protect HDR emissive panels & keep contact shading subtle and physical (no black cartoon outlines on baseboards!)
   let cLuma = dot(finalCol, vec3f(0.2126, 0.7152, 0.0722));
   let emissiveKeep = smoothstep(2.2, 6.0, cLuma);
-  let aoStrength = select(0.90, 0.24, frame.waterInfo.y > 0.5) * (1.0 - emissiveKeep);
+  let aoStrength = select(0.30, 0.24, frame.waterInfo.y > 0.5) * (1.0 - emissiveKeep);
   finalCol *= mix(1.0, rawContactAO, aoStrength);
 
   textureStore(outHdr, px, vec4f(finalCol, 1.0));

@@ -803,6 +803,22 @@ fn evalAnalyticInterior(
     return InteriorEval(true, col, rough, coat, frame * 0.45, 1.0 - frame * 0.15, vec2f(0.0), glow);
   }
 
+  // --- Preset 7: Commercial Office Vinyl / Painted Wood Cove Baseboard (smooth satin finish, zero zebra stripes!) ---
+  if (preset == 7u) {
+    let microW = 1.0 - smoothstep(0.002, 0.015, fwMax);
+    let pW = vec2f(worldPos.x + worldPos.z, worldPos.y);
+    let macroTone = vFbm2(pW * vec2f(0.75, 4.0) + vec2f(seed * 1.7, 2.3));
+    let fineGrain = (vNoise2(vec2f(uv.x * 18.0, uv.y * 90.0) + vec2f(seed, 3.1)) - 0.5) * microW;
+    // Authentic 10 cm commercial cove base profile: delicate rounded top lip & gentle floor-line scuff/toe shadow
+    let topLip = smoothstep(0.086, 0.100, worldPos.y);
+    let toeShade = smoothstep(0.018, 0.000, worldPos.y);
+    var col = baseCol * (0.93 + 0.13 * macroTone) * (1.0 + fineGrain * 0.045);
+    col *= (1.0 - toeShade * 0.12) * (1.0 - topLip * 0.05);
+    let rough = clamp(baseRough + (0.5 - macroTone) * 0.06 + toeShade * 0.08, 0.36, 0.88);
+    let slope = vec2f(0.0, topLip * 0.18 * microW);
+    return InteriorEval(true, col, rough, m.pbr.z, 0.0, 1.0 - toeShade * 0.10, slope, 0.0);
+  }
+
   return InteriorEval(false, baseCol, baseRough, m.pbr.z, m.pbr.y, 1.0, vec2f(0.0), 0.0);
 }
 

@@ -36,7 +36,7 @@ export default {
     const H = 2.76;
     const W = 0.18;
     const TH = 0.10;
-    const TD = 0.018;
+    const TD = 0.008; // Authentic slim 8 mm commercial cove baseboard (never a protruding shelf!)
 
     // Four distinct authentic Backrooms wallpaper variants (3 original 2002 photo + 1 Baroque damask)
     const wpChevron = m.material({ base: "wallpaper_yellow", albedo: [0.88, 0.84, 0.55], seed: 5.0 });       // Variant A: fine 12 cm chevron
@@ -50,9 +50,10 @@ export default {
     const carpet = m.material({ base: "carpet_damp" });
     const carpetPit = m.material({ base: "carpet_damp", albedo: [0.54, 0.49, 0.31] });                       // Pitfalls slightly cooler tan carpet
     const ceiling = m.material({ base: "ceiling_grid" });
-    const trimTan = m.material({ base: "wood_trim" });                                                        // 2002 photo tan cove rail
-    const trimCream = m.material({ base: "plaster_warm", albedo: [0.83, 0.78, 0.46], roughness: 0.52 });     // Kane Pixels matching cream baseboard
-    const trimPit = m.material({ base: "plaster_warm", albedo: [0.76, 0.75, 0.58], roughness: 0.56 });
+    // Authentic muted commercial cove baseboards (slightly darker than walls, zero chalky glowing white!)
+    const trimTan = m.material({ base: "wood_trim", albedo: [0.48, 0.40, 0.24], roughness: 0.54, coat: 0.10 });
+    const trimCream = m.material({ base: "wood_trim", albedo: [0.58, 0.52, 0.30], roughness: 0.56, coat: 0.08 });
+    const trimPit = m.material({ base: "wood_trim", albedo: [0.52, 0.50, 0.37], roughness: 0.60, coat: 0.05 });
     const outletCream = m.material({ base: "plaster_warm", albedo: [0.80, 0.77, 0.59], roughness: 0.36, coat: 0.24 });
     const outletSlot = m.material({ base: "plaster_warm", albedo: [0.46, 0.43, 0.33], roughness: 0.65 });
     const darkFrame = m.material({ base: "dark_metal", albedo: [0.09, 0.08, 0.06], roughness: 0.65 });
@@ -85,32 +86,33 @@ export default {
       }
     };
 
-    // Helper: solid monumental wallpapered pier block with matching baseboards on all 4 sides
+    // Helper: solid monumental wallpapered pier starting cleanly at y=TH (ZERO buried wall or baseboard top-lip!)
     const pier = (x0, z0, x1, z1, mat = wpDamask, baseMat = trimCream) => {
-      m.box([x0, 0, z0], [x1, H, z1], mat, { skipFaces: ["ny", "py"] });
-      m.box([x0 - TD, 0, z0 - TD], [x1 + TD, TH, z1 + TD], baseMat, { solid: false, skipFaces: ["ny"], priority: 0.18 });
+      m.box([x0, TH, z0], [x1, H, z1], mat, { solid: false, skipFaces: ["ny", "py"] });
+      m.baseboardWrap([x0, 0, z0], [x1, TH, z1], baseMat, { depth: TD, priority: 0.48 });
+      m.solids.push({ kind: "box", minX: x0, maxX: x1, minY: 0, maxY: H, minZ: z0, maxZ: z1 });
     };
 
     // Unified world walkable bounds spanning all 4 connected chambers ([-16.80..16.80] x [-19.20..14.40])
     m.setWalkBounds(-16.80, -19.20, 16.80, 14.40, 0);
 
-    // Outer perimeter walls enclosing the full 33.6 x 33.6 m Backrooms complex
+    // Outer perimeter walls enclosing the full 33.6 x 33.6 m Backrooms complex (start at y=TH, zero buried strips!)
     // South wall (z = 14.40)
-    m.box([-16.80, 0, 14.40], [6.00, H, 14.60], wpChevron, { solid: false, skipFaces: ["ny", "py", "pz", "nx", "px"] });
-    m.box([6.00, 0, 14.40], [16.80, H, 14.60], wpPitWall, { solid: false, skipFaces: ["ny", "py", "pz", "nx", "px"] });
-    m.box([-16.80, 0, 14.40 - TD], [6.00, TH, 14.40], trimTan, { solid: false, skipFaces: ["ny", "pz"], priority: 0.15 });
-    m.box([6.00, 0, 14.40 - TD], [16.80, TH, 14.40], trimPit, { solid: false, skipFaces: ["ny", "pz"], priority: 0.15 });
+    m.box([-16.80, TH, 14.40], [6.00, H, 14.60], wpChevron, { solid: false, skipFaces: ["ny", "py", "pz", "nx", "px"] });
+    m.box([6.00, TH, 14.40], [16.80, H, 14.60], wpPitWall, { solid: false, skipFaces: ["ny", "py", "pz", "nx", "px"] });
+    m.box([-16.80, 0, 14.40 - TD], [6.00, TH, 14.40], trimTan, { solid: false, skipFaces: ["ny", "pz", "nx", "px"], priority: 0.45 });
+    m.box([6.00, 0, 14.40 - TD], [16.80, TH, 14.40], trimPit, { solid: false, skipFaces: ["ny", "pz", "nx", "px"], priority: 0.45 });
     // North wall (z = -19.20)
-    m.box([-16.80, 0, -19.40], [16.80, H, -19.20], wpDamask, { solid: false, skipFaces: ["ny", "py", "nz", "nx", "px"] });
-    m.box([-16.80, 0, -19.20], [16.80, TH, -19.20 + TD], trimCream, { solid: false, skipFaces: ["ny", "nz"], priority: 0.15 });
+    m.box([-16.80, TH, -19.40], [16.80, H, -19.20], wpDamask, { solid: false, skipFaces: ["ny", "py", "nz", "nx", "px"] });
+    m.box([-16.80, 0, -19.20], [16.80, TH, -19.20 + TD], trimCream, { solid: false, skipFaces: ["ny", "nz", "nx", "px"], priority: 0.45 });
     // West wall (x = -16.80)
-    m.box([-17.00, 0, -19.20], [-16.80, H, 14.40], wpDamask, { solid: false, skipFaces: ["ny", "py", "nx", "nz", "pz"] });
-    m.box([-16.80, 0, -19.20], [-16.80 + TD, TH, 14.40], trimCream, { solid: false, skipFaces: ["ny", "nx"], priority: 0.15 });
+    m.box([-17.00, TH, -19.20], [-16.80, H, 14.40], wpDamask, { solid: false, skipFaces: ["ny", "py", "nx", "nz", "pz"] });
+    m.box([-16.80, 0, -19.20], [-16.80 + TD, TH, 14.40], trimCream, { solid: false, skipFaces: ["ny", "nx", "nz", "pz"], priority: 0.45 });
     // East wall (x = 16.80)
-    m.box([16.80, 0, -19.20], [17.00, H, -4.80], wpDamask, { solid: false, skipFaces: ["ny", "py", "px", "nz", "pz"] });
-    m.box([16.80, 0, -4.80], [17.00, H, 14.40], wpPitWall, { solid: false, skipFaces: ["ny", "py", "px", "nz", "pz"] });
-    m.box([16.80 - TD, 0, -19.20], [16.80, TH, -4.80], trimCream, { solid: false, skipFaces: ["ny", "px"], priority: 0.15 });
-    m.box([16.80 - TD, 0, -4.80], [16.80, TH, 14.40], trimPit, { solid: false, skipFaces: ["ny", "px"], priority: 0.15 });
+    m.box([16.80, TH, -19.20], [17.00, H, -4.80], wpDamask, { solid: false, skipFaces: ["ny", "py", "px", "nz", "pz"] });
+    m.box([16.80, TH, -4.80], [17.00, H, 14.40], wpPitWall, { solid: false, skipFaces: ["ny", "py", "px", "nz", "pz"] });
+    m.box([16.80 - TD, 0, -19.20], [16.80, TH, -4.80], trimCream, { solid: false, skipFaces: ["ny", "px", "nz", "pz"], priority: 0.45 });
+    m.box([16.80 - TD, 0, -4.80], [16.80, TH, 14.40], trimPit, { solid: false, skipFaces: ["ny", "px", "nz", "pz"], priority: 0.45 });
 
     // Continuous floors for Chambers 1, 2, 3 (Chamber 4 Pitfalls builds its own cutout floor grid!)
     m.floor(-16.80, -19.20, 6.00, 14.40, 0, carpet, { padOuter: false });
@@ -154,22 +156,29 @@ export default {
     });
 
     // Iconic 2002 foreground framing wall (z = 7.40..7.58): left micro-dots, right fine chevron + cream duplex outlet
-    m.box([-6.00 + W, 0, 7.40], [-2.88, H, 7.40 + W], wpDots, { skipFaces: ["ny", "py", "nx"] });
-    m.box([-6.00 + W, 0, 7.40 - TD], [-2.88, TH, 7.40], trimTan, { solid: false, skipFaces: ["ny", "pz", "nx"], priority: 0.2 });
-    m.box([-6.00 + W, 0, 7.40 + W], [-2.88, TH, 7.40 + W + TD], trimTan, { solid: false, skipFaces: ["ny", "nz", "nx"], priority: 0.2 });
+    // Wrap baseboard cleanly around BOTH exposed archway jamb faces (+x on left wall, -x on right wall)!
+    m.box([-6.00 + W, TH, 7.40], [-2.88, H, 7.40 + W], wpDots, { solid: false, skipFaces: ["ny", "py", "nx"] });
+    m.baseboardWrap([-6.00 + W, 0, 7.40], [-2.88, TH, 7.40 + W], trimTan, {
+      depth: TD,
+      sides: { nz: true, pz: true, nx: false, px: true },
+      priority: 0.48,
+    });
+    m.solids.push({ kind: "box", minX: -6.00 + W, maxX: -2.88, minY: 0, maxY: H, minZ: 7.40, maxZ: 7.40 + W });
 
     m.wallWithDoorway([0.96, 0, 7.40], [6.00 - W, H, 7.40 + W], {
       material: wpChevron,
       trim: trimTan,
       trimHeight: TH,
       trimDepth: TD,
+      trimWrapEnds: [true, false],
       openings: [{ pos: 4.32, width: 2.16, top: 2.40 }],
     });
     wallOutlet(1.74, 7.40 + W, "+z");
 
     // Iconic freestanding open-ended midground partition (Variant C pinstripe, stops cleanly below ceiling!)
-    m.box([-3.72, 0, -0.10], [-0.36, 2.42, -0.10 + W], wpStripe, { skipFaces: ["ny"] });
-    m.box([-3.72 - TD, 0, -0.10 - TD], [-0.36 + TD, TH, -0.10 + W + TD], trimTan, { solid: false, skipFaces: ["ny"], priority: 0.2 });
+    m.box([-3.72, TH, -0.10], [-0.36, 2.42, -0.10 + W], wpStripe, { solid: false, skipFaces: ["ny"] });
+    m.baseboardWrap([-3.72, 0, -0.10], [-0.36, TH, -0.10 + W], trimTan, { depth: TD, priority: 0.48 });
+    m.solids.push({ kind: "box", minX: -3.72, maxX: -0.36, minY: 0, maxY: 2.42, minZ: -0.10, maxZ: -0.10 + W });
 
     // Chamber 1 fluorescent troffers (4 receding bright panels + foreground wash)
     troffer(-2, 16, { color: col4100, intensity: 19.0, material: lampMain });
@@ -290,8 +299,13 @@ export default {
     m.floor(6.00, -4.80, 16.80, -2.00, 0, carpetPit, { padOuter: false });
 
     // Iconic foreground left framing wall corner on the viewing ledge (matches image_4.png left foreground!)
-    m.box([6.00, 0, 9.80], [8.10, H, 10.70], wpPitWall, { skipFaces: ["ny", "py", "nx"] });
-    m.box([6.00, 0, 9.80 - TD], [8.10 + TD, TH, 10.70 + TD], trimPit, { solid: false, skipFaces: ["ny", "nx"], priority: 0.18 });
+    m.box([6.00, TH, 9.80], [8.10, H, 10.70], wpPitWall, { solid: false, skipFaces: ["ny", "py", "nx"] });
+    m.baseboardWrap([6.00, 0, 9.80], [8.10, TH, 10.70], trimPit, {
+      depth: TD,
+      sides: { nz: true, pz: true, nx: false, px: true },
+      priority: 0.48,
+    });
+    m.solids.push({ kind: "box", minX: 6.00, maxX: 8.10, minY: 0, maxY: H, minZ: 9.80, maxZ: 10.70 });
 
     // North Pitfalls wall (z = -4.98..-4.80) featuring the iconic lone dark-framed doorway into Monumental Pier Hall!
     m.wallWithDoorway([6.00, 0, -4.98], [16.80, H, -4.80], {
