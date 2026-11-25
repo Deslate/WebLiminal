@@ -681,14 +681,20 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
       let innerB = 1.0 - smoothstep(0.002, 0.006, abs(edgeM - 0.028));
       paper = mix(paper, vec3f(0.76, 0.58, 0.28), innerB * 0.55);
     }
-    let bristle = (pFbm(uv, vec2f(28.0, 56.0), seed + 13.7, 2) - 0.5) * 0.018;
-    let ink = 1.0 - smoothstep(0.000, 0.022, d + bristle);
-    let dryBrush = mix(0.84, 1.0, smoothstep(-0.022, -0.002, -d + bristle * 0.5));
-    let inkCol = vec3f(0.014, 0.012, 0.014) * (0.80 + 0.40 * fade);
-    let col = mix(paper, inkCol, ink * dryBrush * 0.97);
-    let h = 0.52 + (age - 0.5) * 0.10 - ink * 0.04 + crease * 0.05;
-    let rough = clamp(baseRough + (age - 0.5) * 0.08 - goldFleck * 0.32, 0.48, 0.96);
-    return Sample(col, rough, h, 0.94 + 0.06 * frayed, goldFleck * 0.35, m.pbr.z + goldFleck * 0.25, 0.0, 0.0, vec2f(0.0));
+    let bristle = (pFbm(uv, vec2f(28.0, 56.0), seed + 13.7, 2) - 0.5) * 0.020;
+    let ink = 1.0 - smoothstep(0.000, 0.025, d + bristle);
+    let inkWash = pFbm(uv, vec2f(10.0, 22.0), seed + 51.3, 3);
+    let inkGrain = pFbm(uv, vec2f(42.0, 76.0), seed + 63.7, 2);
+    // Aged, faded ink: weathered matte charcoal-plum ink with worn paper fibers showing through
+    let strokeCore = smoothstep(-0.004, 0.026, -d + bristle * 0.45);
+    let inkFadePatch = 0.62 + 0.38 * inkWash;
+    let inkOpacity = ink * mix(0.60, 0.89, strokeCore * inkFadePatch) * (0.80 + 0.20 * inkGrain);
+    let fadedInkCol = mix(vec3f(0.026, 0.016, 0.018), vec3f(0.068, 0.040, 0.042), fade * 0.52 + (1.0 - inkWash) * 0.48);
+    let col = mix(paper, fadedInkCol, clamp(inkOpacity, 0.0, 0.90));
+    let h = 0.52 + (age - 0.5) * 0.10 - ink * 0.02 + crease * 0.05;
+    let rough = clamp(mix(baseRough + (age - 0.5) * 0.08 - goldFleck * 0.32, 0.96, ink * 0.90), 0.54, 0.98);
+    let spec = (m.pbr.z + goldFleck * 0.25) * (1.0 - ink * 0.92);
+    return Sample(col, rough, h, 0.94 + 0.06 * frayed, goldFleck * 0.35 * (1.0 - ink * 0.80), spec, 0.0, 0.0, vec2f(0.0));
   }
   // 26: candle_wax (warm paraffin wax cylinder & melted drip base)
   if (preset == 26u) {

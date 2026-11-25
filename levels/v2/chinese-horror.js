@@ -216,17 +216,16 @@ export default {
       m.box([maxX + 0.05, wy - 0.02, winZ0 + wf], [maxX + 0.13, wy + 0.02, winZ1 - wf], trimWood, { solid: false, priority: 0.4 });
     }
 
-    // --- Heavy Dark Wooden Doorframe, Recessed Double Door Leaves & Iron Hardware ---
+    // --- Heavy Dark Wooden Doorframe (Top, Left & Right Only), Recessed Double Door Leaves & Iron Hardware ---
     const jf = 0.075;
     m.box([doorL, 0.0, minZ - 0.22], [doorL + jf, doorH, minZ + 0.02], trimWood, { solid: false, priority: 0.7 });
     m.box([doorR - jf, 0.0, minZ - 0.22], [doorR, doorH, minZ + 0.02], trimWood, { solid: false, priority: 0.7 });
     m.box([doorL - 0.02, doorH - 0.09, minZ - 0.22], [doorR + 0.02, doorH + 0.02, minZ + 0.025], trimWood, { solid: false, priority: 0.7 });
-    m.box([doorL, 0.0, minZ - 0.22], [doorR, 0.10, minZ + 0.03], trimWood, { solid: false, priority: 0.6 });
 
     const leafZ0 = minZ - 0.22;
     const leafZ1 = minZ - 0.14;
-    m.box([doorL + jf, 0.10, leafZ0], [doorMid - 0.008, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
-    m.box([doorMid + 0.008, 0.10, leafZ0], [doorR - jf, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
+    m.box([doorL + jf, 0.0, leafZ0], [doorMid - 0.008, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
+    m.box([doorMid + 0.008, 0.0, leafZ0], [doorR - jf, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
     // Small dark iron door lock hasp and ring pull at the center split.
     m.box([doorMid - 0.022, 1.32, leafZ1], [doorMid + 0.022, 1.42, leafZ1 + 0.024], darkIron, { solid: false, skipFaces: ["nz"], priority: 0.4 });
     m.box([doorMid - 0.018, 1.18, leafZ1], [doorMid + 0.018, 1.24, leafZ1 + 0.026], darkIron, { solid: false, skipFaces: ["nz"], priority: 0.4 });
