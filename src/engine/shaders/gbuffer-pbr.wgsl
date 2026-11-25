@@ -501,39 +501,12 @@ fn fsMain(i: VSOut) -> GBufferOut {
     rough = clamp(mix(0.60 + grit * 0.16, 0.16 + grit * 0.10, wet), 0.14, 0.92);
     coat = mix(0.14, 0.82, wet);
   } else if (preset == 24u) {
-    // Aged rural Chinese timber double doors: tactile vertical plank seams, mottled weathered ash
-    // lower grain catching cool moonlight, damp threshold grime, and deep soot toward the top rail.
+    // Aged dark Chinese timber planks: dry pale ash weathering on lower/mid boards, deep soot near top.
     let wUV = select(i.worldPos.xy, i.worldPos.zy, abs(Ngeom.x) > 0.7);
-    let wear = vFbm2(wUV * 3.4 + vec2f(9.1, 2.3));
-    let mottle = vFbm2(wUV * 7.8 - vec2f(4.2, 1.9));
-    let fiber = vFbm2(vec2f(wUV.x * 52.0, wUV.y * 4.8) + vec2f(2.7, 6.1));
-    let isDoorLeaf = m.extra.y > 0.1;
-    if (isDoorLeaf) {
-      let plankFreq = 7.6;
-      let pPhase = fract(wUV.x * plankFreq);
-      let pId = vHash2(vec2f(floor(wUV.x * plankFreq), 13.7));
-      let edgeD = min(pPhase, 1.0 - pPhase);
-      let groove = 1.0 - smoothstep(0.014, 0.048, edgeD);
-      let bevelDir = select(1.0, -1.0, pPhase < 0.5);
-      let bevelBand = smoothstep(0.015, 0.06, edgeD) * (1.0 - smoothstep(0.06, 0.14, edgeD));
-
-      let lowAsh = (0.42 + 0.58 * (wear * 0.6 + mottle * 0.4)) * (1.0 - smoothstep(1.06, 1.72, i.worldPos.y));
-      let boardTone = 0.76 + 0.44 * pId;
-      albedo *= boardTone * (0.76 + 0.48 * fiber);
-      albedo = mix(albedo, vec3f(0.24, 0.235, 0.225) * (0.68 + 0.58 * fiber) * (0.80 + 0.36 * mottle), lowAsh * 0.70);
-      albedo *= 1.0 - smoothstep(0.32, 0.10, i.worldPos.y) * (0.35 + 0.25 * mottle);
-      albedo *= 1.0 - smoothstep(1.24, 1.98, i.worldPos.y) * 0.86;
-      albedo *= 1.0 - groove * 0.74;
-
-      nXY = clamp(nXY * 0.42 + vec2f(bevelDir * bevelBand * 0.28 + (fiber - 0.5) * 0.18, (wear - 0.5) * 0.08), vec2f(-0.54), vec2f(0.54));
-      rough = clamp(mix(rough, 0.94, groove) + (fiber - 0.5) * 0.12, 0.52, 0.98);
-      texAO *= 1.0 - groove * 0.48;
-    } else {
-      let lowWear = smoothstep(0.42, 0.76, wear) * (1.0 - smoothstep(1.25, 2.05, i.worldPos.y));
-      albedo = mix(albedo, vec3f(0.14, 0.135, 0.13), lowWear * 0.34);
-      albedo *= 0.86 + 0.28 * fiber;
-      albedo *= 1.0 - smoothstep(1.40, 2.22, i.worldPos.y) * 0.65;
-    }
+    let wear = vFbm2(wUV * 3.6 + vec2f(9.1, 2.3));
+    let lowWear = smoothstep(0.40, 0.74, wear) * (1.0 - smoothstep(1.25, 2.05, i.worldPos.y));
+    albedo = mix(albedo, vec3f(0.21, 0.205, 0.195), lowWear * 0.54);
+    albedo *= 1.0 - smoothstep(1.30, 2.18, i.worldPos.y) * 0.74;
   } else if (preset == 25u) {
     // Fine Xuan-paper fiber, fold micro-relief, and aged soot patina matching upper doorway darkness.
     let fiber = vFbm2(i.worldPos.xy * 68.0 + vec2f(m.extra.z * 2.1, 4.7));

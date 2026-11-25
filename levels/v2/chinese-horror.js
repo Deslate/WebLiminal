@@ -80,13 +80,12 @@ export default {
       albedo: [0.105, 0.098, 0.090],
       roughness: 0.74,
       coat: 0.06,
-      wetness: 0.24,
       seed: 22.0,
     });
     const trimWood = m.material({
       base: "wood_plank_aged",
       name: "ch_trim_wood",
-      albedo: [0.036, 0.030, 0.025],
+      albedo: [0.036, 0.030, 0.024],
       roughness: 0.82,
       coat: 0.04,
       tileScale: 0.5,
