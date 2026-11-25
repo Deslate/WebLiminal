@@ -2,105 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#101514" />
-    <meta
-      name="description"
-      content="WebLiminal — lightweight WebGPU 3D framework for Backrooms and liminal spaces with startup procedural PBR synthesis and BVH path-traced global illumination."
-    />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23161d1c'/%3E%3Cpath d='M8 26V13a8 8 0 0 1 16 0v13' fill='none' stroke='%23cfe0d4' stroke-width='2.5'/%3E%3C/svg%3E"
-    />
-    <link rel="stylesheet" href="/src/v2-style.css" />
-    <title>WebLiminal v2 · Experimental Startup-Baked Framework</title>
+    <meta http-equiv="refresh" content="0;url=./" />
+    <title>Redirecting to WebLiminal…</title>
+    <script>
+      window.location.replace("./" + window.location.search + window.location.hash);
+    </script>
   </head>
   <body>
-    <main id="viewport" aria-label="WebLiminal v2 3D Viewport"></main>
-
-    <header class="hud-top">
-      <div class="hud-title">
-        <div class="hud-kicker" id="hud-subtitle">MONO-YELLOW</div>
-        <h1 id="hud-title">Level 0 · The Lobby</h1>
-        <div class="hud-bake" id="hud-bake">Initializing WebGPU…</div>
-      </div>
-      <div class="hud-right">
-        <a class="hud-btn" href="./" style="text-decoration:none">← Poolrooms v1 (Physical)</a>
-        <button class="hud-btn" id="btn-bgm" type="button" aria-pressed="false">♪ BGM: Off (N)</button>
-        <span class="hud-pill" id="hud-fps">-- FPS</span>
-        <button class="hud-btn" id="btn-inspector" type="button">Inspector (G)</button>
-      </div>
-    </header>
-
-    <aside id="inspector" hidden aria-label="Engine Inspector">
-      <div class="insp-head">
-        <div>
-          <small>WEBLIMINAL ENGINE</small>
-          <h2>Scene &amp; Renderer</h2>
-        </div>
-        <button class="insp-close" id="btn-close-insp" type="button" aria-label="Close">×</button>
-      </div>
-
-      <section class="insp-sec">
-        <h3>Levels (Keys 1–2)</h3>
-        <div class="insp-grid" id="level-buttons"></div>
-      </section>
-
-      <section class="insp-sec">
-        <h3>Viewpoints (Key B)</h3>
-        <div class="insp-grid" id="bookmark-buttons"></div>
-      </section>
-
-      <section class="insp-sec">
-        <h3>Audio &amp; Liminal BGM</h3>
-        <div class="insp-track" id="bgm-track">Ambient Only (Fluorescent Hum)</div>
-        <div class="insp-toggles">
-          <label><input id="chk-bgm" type="checkbox" /> Classic Backrooms BGM (N)</label>
-        </div>
-        <label class="insp-row">
-          <span>BGM Volume <output id="out-bgm-vol">72%</output></span>
-          <input id="rng-bgm-vol" type="range" min="0" max="1" step="0.02" value="0.72" />
-        </label>
-      </section>
-
-      <section class="insp-sec">
-        <h3>Rendering &amp; Camera</h3>
-        <label class="insp-row">
-          <span>Debug View</span>
-          <select id="sel-debug">
-            <option value="0">Final PBR + GI</option>
-            <option value="1">Baked GI Lightmap</option>
-            <option value="2">Procedural Albedo</option>
-            <option value="3">World Normals</option>
-            <option value="4">Roughness / AO / Coat</option>
-          </select>
-        </label>
-        <label class="insp-row">
-          <span>Exposure <output id="out-exposure">1.05</output></span>
-          <input id="rng-exposure" type="range" min="0.4" max="2.4" step="0.05" value="1.05" />
-        </label>
-        <div class="insp-toggles">
-          <label><input id="chk-vhs" type="checkbox" /> Found Footage Lens (V)</label>
-          <label><input id="chk-ssr" type="checkbox" checked /> Screen-Space Reflections</label>
-          <label><input id="chk-vol" type="checkbox" checked /> Volumetric Fog / Shafts</label>
-          <label><input id="chk-bloom" type="checkbox" checked /> HDR Bloom</label>
-        </div>
-      </section>
-
-      <section class="insp-sec">
-        <h3>Compiled Scene Telemetry</h3>
-        <dl class="insp-stats" id="scene-stats"></dl>
-      </section>
-    </aside>
-
-    <footer class="hud-bottom">
-      <div id="hud-controls">
-        WASD move · Drag or Double-click look · 1–2 levels · B viewpoints · V lens · N music · M audio · G inspector
-      </div>
-      <div id="audio-status" role="status"></div>
-    </footer>
-
-    <div id="fatal-error" hidden role="alert"></div>
-    <script type="module" src="/src/v2-main.js"></script>
+    <p>Redirecting to <a href="./">WebLiminal</a>…</p>
   </body>
 </html>
