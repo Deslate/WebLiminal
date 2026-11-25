@@ -77,15 +77,16 @@ export default {
     const doorWood = m.material({
       base: "wood_plank_aged",
       name: "ch_door_wood",
-      albedo: [0.105, 0.098, 0.090],
-      roughness: 0.74,
+      albedo: [0.115, 0.108, 0.100],
+      roughness: 0.76,
       coat: 0.06,
+      wetness: 0.28,
       seed: 22.0,
     });
     const trimWood = m.material({
       base: "wood_plank_aged",
       name: "ch_trim_wood",
-      albedo: [0.036, 0.030, 0.024],
+      albedo: [0.036, 0.030, 0.025],
       roughness: 0.82,
       coat: 0.04,
       tileScale: 0.5,
@@ -166,13 +167,14 @@ export default {
 
     // --- Left Corridor Wall & Concealed Exterior Moonlight Court ---
     // Hidden behind the protruding left partition wall (x in [-3.8, -0.88], z in [-0.36, 0.0]).
-    // Side opening (z in [-1.85, -0.60], y in [0.45, 2.08]) admits cool pale moonlight onto
-    // the far ash-grey wall, left couplet (富贵由天), and lower wooden door planks while keeping
-    // the ceiling, horizontal scroll, and right couplet (平安是福) in deep night shadow.
-    m.box([-1.38, 0.0, minZ], [-1.12, roof, -1.85], plasterAshFar, { solid: true, priority: 0.8 });
-    m.box([-1.38, 0.0, -0.60], [-1.12, roof, -0.36], plasterWarm, { solid: true, priority: 0.8 });
-    m.box([-1.38, 0.0, -1.85], [-1.12, 0.45, -0.60], plasterAshFar, { solid: true, priority: 0.8 });
-    m.box([-1.38, 2.08, -1.85], [-1.12, roof, -0.60], plasterAshFar, { solid: false, priority: 0.5 });
+    // Side opening (z in [-1.82, -0.84], y in [0.22, 1.82]) directs cool silver-white moonlight
+    // sharply onto the far ash-grey wall, left couplet (富贵由天), and lower/mid wooden door planks
+    // while the solid front wall (z in [-0.84, -0.36]) physically blocks spill onto the middle
+    // corridor floor—carving a deep dark shadow trough between the foreground candle and the far door.
+    m.box([-1.38, 0.0, minZ], [-1.12, roof, -1.82], plasterAshFar, { solid: true, priority: 0.8 });
+    m.box([-1.38, 0.0, -0.84], [-1.12, roof, -0.36], plasterWarm, { solid: true, priority: 0.8 });
+    m.box([-1.38, 0.0, -1.82], [-1.12, 0.22, -0.84], plasterAshFar, { solid: true, priority: 0.8 });
+    m.box([-1.38, 1.82, -1.82], [-1.12, roof, -0.84], plasterAshFar, { solid: false, priority: 0.5 });
     // Keep player inside main corridor (cannot step into the concealed moonlight shaft).
     m.solids.push({ minX: -1.38, maxX: -1.12, minZ, maxZ: 0.0, minY: 0.0, maxY: roof });
     // Concealed outer court back wall (butts cleanly behind protruding wall at z = -0.36).
@@ -215,26 +217,52 @@ export default {
       m.box([maxX + 0.05, wy - 0.02, winZ0 + wf], [maxX + 0.13, wy + 0.02, winZ1 - wf], trimWood, { solid: false, priority: 0.4 });
     }
 
-    // --- Heavy Dark Wooden Doorframe, Recessed Double Door Leaves & Iron Hardware ---
-    const jf = 0.075;
-    m.box([doorL, 0.0, minZ - 0.22], [doorL + jf, doorH, minZ + 0.02], trimWood, { solid: false, priority: 0.7 });
-    m.box([doorR - jf, 0.0, minZ - 0.22], [doorR, doorH, minZ + 0.02], trimWood, { solid: false, priority: 0.7 });
-    m.box([doorL - 0.02, doorH - 0.09, minZ - 0.22], [doorR + 0.02, doorH + 0.02, minZ + 0.025], trimWood, { solid: false, priority: 0.7 });
-    m.box([doorL, 0.0, minZ - 0.22], [doorR, 0.10, minZ + 0.03], trimWood, { solid: false, priority: 0.6 });
+    // --- Layered Heavy Dark Wooden Doorframe, Recessed Double Door Panels & Iron Hardware ---
+    const jf = 0.080;
+    // Outer main jambs, stepped inner reveal casing, overhanging weathered lintel cornice & threshold sill.
+    m.box([doorL, 0.0, minZ - 0.24], [doorL + jf, doorH, minZ + 0.032], trimWood, { solid: false, priority: 0.7 });
+    m.box([doorR - jf, 0.0, minZ - 0.24], [doorR, doorH, minZ + 0.032], trimWood, { solid: false, priority: 0.7 });
+    m.box([doorL - 0.05, doorH - 0.09, minZ - 0.24], [doorR + 0.05, doorH + 0.05, minZ + 0.055], trimWood, { solid: false, priority: 0.7 });
+    m.box([doorL + jf, 0.10, minZ - 0.16], [doorL + jf + 0.024, doorH - 0.09, minZ - 0.04], trimWood, { solid: false, priority: 0.4 });
+    m.box([doorR - jf - 0.024, 0.10, minZ - 0.16], [doorR - jf, doorH - 0.09, minZ - 0.04], trimWood, { solid: false, priority: 0.4 });
+    m.box([doorL - 0.01, 0.0, minZ - 0.24], [doorR + 0.01, 0.11, minZ + 0.045], trimWood, { solid: false, priority: 0.6 });
 
-    const leafZ0 = minZ - 0.22;
+    const leafZ0 = minZ - 0.23;
     const leafZ1 = minZ - 0.14;
-    m.box([doorL + jf, 0.10, leafZ0], [doorMid - 0.008, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
-    m.box([doorMid + 0.008, 0.10, leafZ0], [doorR - jf, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
-    // Horizontal timber crossbars across the door face.
-    m.box([doorL + jf, 0.94, leafZ1], [doorMid - 0.012, 1.01, leafZ1 + 0.022], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.6 });
-    m.box([doorMid + 0.012, 0.94, leafZ1], [doorR - jf, 1.01, leafZ1 + 0.022], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.6 });
-    // Small dark iron door lock hasp and ring pull at the center split.
-    m.box([doorMid - 0.022, 1.32, leafZ1], [doorMid + 0.022, 1.42, leafZ1 + 0.024], darkIron, { solid: false, skipFaces: ["nz"], priority: 0.4 });
-    m.box([doorMid - 0.018, 1.18, leafZ1], [doorMid + 0.018, 1.24, leafZ1 + 0.026], darkIron, { solid: false, skipFaces: ["nz"], priority: 0.4 });
+    m.box([doorL + jf, 0.11, leafZ0], [doorMid - 0.008, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
+    m.box([doorMid + 0.008, 0.11, leafZ0], [doorR - jf, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
 
-    // --- Faded Red Paper Spring Festival Couplets, Horizontal Scroll & Door Talismans ---
-    // Mapped cleanly with UV [0, 1]^2 onto front-facing quads slightly offset off the plaster/door.
+    // Multi-layered frame-and-panel timber rails, vertical stiles & lower vertical slat battens
+    // so raking cool moonlight carves crisp 3D depth across the double doors!
+    const addLeafFraming = (lx0, lx1) => {
+      // Top rail, upper-mid rail, heavy waist crossbar, and lower kick rail
+      m.box([lx0, 2.02, leafZ1], [lx1, 2.13, leafZ1 + 0.024], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.4 });
+      m.box([lx0, 1.66, leafZ1], [lx1, 1.72, leafZ1 + 0.018], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.4 });
+      m.box([lx0, 0.94, leafZ1], [lx1, 1.03, leafZ1 + 0.028], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.6 });
+      m.box([lx0, 0.11, leafZ1], [lx1, 0.20, leafZ1 + 0.022], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.4 });
+      // Outer and inner vertical stiles
+      m.box([lx0, 0.20, leafZ1], [lx0 + 0.045, 2.02, leafZ1 + 0.020], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.4 });
+      m.box([lx1 - 0.045, 0.20, leafZ1], [lx1, 2.02, leafZ1 + 0.020], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.4 });
+      // Tactile raised vertical timber battens across the lower door panel (catching silver sidelight)
+      const innerSpan = lx1 - lx0 - 0.10;
+      const ribs = 4;
+      for (let ri = 0; ri < ribs; ri++) {
+        const rx = lx0 + 0.05 + ((ri + 0.5) / ribs) * innerSpan;
+        m.box([rx - 0.018, 0.20, leafZ1], [rx + 0.018, 0.94, leafZ1 + 0.012], doorWood, {
+          solid: false,
+          skipFaces: ["nz", "py", "ny"],
+          priority: 0.35,
+        });
+      }
+    };
+    addLeafFraming(doorL + jf + 0.004, doorMid - 0.012);
+    addLeafFraming(doorMid + 0.012, doorR - jf - 0.004);
+
+    // Small dark iron door lock hasp, pull plates & center seam strip.
+    m.box([doorMid - 0.024, 1.32, leafZ1], [doorMid + 0.024, 1.44, leafZ1 + 0.028], darkIron, { solid: false, skipFaces: ["nz"], priority: 0.4 });
+    m.box([doorMid - 0.018, 1.17, leafZ1], [doorMid + 0.018, 1.24, leafZ1 + 0.030], darkIron, { solid: false, skipFaces: ["nz"], priority: 0.4 });
+
+    // --- Aged Patterned Red Paper Spring Festival Couplets, Horizontal Scroll & Door Talismans ---
     const addPaperPanel = (x0, y0, x1, y1, z, mat) => {
       m.addQuad([x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z], mat, {
         u0: 0, v0: 0, u1: 1, v1: 1, priority: 1.2,
@@ -242,22 +270,22 @@ export default {
     };
     addPaperPanel(-0.60, 0.44, -0.30, 1.98, minZ + 0.006, coupletLeft);              // Left couplet (富贵由天)
     addPaperPanel(1.14, 0.44, 1.44, 1.98, minZ + 0.006, coupletRight);               // Right couplet (平安是福)
-    addPaperPanel(-0.08, 2.31, 0.92, 2.66, minZ + 0.006, coupletScroll);             // Horizontal scroll above lintel
-    addPaperPanel(doorMid - 0.34, 1.12, doorMid - 0.13, 1.60, leafZ1 + 0.006, talismanLeft);  // Left door talisman
-    addPaperPanel(doorMid + 0.13, 1.12, doorMid + 0.34, 1.60, leafZ1 + 0.006, talismanRight); // Right door talisman
+    addPaperPanel(-0.08, 2.34, 0.92, 2.68, minZ + 0.006, coupletScroll);             // Horizontal scroll above lintel
+    addPaperPanel(doorMid - 0.34, 1.12, doorMid - 0.13, 1.60, leafZ1 + 0.008, talismanLeft);  // Left door talisman
+    addPaperPanel(doorMid + 0.13, 1.12, doorMid + 0.34, 1.60, leafZ1 + 0.008, talismanRight); // Right door talisman
 
-    // --- Floor Candle, Tapered Teardrop Flame, Stepped Offering Bowl & Vigil Ember ---
-    const cx = -0.44;
-    const cz = 0.28;
-    // Melted wax puddle base + slender cream paraffin candle cylinder.
-    m.cylinder(cx, cz, 0.0, 0.010, 0.055, candleWax, { segments: 18, caps: true, solid: false, priority: 0.4 });
-    m.cylinder(cx, cz, 0.010, 0.155, 0.020, candleWax, { segments: 18, caps: true, solid: false, priority: 0.4 });
+    // --- Foreground Floor Candle, Tapered Teardrop Flame & Smooth Ceramic Offering Bowl ---
+    const cx = -0.45;
+    const cz = 0.34;
+    // Melted wax puddle base + low stubby cream paraffin vigil candle cylinder.
+    m.cylinder(cx, cz, 0.0, 0.010, 0.056, candleWax, { segments: 18, caps: true, solid: false, priority: 0.4 });
+    m.cylinder(cx, cz, 0.010, 0.120, 0.020, candleWax, { segments: 18, caps: true, solid: false, priority: 0.4 });
     // Tapered incandescent teardrop candle flame (3-ring revolved profile).
     const flameRings = [
-      { y: 0.157, r: 0.0055 },
-      { y: 0.172, r: 0.0115 },
-      { y: 0.194, r: 0.0078 },
-      { y: 0.216, r: 0.0012 },
+      { y: 0.122, r: 0.0055 },
+      { y: 0.137, r: 0.0115 },
+      { y: 0.158, r: 0.0076 },
+      { y: 0.178, r: 0.0012 },
     ];
     const fSegs = 12;
     const flameChart = m._beginChart(0.08, 0.08, 0.15);
@@ -374,35 +402,54 @@ export default {
     m.box([1.14, 0.0, minZ + 0.04], [1.52, 0.30, minZ + 0.40], trimWood, { solid: true, priority: 0.5 });
     m.cylinder(1.34, minZ + 0.22, 0.30, 0.50, 0.06, charredCeramic, { segments: 16, caps: true, solid: false, priority: 0.3 });
 
-    // --- Physically Placed Lighting ---
-    // 1. Primary floor candle point light (omnidirectional, soft flame penumbra, organic flicker).
-    m.pointLight([cx, 0.205, cz], {
-      color: [1.0, 0.50, 0.14],
-      intensity: 3.65,
-      radius: 0.020,
-      shadowOffset: 0.048,
+    // --- Physically Placed Multi-Layer Lighting ---
+    // 1. Low foreground floor candle point light: intense warm golden pool around the bowl,
+    //    candle, and lower-left plaster wall, falling off rapidly before the mid-corridor so a
+    //    deep dark shadow gulf naturally separates the foreground candle from the moonlit doorway.
+    m.pointLight([cx, 0.162, cz], {
+      color: [1.0, 0.52, 0.15],
+      intensity: 4.15,
+      radius: 0.018,
+      shadowOffset: 0.046,
       flickerAmp: 0.055,
       flickerFreq: 7.3,
       flickerPhase: 0.4,
     });
-    // 2. Concealed cool pale moonlight portal inside the hidden left exterior court.
-    //    Positioned behind the left wall opening (z in [-1.85, -0.60], y in [0.45, 2.08])
-    //    so cool moonlight washes onto the far ash-grey wall, left couplet (富贵由天), and
-    //    lower weathered wooden door planks while leaving the ceiling, horizontal scroll,
-    //    and right couplet (平安是福) in deep night shadow.
-    const moonCenter = [-1.62, 1.54, -1.24];
-    const uDir = [0.46, 0.0, 0.888];
-    const vDir = [-0.48, -0.84, 0.25];
-    const hw = 0.44;
-    const hh = 0.42;
-    const p0 = [
-      moonCenter[0] - uDir[0] * hw - vDir[0] * hh,
-      moonCenter[1] - uDir[1] * hw - vDir[1] * hh,
-      moonCenter[2] - uDir[2] * hw - vDir[2] * hh,
-    ];
-    const p1 = [p0[0] + uDir[0] * hw * 2, p0[1] + uDir[1] * hw * 2, p0[2] + uDir[2] * hw * 2];
-    const p3 = [p0[0] + vDir[0] * hh * 2, p0[1] + vDir[1] * hh * 2, p0[2] + vDir[2] * hh * 2];
-    m.addAreaLight(p0, p1, p3, [0.84, 0.90, 1.0], 3.4, { kind: 1 });
+    // 2. Primary concealed cool silver-white moonlight portal inside the hidden left exterior court.
+    //    Shoots through the sculpted opening (z in [-1.82, -0.84], y in [0.22, 1.82]) to cast a
+    //    bright, crisp cool light band across the left couplet (富贵由天), doorframe surround,
+    //    and lower/mid vertical door planks while leaving the middle corridor floor, ceiling,
+    //    horizontal scroll (横批), and right couplet (平安是福) in dramatic night shadow.
+    const addOrientedPortal = (center, uDir, vDir, hw, hh, color, intensity) => {
+      const p0 = [
+        center[0] - uDir[0] * hw - vDir[0] * hh,
+        center[1] - uDir[1] * hw - vDir[1] * hh,
+        center[2] - uDir[2] * hw - vDir[2] * hh,
+      ];
+      const p1 = [p0[0] + uDir[0] * hw * 2, p0[1] + uDir[1] * hw * 2, p0[2] + uDir[2] * hw * 2];
+      const p3 = [p0[0] + vDir[0] * hh * 2, p0[1] + vDir[1] * hh * 2, p0[2] + vDir[2] * hh * 2];
+      m.addAreaLight(p0, p1, p3, color, intensity, { kind: 1 });
+    };
+    addOrientedPortal(
+      [-1.68, 1.38, -1.32],
+      [0.46, 0.0, 0.888],
+      [-0.48, -0.84, 0.25],
+      0.34,
+      0.38,
+      [0.80, 0.89, 1.0],
+      14.5,
+    );
+    // 3. Secondary high-left exterior skylight rim grazing down through the left opening onto
+    //    the far-left ash wall and mid-lower double doors for rich layered doorway contrast.
+    addOrientedPortal(
+      [-1.74, 2.26, -1.56],
+      [0.35, 0.0, 0.937],
+      [-0.55, -0.80, 0.21],
+      0.28,
+      0.26,
+      [0.76, 0.86, 1.0],
+      6.5,
+    );
 
     // --- Curated Viewpoints ---
     m.bookmark("Candlelit Threshold", { x: -0.76, y: 0.96, z: 3.65, yaw: 0.0, pitch: -0.04 });
