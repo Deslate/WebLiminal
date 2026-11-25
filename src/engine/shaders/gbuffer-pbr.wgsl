@@ -501,11 +501,14 @@ fn fsMain(i: VSOut) -> GBufferOut {
     rough = clamp(mix(0.60 + grit * 0.16, 0.16 + grit * 0.10, wet), 0.14, 0.92);
     coat = mix(0.14, 0.82, wet);
   } else if (preset == 24u) {
-    // Aged dark Chinese timber planks: dry pale ash weathering on lower/mid boards, deep soot near top.
+    // Aged dark Chinese timber planks (e892e7d): subtle dry weathering on lower door leaves,
+    // keeping trim/crossbar authentic dark wood and deep soot toward the top rail.
     let wUV = select(i.worldPos.xy, i.worldPos.zy, abs(Ngeom.x) > 0.7);
     let wear = vFbm2(wUV * 3.6 + vec2f(9.1, 2.3));
-    let lowWear = smoothstep(0.40, 0.74, wear) * (1.0 - smoothstep(1.25, 2.05, i.worldPos.y));
-    albedo = mix(albedo, vec3f(0.21, 0.205, 0.195), lowWear * 0.54);
+    if (m.extra.y > 0.05) {
+      let lowWear = smoothstep(0.42, 0.78, wear) * (1.0 - smoothstep(1.25, 2.05, i.worldPos.y));
+      albedo = mix(albedo, vec3f(0.165, 0.155, 0.142), lowWear * 0.36);
+    }
     albedo *= 1.0 - smoothstep(1.30, 2.18, i.worldPos.y) * 0.74;
   } else if (preset == 25u) {
     // Fine Xuan-paper fiber, fold micro-relief, and aged soot patina matching upper doorway darkness.
