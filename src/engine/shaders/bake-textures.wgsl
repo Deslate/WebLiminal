@@ -517,27 +517,27 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let h = clamp(0.25 + leaf * 0.45 + fine * 0.25, 0.0, 1.0);
     return Sample(col, clamp(baseRough - sunlit * 0.16, 0.38, 0.88), h, 0.68 + 0.32 * sunlit, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
-  // 22: plaster_mud (dilapidated, pitted rural mud-plaster with intact aged limewash patches & sunken mortar craters)
+  // 22: plaster_mud (aged rural mud-plaster with calm limewash surface & sparse subtle mortar pits)
   if (preset == 22u) {
     let warp = vec2f(
       pFbm(uv, vec2f(4.0), seed + 1.9, 3) - 0.5,
       pFbm(uv, vec2f(4.0), seed + 8.3, 3) - 0.5,
-    ) * 0.10;
+    ) * 0.08;
     let uq = fract(uv + warp);
     let trowel = pFbm(uv, vec2f(3.0), seed, 4);
-    let grit = pFbm(uv, vec2f(24.0), seed + 5.7, 3);
+    let grit = pFbm(uv, vec2f(22.0), seed + 5.7, 3);
     let fine = pNoise(uv, vec2f(64.0), seed + 12.1);
-    let crater1 = smoothstep(0.57, 0.82, pFbm(uq, vec2f(6.0), seed + 17.4, 3));
-    let crater2 = smoothstep(0.60, 0.85, pFbm(uq, vec2f(14.0), seed + 23.8, 3));
-    let pock = smoothstep(0.74, 0.92, pNoise(uv, vec2f(36.0), seed + 31.2));
-    let pit = clamp(crater1 * 0.58 + crater2 * 0.42 + pock * 0.28, 0.0, 1.0);
+    let crater1 = smoothstep(0.67, 0.88, pFbm(uq, vec2f(5.0), seed + 17.4, 3));
+    let crater2 = smoothstep(0.70, 0.90, pFbm(uq, vec2f(12.0), seed + 23.8, 3));
+    let pock = smoothstep(0.80, 0.95, pNoise(uv, vec2f(32.0), seed + 31.2));
+    let pit = clamp(crater1 * 0.55 + crater2 * 0.38 + pock * 0.25, 0.0, 1.0);
 
-    let h = clamp(0.66 + (trowel - 0.5) * 0.20 + (grit - 0.5) * 0.10 + (fine - 0.5) * 0.05 - crater1 * 0.28 - crater2 * 0.20 - pock * 0.16, 0.04, 0.98);
-    var col = baseCol * (0.86 + 0.24 * trowel) * (0.91 + 0.18 * grit) * (0.95 + 0.10 * fine);
-    let rawMud = baseCol * vec3f(0.60, 0.55, 0.49) * (0.80 + 0.40 * grit);
-    col = mix(col, rawMud, pit * 0.60);
-    let ao = clamp(0.94 + 0.06 * trowel - crater1 * 0.26 - crater2 * 0.20 - pock * 0.16, 0.38, 1.0);
-    let rough = clamp(baseRough + pit * 0.14 + (grit - 0.5) * 0.10, 0.78, 0.99);
+    let h = clamp(0.62 + (trowel - 0.5) * 0.14 + (grit - 0.5) * 0.07 + (fine - 0.5) * 0.04 - crater1 * 0.18 - crater2 * 0.13 - pock * 0.10, 0.10, 0.96);
+    var col = baseCol * (0.90 + 0.18 * trowel) * (0.94 + 0.12 * grit) * (0.96 + 0.08 * fine);
+    let rawMud = baseCol * vec3f(0.68, 0.64, 0.59) * (0.86 + 0.28 * grit);
+    col = mix(col, rawMud, pit * 0.36);
+    let ao = clamp(0.95 + 0.05 * trowel - crater1 * 0.16 - crater2 * 0.12 - pock * 0.10, 0.62, 1.0);
+    let rough = clamp(baseRough + pit * 0.10 + (grit - 0.5) * 0.08, 0.78, 0.98);
     return Sample(col, rough, h, ao, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
   // 23: stone_damp (dark gritty uneven stone floor base; glossy wet puddles added analytically in world space)
