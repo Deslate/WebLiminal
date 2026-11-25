@@ -517,13 +517,28 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let h = clamp(0.25 + leaf * 0.45 + fine * 0.25, 0.0, 1.0);
     return Sample(col, clamp(baseRough - sunlit * 0.16, 0.38, 0.88), h, 0.68 + 0.32 * sunlit, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
-  // 22: plaster_mud (rural aged mud-plaster wall base; damp flaking stucco added analytically in world space)
+  // 22: plaster_mud (dilapidated, pitted rural mud-plaster with intact aged limewash patches & sunken mortar craters)
   if (preset == 22u) {
-    let trowel = pFbm(uv, vec2f(4.0), seed, 4);
-    let grit = pFbm(uv, vec2f(20.0), seed + 5.7, 3);
-    let h = 0.52 + (trowel - 0.5) * 0.22 + (grit - 0.5) * 0.12;
-    let col = baseCol * (0.88 + 0.22 * trowel) * (0.94 + 0.12 * grit);
-    return Sample(col, clamp(baseRough + (grit - 0.5) * 0.10, 0.72, 0.98), h, 0.90 + 0.10 * trowel, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
+    let warp = vec2f(
+      pFbm(uv, vec2f(4.0), seed + 1.9, 3) - 0.5,
+      pFbm(uv, vec2f(4.0), seed + 8.3, 3) - 0.5,
+    ) * 0.10;
+    let uq = fract(uv + warp);
+    let trowel = pFbm(uv, vec2f(3.0), seed, 4);
+    let grit = pFbm(uv, vec2f(24.0), seed + 5.7, 3);
+    let fine = pNoise(uv, vec2f(64.0), seed + 12.1);
+    let crater1 = smoothstep(0.57, 0.82, pFbm(uq, vec2f(6.0), seed + 17.4, 3));
+    let crater2 = smoothstep(0.60, 0.85, pFbm(uq, vec2f(14.0), seed + 23.8, 3));
+    let pock = smoothstep(0.74, 0.92, pNoise(uv, vec2f(36.0), seed + 31.2));
+    let pit = clamp(crater1 * 0.58 + crater2 * 0.42 + pock * 0.28, 0.0, 1.0);
+
+    let h = clamp(0.66 + (trowel - 0.5) * 0.20 + (grit - 0.5) * 0.10 + (fine - 0.5) * 0.05 - crater1 * 0.28 - crater2 * 0.20 - pock * 0.16, 0.04, 0.98);
+    var col = baseCol * (0.86 + 0.24 * trowel) * (0.91 + 0.18 * grit) * (0.95 + 0.10 * fine);
+    let rawMud = baseCol * vec3f(0.60, 0.55, 0.49) * (0.80 + 0.40 * grit);
+    col = mix(col, rawMud, pit * 0.60);
+    let ao = clamp(0.94 + 0.06 * trowel - crater1 * 0.26 - crater2 * 0.20 - pock * 0.16, 0.38, 1.0);
+    let rough = clamp(baseRough + pit * 0.14 + (grit - 0.5) * 0.10, 0.78, 0.99);
+    return Sample(col, rough, h, ao, 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
   // 23: stone_damp (dark gritty uneven stone floor base; glossy wet puddles added analytically in world space)
   if (preset == 23u) {
@@ -536,21 +551,30 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let rough = clamp(baseRough + (grit - 0.5) * 0.18 + pit * 0.16, 0.30, 0.96);
     return Sample(col, rough, h, clamp(0.84 + 0.16 * broad - pit * 0.28, 0.35, 1.0), 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
-  // 24: wood_plank_aged (aged charcoal-timber vertical double-door planks with grain & plank joints)
+  // 24: wood_plank_aged (dusty, grimy, rough-grained aged rural timber with faded subtle board seams)
   if (preset == 24u) {
-    let grain = pFbm(uv, vec2f(28.0, 3.0), seed, 4);
-    let fine = pFbm(uv, vec2f(72.0, 8.0), seed + 6.3, 3);
-    let plankPhase = fract(uv.x * 7.8);
+    let grain = pFbm(uv, vec2f(22.0, 2.5), seed, 4);
+    let roughFiber = pFbm(uv, vec2f(64.0, 7.0), seed + 6.3, 3);
+    let grime = pFbm(uv, vec2f(6.0, 4.0), seed + 13.7, 4);
+    let dust = smoothstep(0.42, 0.80, pFbm(uv, vec2f(10.0, 8.0), seed + 21.4, 3));
+    let pock = smoothstep(0.72, 0.92, pNoise(uv, vec2f(44.0, 28.0), seed + 31.1));
+    // Soft, understated board seams (never harsh artificial vertical grid bars)
+    let plankPhase = fract(uv.x * 6.0);
     let edgeD = min(plankPhase, 1.0 - plankPhase);
-    let seam = 1.0 - smoothstep(0.0, 0.048, edgeD);
-    let plankId = hash21(vec2f(floor(uv.x * 7.8), seed));
-    let col = baseCol * (0.72 + 0.52 * grain) * (0.90 + 0.20 * fine) * (0.88 + 0.24 * plankId) * (1.0 - seam * 0.80);
-    let h = clamp(0.56 + (grain - 0.5) * 0.18 + (fine - 0.5) * 0.08 - seam * 0.46, 0.0, 1.0);
-    let rough = clamp(baseRough + (grain - 0.5) * 0.12 + seam * 0.18, 0.45, 0.96);
-    return Sample(col, rough, h, clamp(0.92 + 0.08 * grain - seam * 0.45, 0.28, 1.0), 0.0, m.pbr.z * (1.0 - seam), 0.0, m.extra.y, vec2f(0.0));
+    let seam = (1.0 - smoothstep(0.0, 0.032, edgeD)) * 0.22;
+    let plankId = hash21(vec2f(floor(uv.x * 6.0), seed));
+
+    var col = baseCol * (0.68 + 0.56 * grain) * (0.84 + 0.32 * roughFiber) * (0.93 + 0.14 * plankId);
+    col *= (0.76 + 0.42 * grime) * (1.0 - seam) * (1.0 - pock * 0.32);
+    // Accumulated grey dust & dirty weathered surface film
+    col = mix(col, vec3f(0.145, 0.140, 0.132) * (0.75 + 0.48 * roughFiber), dust * 0.42);
+    let h = clamp(0.56 + (grain - 0.5) * 0.28 + (roughFiber - 0.5) * 0.16 + (grime - 0.5) * 0.14 - seam * 0.30 - pock * 0.24, 0.04, 0.98);
+    let rough = clamp(baseRough + dust * 0.16 + (roughFiber - 0.5) * 0.14 + pock * 0.12, 0.68, 0.99);
+    let ao = clamp(0.88 + 0.12 * grain - seam * 0.24 - pock * 0.28 - (1.0 - grime) * 0.18, 0.32, 1.0);
+    return Sample(col, rough, h, ao, 0.0, m.pbr.z * (1.0 - dust * 0.8), 0.0, m.extra.y, vec2f(0.0));
   }
   // 25: couplet_paper (aged Chinese Spring Festival couplets with ornate fretwork border, auspicious floral/cloud brocade & gold flecks)
-  // Variant selected by seed: 1=left(富贵由天), 2=right(平安是福), 3=horizontal scroll, 4=left talisman, 5=right talisman.
+  // Variant selected by seed: 1=left(富贵由天), 2=right(平安是福), 3=horizontal scroll, 4=left blank red door paper, 5=right blank red door paper.
   if (preset == 25u) {
     let age = pFbm(uv, vec2f(4.0, 8.0), seed + 3.1, 4);
     let fade = pFbm(uv, vec2f(12.0, 18.0), seed + 7.4, 3);
@@ -598,7 +622,7 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
 
     // Subtle aged horizontal paper fold creases between characters
     let foldY = abs(fract(uv.y * 4.0) - 0.0);
-    let crease = (1.0 - smoothstep(0.0, 0.022, min(foldY, 1.0 - foldY))) * select(1.0, 0.0, isScroll);
+    let crease = (1.0 - smoothstep(0.0, 0.022, min(foldY, 1.0 - foldY))) * select(1.0, 0.0, isScroll || isTalisman);
     paper = mix(paper, paper * 1.18 + vec3f(0.05, 0.03, 0.03), crease * 0.28);
 
     // Frayed dark damp border trim
@@ -653,10 +677,9 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
         }
       }
     } else {
-      // Ornate yellow-gold inner frame & seal medallion on the two small door talismans
+      // Blank aged patterned red Xuan paper panels on the two door leaves (no symbols or writing)
       let innerB = 1.0 - smoothstep(0.002, 0.006, abs(edgeM - 0.028));
-      paper = mix(paper, vec3f(0.76, 0.58, 0.28), innerB * 0.62);
-      d = talismanCursiveDist(uv + handWarp * 0.45, seed);
+      paper = mix(paper, vec3f(0.76, 0.58, 0.28), innerB * 0.55);
     }
     let bristle = (pFbm(uv, vec2f(28.0, 56.0), seed + 13.7, 2) - 0.5) * 0.018;
     let ink = 1.0 - smoothstep(0.000, 0.022, d + bristle);

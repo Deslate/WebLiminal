@@ -99,10 +99,6 @@ fn evalSunVisibility1(p: vec3f, nGeom: vec3f) -> f32 {
   return select(0.0, 1.0, !traceShadowPBR(origin, sunDir, 160.0));
 }
 
-fn plasterFlakeAt(q: vec2f) -> f32 {
-  return vFbm2(q * 4.2 + vec2f(11.4, 2.8)) * 0.72 + vFbm2(q * 24.0 - vec2f(3.2, 6.4)) * 0.28;
-}
-
 // --- Sky Backdrop Pass ---
 struct SkyVSOut {
   @builtin(position) clipPos: vec4f,
@@ -405,60 +401,46 @@ fn fsMain(i: VSOut) -> GBufferOut {
     texAO *= 0.78 + 0.22 * contour;
     rough = clamp(rough - contour * 0.12, 0.68, 0.98);
   } else if (preset == 22u) {
-    // Rural aged mud-plaster wall: softly graded organic limewash weathering, damp seepage,
-    // mildew blotches, and gradual multi-scale crumbling near the floor (zero sharp stencil edges!).
+    // Dilapidated, pitted rural mud-plaster wall (破败、坑坑洼洼): full startup-baked crater/pockmark
+    // normal & AO map layered with lightweight world-space non-repeating crumbling hollows & damp stains.
     let wUV = select(i.worldPos.xy, i.worldPos.zy, abs(Ngeom.x) > 0.7);
     let broad = vFbm2(wUV * 0.85 + vec2f(2.3, 1.1));
     let mottle = vFbm2(wUV * 2.6 - vec2f(5.4, 3.2));
     let streak = vFbm2(vec2f(wUV.x * 2.4, wUV.y * 0.48) + vec2f(8.1, 4.7));
     let fineSand = vFbm2(wUV * 36.0 - vec2f(3.7, 6.2));
     let microSand = vFbm2(wUV * 88.0 + vec2f(1.4, 5.1));
-    albedo *= (0.72 + 0.44 * broad) * (0.86 + 0.26 * mottle)
-      * (1.0 - smoothstep(0.48, 0.84, streak) * 0.38)
-      * (0.91 + 0.18 * (fineSand * 0.65 + microSand * 0.35));
+    albedo *= (0.72 + 0.44 * broad) * (0.84 + 0.30 * mottle)
+      * (1.0 - smoothstep(0.46, 0.84, streak) * 0.40)
+      * (0.88 + 0.24 * (fineSand * 0.60 + microSand * 0.40));
 
     let dampAmt = clamp(m.extra.y, 0.0, 1.0);
-    // Rising damp & smoky corner mildew blotches near the floor, fading organically upward.
-    let dampBand = (1.0 - smoothstep(0.02, 0.62, i.worldPos.y + (broad - 0.5) * 0.34)) * max(dampAmt, 0.46);
-    let mildew = smoothstep(0.40, 0.82, vFbm2(wUV * 1.8 + vec2f(3.3, 6.1))) * dampBand;
-    albedo *= (1.0 - dampBand * 0.20) * (1.0 - mildew * 0.46);
+    let dampBand = (1.0 - smoothstep(0.02, 0.82, i.worldPos.y + (broad - 0.5) * 0.38)) * max(dampAmt, 0.46);
+    let mildew = smoothstep(0.38, 0.82, vFbm2(wUV * 1.9 + vec2f(3.3, 6.1))) * dampBand;
+    albedo *= (1.0 - dampBand * 0.20) * (1.0 - mildew * 0.44);
 
-    // Subtle chalky limewash patches fading organically across the lower/mid wall.
-    let chalk = smoothstep(0.56, 0.88, mottle * 0.6 + broad * 0.4) * smoothstep(0.08, 0.48, i.worldPos.y) * (1.0 - smoothstep(0.95, 1.95, i.worldPos.y));
-    albedo = mix(albedo, albedo * vec3f(1.18, 1.15, 1.10) + vec3f(0.012), chalk * 0.30);
+    // Patchy dilapidated decay envelope: deepest pitted erosion below y = 1.10 m, scattered weathered pits higher up
+    let patchMask = smoothstep(0.32, 0.76, mottle * 0.55 + broad * 0.45);
+    let lowerDecay = 1.0 - smoothstep(0.10, 1.08, i.worldPos.y + (broad - 0.5) * 0.38 + (mottle - 0.5) * 0.16);
+    let upperPatch = (1.0 - smoothstep(1.25, 2.30, i.worldPos.y)) * (0.14 + 0.32 * patchMask);
+    let decayEnv = clamp(max(lowerDecay, upperPatch) * mix(0.50, 1.0, dampAmt), 0.14, 1.0);
 
-    // Gradual, organic multi-scale plaster crumbling & powdery wear near the floor (NO sharp stencil outlines!).
-    let lowMask = (1.0 - smoothstep(0.04, 0.56, i.worldPos.y + (broad - 0.5) * 0.28 + (mottle - 0.5) * 0.14)) * dampAmt;
-    var wearTotal = 0.0;
-    var gritBump = vec2f(0.0);
-    if (lowMask > 0.01) {
-      let warp = vec2f(
-        vFbm2(wUV * 3.4 + vec2f(4.1, 7.3)) - 0.5,
-        vFbm2(wUV * 3.4 + vec2f(12.7, 2.9)) - 0.5,
-      ) * 0.16;
-      let q = wUV + warp;
-      let fBroad = vFbm2(q * 3.8 + vec2f(11.4, 2.8));
-      let fMid = vFbm2(q * 14.0 - vec2f(3.2, 6.4));
-      let fFine = vFbm2(q * 38.0 + vec2f(7.1, 1.9));
-      // Wide, softly blended powdery decay + small scattered rough mortar pits
-      let softWear = smoothstep(0.38, 0.74, fBroad * 0.65 + fMid * 0.35) * lowMask;
-      let pits = smoothstep(0.54, 0.76, fMid * 0.55 + fFine * 0.45) * softWear;
-      let chalkDust = smoothstep(0.46, 0.74, fFine) * softWear * (1.0 - pits);
-      let mortarGrain = 0.72 + 0.48 * (fineSand * 0.55 + microSand * 0.45);
+    // Lightweight world-space non-repeating craters & finite-difference relief (zero sharp stencil edges!)
+    let q = wUV + vec2f(mottle - 0.5, broad - 0.5) * 0.14;
+    let c0 = vFbm2(q * 6.8 + vec2f(11.4, 2.8));
+    let cFine = vFbm2(q * 19.0 - vec2f(3.2, 6.4));
+    let pitDepth = smoothstep(0.46, 0.80, c0 * 0.62 + cFine * 0.38) * decayEnv;
+    let eH = 0.012;
+    let cX = vFbm2((q + vec2f(eH, 0.0)) * 6.8 + vec2f(11.4, 2.8));
+    let cY = vFbm2((q + vec2f(0.0, eH)) * 6.8 + vec2f(11.4, 2.8));
+    let sU = select(select(-1.0, 1.0, T.x >= 0.0), select(-1.0, 1.0, T.z >= 0.0), abs(Ngeom.x) > 0.7);
+    let sV = select(-1.0, 1.0, B.y >= 0.0);
+    let craterSlope = vec2f(((cX - c0) / eH) * sU, ((cY - c0) / eH) * sV) * (0.025 * (0.25 + 0.90 * decayEnv));
 
-      let dampPlaster = albedo * vec3f(0.76, 0.72, 0.68) * mortarGrain;
-      let rawEarth = albedo * vec3f(0.56, 0.52, 0.48) * mortarGrain;
-      albedo = mix(albedo, dampPlaster, softWear * 0.72);
-      albedo = mix(albedo, rawEarth, pits * 0.75);
-      albedo = mix(albedo, albedo * vec3f(1.22, 1.18, 1.12) + vec3f(0.010, 0.008, 0.006), chalkDust * 0.34);
-
-      wearTotal = clamp(softWear * 0.55 + pits * 0.45, 0.0, 1.0);
-      // Fine granular roughness micro-relief inside the crumbled zone (organic, never sharp-edged)
-      let e = 0.006;
-      let gX = vFbm2((q + vec2f(e, 0.0)) * 22.0) - vFbm2(q * 22.0);
-      let gY = vFbm2((q + vec2f(0.0, e)) * 22.0) - vFbm2(q * 22.0);
-      gritBump = clamp(vec2f(gX, gY) * (-3.2 * wearTotal), vec2f(-0.22), vec2f(0.22));
-    }
+    let mortarGrain = 0.72 + 0.50 * (fineSand * 0.55 + microSand * 0.45);
+    let midPlaster = albedo * vec3f(0.78, 0.73, 0.68) * mortarGrain;
+    let rawEarth = albedo * vec3f(0.50, 0.46, 0.42) * mortarGrain;
+    albedo = mix(albedo, midPlaster, smoothstep(0.12, 0.50, pitDepth) * 0.68);
+    albedo = mix(albedo, rawEarth, smoothstep(0.44, 0.82, pitDepth) * 0.74);
 
     // Organic damp wall-base smudge on the far ash wall near the left floor corner
     if (dampAmt < 0.45 && i.worldPos.y < 0.96 && i.worldPos.x < -0.38) {
@@ -468,14 +450,16 @@ fn fsMain(i: VSOut) -> GBufferOut {
       albedo *= 1.0 - smudge * 0.72;
     }
 
-    // Upper ceiling soot patina darkening smoothly into pitch night shadow above the doorway.
-    let ceilSoot = smoothstep(1.68, 2.58, i.worldPos.y) * 0.94;
+    // Organic upper-room shadow gradient with natural undulating highs & lows (never a flat horizontal band!)
+    let sootWave = (broad - 0.5) * 0.62 + (mottle - 0.5) * 0.30 + sin(i.worldPos.x * 1.15 + i.worldPos.z * 0.90) * 0.22;
+    let cornerDip = smoothstep(0.25, 1.55, i.worldPos.x) * 0.26 + smoothstep(0.4, -2.2, i.worldPos.z) * 0.14;
+    let ceilSoot = smoothstep(1.38, 2.78, i.worldPos.y + sootWave + cornerDip) * 0.92;
     albedo *= 1.0 - ceilSoot;
 
-    let sandSlope = vec2f(fineSand - 0.5, microSand - 0.5) * 0.08;
-    nXY = clamp(nXY * 0.24 + sandSlope + gritBump, vec2f(-0.42), vec2f(0.42));
-    rough = clamp(mix(rough, 0.98, wearTotal), 0.80, 0.98);
-    texAO *= 1.0 - wearTotal * 0.20;
+    let sandSlope = vec2f(fineSand - 0.5, microSand - 0.5) * 0.11;
+    nXY = clamp(nXY * mix(0.44, 0.96, decayEnv) + craterSlope + sandSlope, vec2f(-0.62), vec2f(0.62));
+    rough = clamp(mix(rough, 0.98, clamp(pitDepth * 1.0 + 0.25, 0.0, 1.0)), 0.82, 0.99);
+    texAO *= 1.0 - pitDepth * 0.34;
   } else if (preset == 23u) {
     // Dark gritty damp stone floor: broken rough-grit specular sparkles across dark damp stone (zero smooth plastic stripe!).
     let pXZ = i.worldPos.xz;
@@ -501,20 +485,33 @@ fn fsMain(i: VSOut) -> GBufferOut {
     rough = clamp(mix(0.60 + grit * 0.16, 0.16 + grit * 0.10, wet), 0.14, 0.92);
     coat = mix(0.14, 0.82, wet);
   } else if (preset == 24u) {
-    // Aged dark Chinese timber planks (e892e7d): subtle dry weathering on lower door leaves,
-    // keeping trim/crossbar authentic dark wood and deep soot toward the top rail.
+    // Dusty, grimy, rough-textured aged Chinese timber doors: organic surface dust, dirty streaks,
+    // coarse weathered wood fiber relief, and undulating upper soot (no artificial striped grid).
     let wUV = select(i.worldPos.xy, i.worldPos.zy, abs(Ngeom.x) > 0.7);
-    let wear = vFbm2(wUV * 3.6 + vec2f(9.1, 2.3));
+    let dustPatch = vFbm2(wUV * 2.8 + vec2f(9.1, 2.3));
+    let grimeStreak = vFbm2(vec2f(wUV.x * 5.5, wUV.y * 1.4) - vec2f(3.7, 5.2));
+    let roughGrain = vFbm2(vec2f(wUV.x * 42.0, wUV.y * 5.2) + vec2f(2.7, 6.1));
+    let fineGrit = vFbm2(wUV * 62.0 + vec2f(6.4, 1.8));
     if (m.extra.y > 0.05) {
-      let lowWear = smoothstep(0.42, 0.78, wear) * (1.0 - smoothstep(1.25, 2.05, i.worldPos.y));
-      albedo = mix(albedo, vec3f(0.165, 0.155, 0.142), lowWear * 0.36);
+      let dusty = smoothstep(0.36, 0.78, dustPatch * 0.65 + fineGrit * 0.35) * (1.0 - smoothstep(1.15, 2.05, i.worldPos.y));
+      let dirty = smoothstep(0.44, 0.84, grimeStreak);
+      albedo *= (0.76 + 0.46 * roughGrain) * (1.0 - dirty * 0.42);
+      albedo = mix(albedo, vec3f(0.165, 0.160, 0.150) * (0.72 + 0.54 * fineGrit), dusty * 0.50);
+      nXY = clamp(nXY * 1.15 + vec2f((roughGrain - 0.5) * 0.24 + (fineGrit - 0.5) * 0.14, (dustPatch - 0.5) * 0.12), vec2f(-0.62), vec2f(0.62));
+      rough = clamp(mix(rough, 0.97, dusty * 0.75 + dirty * 0.45), 0.68, 0.99);
+      texAO *= (1.0 - dirty * 0.26) * (0.86 + 0.14 * roughGrain);
+    } else {
+      albedo *= 0.82 + 0.34 * roughGrain;
+      nXY = clamp(nXY * 0.85 + vec2f((roughGrain - 0.5) * 0.14, 0.0), vec2f(-0.45), vec2f(0.45));
     }
-    albedo *= 1.0 - smoothstep(1.30, 2.18, i.worldPos.y) * 0.74;
+    let doorSootWave = (dustPatch - 0.5) * 0.48 + (grimeStreak - 0.5) * 0.22 + sin(i.worldPos.x * 2.1) * 0.12;
+    albedo *= 1.0 - smoothstep(1.18, 2.28, i.worldPos.y + doorSootWave) * 0.78;
   } else if (preset == 25u) {
-    // Fine Xuan-paper fiber, fold micro-relief, and aged soot patina matching upper doorway darkness.
+    // Fine Xuan-paper fiber, fold micro-relief, and undulating upper soot patina.
     let fiber = vFbm2(i.worldPos.xy * 68.0 + vec2f(m.extra.z * 2.1, 4.7));
     let crinkle = vFbm2(i.worldPos.xy * 11.0 + vec2f(4.3, m.extra.z * 1.9));
-    let upperSoot = smoothstep(1.32, 2.38, i.worldPos.y) * 0.44;
+    let paperWave = (crinkle - 0.5) * 0.36 + sin(i.worldPos.x * 1.4) * 0.14;
+    let upperSoot = smoothstep(1.22, 2.48, i.worldPos.y + paperWave) * 0.46;
     let rightShadowPatina = select(1.0, 0.64, m.extra.z > 1.5 && m.extra.z < 2.5);
     albedo *= (0.92 + 0.16 * fiber) * (1.0 - upperSoot) * rightShadowPatina;
     nXY = vec2f((fiber - 0.5) * 0.04 + (crinkle - 0.5) * 0.08, (crinkle - 0.5) * 0.07);

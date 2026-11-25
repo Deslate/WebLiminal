@@ -227,9 +227,6 @@ export default {
     const leafZ1 = minZ - 0.14;
     m.box([doorL + jf, 0.10, leafZ0], [doorMid - 0.008, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
     m.box([doorMid + 0.008, 0.10, leafZ0], [doorR - jf, doorH - 0.09, leafZ1], doorWood, { solid: true, priority: 1.3 });
-    // Horizontal timber crossbars across the door face.
-    m.box([doorL + jf, 0.94, leafZ1], [doorMid - 0.012, 1.01, leafZ1 + 0.022], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.6 });
-    m.box([doorMid + 0.012, 0.94, leafZ1], [doorR - jf, 1.01, leafZ1 + 0.022], trimWood, { solid: false, skipFaces: ["nz"], priority: 0.6 });
     // Small dark iron door lock hasp and ring pull at the center split.
     m.box([doorMid - 0.022, 1.32, leafZ1], [doorMid + 0.022, 1.42, leafZ1 + 0.024], darkIron, { solid: false, skipFaces: ["nz"], priority: 0.4 });
     m.box([doorMid - 0.018, 1.18, leafZ1], [doorMid + 0.018, 1.24, leafZ1 + 0.026], darkIron, { solid: false, skipFaces: ["nz"], priority: 0.4 });
