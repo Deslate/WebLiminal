@@ -8,7 +8,7 @@ export default {
   title: "Old Courtyard Corridor · Chinese Horror",
   subtitle: "NIGHT VIGIL · CANDLE & MOONLIGHT",
   audio: "horror",
-  spawn: { x: -0.76, y: 0.96, z: 3.65, yaw: 0.0, pitch: -0.04 },
+  spawn: { x: 0.28, y: 0.94, z: 3.15, yaw: 0.16, pitch: -0.05 },
   atmosphere: {
     sun: null,
     skyTop: [0.012, 0.016, 0.024],
@@ -45,14 +45,14 @@ export default {
       base: "plaster_mud",
       name: "ch_plaster_protruding_front",
       albedo: [0.36, 0.27, 0.18],
-      wetness: 0.96,
+      wetness: 0.94,
       seed: 25.0,
     });
     const plasterAshFar = m.material({
       base: "plaster_mud",
       name: "ch_plaster_ash_far",
       albedo: [0.36, 0.36, 0.35],
-      wetness: 0.22,
+      wetness: 0.28,
       seed: 24.0,
     });
     const stoneFloor = m.material({
@@ -80,12 +80,13 @@ export default {
       albedo: [0.105, 0.098, 0.090],
       roughness: 0.74,
       coat: 0.06,
+      wetness: 0.24,
       seed: 22.0,
     });
     const trimWood = m.material({
       base: "wood_plank_aged",
       name: "ch_trim_wood",
-      albedo: [0.036, 0.030, 0.024],
+      albedo: [0.036, 0.030, 0.025],
       roughness: 0.82,
       coat: 0.04,
       tileScale: 0.5,
@@ -164,28 +165,30 @@ export default {
     // Dark timber backing behind the recessed double door leaves.
     m.box([doorL - 0.1, 0.0, minZ - 0.38], [doorR + 0.1, doorH + 0.08, minZ - 0.26], trimWood, { solid: true, priority: 0.4 });
 
-    // --- Left Corridor Wall with Tiny Concealed Broken Hole (小破洞) ---
-    // Hidden behind the protruding left partition wall (x in [-3.8, -0.88], z in [-0.36, 0.0]).
+    // --- Concealed Left Vestibule Wall with Tiny Broken Hole (小破洞) ---
+    // Hidden behind the foreground left corridor wall (x = -0.42, z >= 0.0).
     // A small 22 cm x 24 cm breach (z in [-0.64, -0.42], y in [0.76, 1.00]) lets a tight,
     // focused cool beam of night moonlight fall locally onto the lower couplet and doorway.
     m.box([-1.38, 0.0, minZ], [-1.12, roof, -0.64], plasterAshFar, { solid: true, priority: 0.8 });
-    m.box([-1.38, 0.0, -0.42], [-1.12, roof, -0.36], plasterWarm, { solid: true, priority: 0.8 });
+    m.box([-1.38, 0.0, -0.42], [-1.12, roof, 0.0], plasterWarm, { solid: true, priority: 0.8 });
     m.box([-1.38, 0.0, -0.64], [-1.12, 0.76, -0.42], plasterAshFar, { solid: true, priority: 0.8 });
     m.box([-1.38, 1.00, -0.64], [-1.12, roof, -0.42], plasterAshFar, { solid: false, priority: 0.5 });
     // Keep player inside main corridor (cannot step into the concealed moonlight shaft).
-    m.solids.push({ minX: -1.38, maxX: -1.12, minZ, maxZ: 0.0, minY: 0.0, maxY: roof });
-    // Concealed outer court back wall (butts cleanly behind protruding wall at z = -0.36).
-    m.box([leftCourtMinX - 0.2, 0.0, minZ - 0.2], [leftCourtMinX, roof, -0.36], sootDark, { solid: false, priority: 0.3 });
+    m.solids.push({ minX: minX, maxX: -1.12, minZ, maxZ: 0.0, minY: 0.0, maxY: roof });
+    // Concealed outer court back wall (butts cleanly behind the left corridor wall step at z = 0.0).
+    m.box([leftCourtMinX - 0.2, 0.0, minZ - 0.2], [leftCourtMinX, roof, 0.0], sootDark, { solid: false, priority: 0.3 });
 
-    // --- Iconic Protruding Left Mud-Plaster Partition Wall ---
-    m.box([minX - 0.2, 0.0, -0.36], [-0.88, roof, 0.0], plasterWarm, {
-      faces: { pz: plasterProtrudingFront },
+    // --- Foreground Left Corridor Wall (Parallel & Opposite Right Wall, Facing +X) ---
+    // Runs longitudinally along Z (z in [0.0, maxZ]) so the foreground forms a genuine narrow
+    // perspective corridor facing the right wall (x = 1.55), then steps outward at z = 0.0
+    // into the moonlit doorway vestibule.
+    m.box([minX - 0.2, 0.0, 0.0], [-0.42, roof, maxZ + 0.2], plasterWarm, {
+      faces: { px: plasterProtrudingFront },
       solid: true,
       priority: 1.7,
     });
-    // Left antechamber outer wall and rear wall behind the viewer.
-    m.box([minX - 0.2, 0.0, 0.0], [minX, roof, maxZ + 0.2], sootDark, { solid: true, priority: 0.4 });
-    m.box([minX - 0.2, 0.0, maxZ], [maxX + 0.25, roof, maxZ + 0.25], plasterWarm, { solid: true, priority: 0.6 });
+    // Rear corridor wall behind the viewer.
+    m.box([-0.42, 0.0, maxZ], [maxX + 0.25, roof, maxZ + 0.25], plasterWarm, { solid: true, priority: 0.6 });
 
     // --- Right Corridor Wall (x = 1.55) with Recessed Chinese Wooden Lattice Window ---
     const winZ0 = -1.18;
@@ -196,8 +199,8 @@ export default {
     m.box([maxX, 0.0, winZ1], [maxX + 0.24, roof, maxZ], plasterWarm, { solid: true, priority: 1.1 });
     m.box([maxX, 0.0, winZ0], [maxX + 0.24, winY0, winZ1], plasterWarm, { solid: true, priority: 1.1 });
     m.box([maxX, winY1, winZ0], [maxX + 0.24, roof, winZ1], plasterWarm, { solid: false, priority: 0.6 });
-    // Dark night shutter/recess backing behind the right wooden lattice window.
-    m.box([maxX + 0.34, winY0 - 0.1, winZ0 - 0.1], [maxX + 0.55, winY1 + 0.1, winZ1 + 0.1], sootDark, { solid: false, priority: 0.3 });
+    // Dark night shutter/recess backing sealed cleanly behind the right wooden lattice window.
+    m.box([maxX + 0.23, winY0 - 0.15, winZ0 - 0.15], [maxX + 0.45, winY1 + 0.15, winZ1 + 0.15], sootDark, { solid: false, priority: 0.3 });
     // Slim dark timber skirting board along the base of the right corridor wall.
     m.box([maxX - 0.025, 0.0, minZ], [maxX, 0.10, maxZ], trimWood, { solid: false, skipFaces: ["px", "ny"], priority: 0.5 });
 
@@ -245,8 +248,8 @@ export default {
     addPaperPanel(doorMid + 0.13, 1.12, doorMid + 0.34, 1.60, leafZ1 + 0.008, talismanRight); // Right door talisman
 
     // --- Foreground Floor Candle, Tapered Teardrop Flame & Smooth Ceramic Offering Bowl ---
-    const cx = -0.45;
-    const cz = 0.34;
+    const cx = -0.02;
+    const cz = 0.28;
     // Melted wax puddle base + low stubby cream paraffin vigil candle cylinder.
     m.cylinder(cx, cz, 0.0, 0.010, 0.056, candleWax, { segments: 18, caps: true, solid: false, priority: 0.4 });
     m.cylinder(cx, cz, 0.010, 0.120, 0.020, candleWax, { segments: 18, caps: true, solid: false, priority: 0.4 });
@@ -327,8 +330,8 @@ export default {
       }
     };
 
-    const bx = -0.60;
-    const bz = 0.46;
+    const bx = -0.18;
+    const bz = 0.34;
     const bowlChart = m._beginChart(0.45, 0.28, 0.55);
     addRevolvedSurface(
       bx,
@@ -364,9 +367,9 @@ export default {
     );
     m.solids.push({ kind: "circle", x: bx, z: bz, radius: 0.19, minY: 0, maxY: 0.22 });
 
-    // Low pitch-dark rounded foreground silhouette framing the lower-left corner.
-    m.box([-3.6, 0.0, 2.05], [-1.26, 0.44, 2.55], sootDark, { solid: true, priority: 0.4 });
-    m.cylinder(-1.26, 2.30, 0.0, 0.44, 0.24, sootDark, { segments: 20, caps: true, solid: true, priority: 0.4 });
+    // Low pitch-dark rounded foreground silhouette tucked along the near left corridor wall.
+    m.box([-0.42, 0.0, 1.72], [-0.04, 0.34, 2.42], sootDark, { solid: true, priority: 0.4 });
+    m.cylinder(-0.04, 1.92, 0.0, 0.34, 0.16, sootDark, { segments: 20, caps: true, solid: true, priority: 0.4 });
 
     // Far-right dark wooden stool and matte dark ceramic jar tucked deep in corner shadow.
     m.box([1.14, 0.0, minZ + 0.04], [1.52, 0.30, minZ + 0.40], trimWood, { solid: true, priority: 0.5 });
@@ -374,7 +377,7 @@ export default {
 
     // --- Physically Placed Multi-Layer Lighting ---
     // 1. Low foreground floor candle point light: intense warm golden pool around the bowl,
-    //    candle, and lower-left plaster wall, falling off rapidly before the mid-corridor so a
+    //    candle, and lower-left corridor wall, falling off rapidly before the mid-corridor so a
     //    deep dark shadow gulf naturally separates the foreground candle from the moonlit doorway.
     m.pointLight([cx, 0.162, cz], {
       color: [1.0, 0.56, 0.18],
@@ -412,8 +415,8 @@ export default {
     );
 
     // --- Curated Viewpoints ---
-    m.bookmark("Candlelit Threshold", { x: -0.76, y: 0.96, z: 3.65, yaw: 0.0, pitch: -0.04 });
-    m.bookmark("Corridor Midpoint", { x: 0.35, y: 1.38, z: 1.05, yaw: -0.05, pitch: -0.06 });
+    m.bookmark("Candlelit Threshold", { x: 0.28, y: 0.94, z: 3.15, yaw: 0.16, pitch: -0.05 });
+    m.bookmark("Corridor Midpoint", { x: 0.52, y: 1.38, z: 1.05, yaw: 0.04, pitch: -0.06 });
     m.bookmark("Double Door & Couplets", { x: 0.42, y: 1.42, z: -0.55, yaw: 0.0, pitch: -0.02 });
   },
 };

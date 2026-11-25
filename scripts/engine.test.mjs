@@ -347,9 +347,10 @@ test("chinese-horror v2 compiles dry scene with point lights, SDF couplet preset
   for (const bm of c.bookmarks) {
     assert.equal(canStand(bm.spawn.x, bm.spawn.z, c.collision, 0), true, `Bookmark '${bm.name}' is blocked`);
   }
-  // Protruding left wall and dark offering bowl must block walk-through, while corridor center toward door is clear
-  assert.equal(canStand(-1.5, -0.15, c.collision), false, "Protruding mud-plaster wall must block walk-through");
-  assert.equal(canStand(-0.60, 0.46, c.collision), false, "Offering bowl must block walk-through");
+  // Left corridor wall and dark offering bowl must block walk-through, while corridor center toward door is clear
+  assert.equal(canStand(-1.5, -0.15, c.collision), false, "Concealed left wall must block walk-through");
+  assert.equal(canStand(-0.60, 0.46, c.collision), false, "Left corridor wall must block walk-through");
+  assert.equal(canStand(-0.18, 0.34, c.collision), false, "Offering bowl must block walk-through");
   assert.equal(canStand(0.42, -0.80, c.collision), true, "Corridor path toward double door must be walkable");
   // Sightline from threshold down corridor to recessed double door hits door leaves near z = -2.34
   const hitDoor = intersectBVH(c.bvh, [0.42, 1.2, 2.0], [0, 0, -1]);

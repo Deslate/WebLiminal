@@ -536,18 +536,20 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let rough = clamp(baseRough + (grit - 0.5) * 0.18 + pit * 0.16, 0.30, 0.96);
     return Sample(col, rough, h, clamp(0.84 + 0.16 * broad - pit * 0.28, 0.35, 1.0), 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
-  // 24: wood_plank_aged (aged charcoal-timber vertical double-door planks with grain & plank joints)
+  // 24: wood_plank_aged (aged charcoal-timber vertical double-door planks with deep joints & weathered split grain)
   if (preset == 24u) {
-    let grain = pFbm(uv, vec2f(28.0, 3.0), seed, 4);
-    let fine = pFbm(uv, vec2f(72.0, 8.0), seed + 6.3, 3);
-    let plankPhase = fract(uv.x * 7.8);
+    let grain = pFbm(uv, vec2f(32.0, 3.0), seed, 4);
+    let fine = pFbm(uv, vec2f(84.0, 9.0), seed + 6.3, 3);
+    let split = smoothstep(0.74, 0.90, pFbm(uv, vec2f(48.0, 2.5), seed + 14.1, 3));
+    let plankPhase = fract(uv.x * 8.0);
     let edgeD = min(plankPhase, 1.0 - plankPhase);
-    let seam = 1.0 - smoothstep(0.0, 0.048, edgeD);
-    let plankId = hash21(vec2f(floor(uv.x * 7.8), seed));
-    let col = baseCol * (0.72 + 0.52 * grain) * (0.90 + 0.20 * fine) * (0.88 + 0.24 * plankId) * (1.0 - seam * 0.80);
-    let h = clamp(0.56 + (grain - 0.5) * 0.18 + (fine - 0.5) * 0.08 - seam * 0.46, 0.0, 1.0);
-    let rough = clamp(baseRough + (grain - 0.5) * 0.12 + seam * 0.18, 0.45, 0.96);
-    return Sample(col, rough, h, clamp(0.92 + 0.08 * grain - seam * 0.45, 0.28, 1.0), 0.0, m.pbr.z * (1.0 - seam), 0.0, m.extra.y, vec2f(0.0));
+    let seam = 1.0 - smoothstep(0.0, 0.056, edgeD);
+    let bevel = smoothstep(0.03, 0.14, edgeD);
+    let plankId = hash21(vec2f(floor(uv.x * 8.0), seed));
+    let col = baseCol * (0.66 + 0.58 * grain) * (0.86 + 0.28 * fine) * (0.82 + 0.34 * plankId) * (1.0 - seam * 0.88) * (1.0 - split * 0.42);
+    let h = clamp(0.56 + (grain - 0.5) * 0.22 + (fine - 0.5) * 0.10 - seam * 0.52 - split * 0.18 + (bevel - 0.5) * 0.08, 0.0, 1.0);
+    let rough = clamp(baseRough + (grain - 0.5) * 0.14 + seam * 0.18, 0.45, 0.96);
+    return Sample(col, rough, h, clamp(0.90 + 0.10 * grain - seam * 0.55 - split * 0.22, 0.22, 1.0), 0.0, m.pbr.z * (1.0 - seam), 0.0, m.extra.y, vec2f(0.0));
   }
   // 25: couplet_paper (aged Chinese Spring Festival couplets with ornate fretwork border, auspicious floral/cloud brocade & gold flecks)
   // Variant selected by seed: 1=left(富贵由天), 2=right(平安是福), 3=horizontal scroll, 4=left talisman, 5=right talisman.
