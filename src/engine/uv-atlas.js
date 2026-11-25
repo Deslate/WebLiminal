@@ -24,12 +24,14 @@ export function packLightmapAtlas(charts, options = {}) {
   function tryPack(tpm) {
     const rects = order
       .map((c) => {
+        const minW = c.wMeters < 0.15 ? 2 : 3;
+        const minH = c.hMeters < 0.15 ? 2 : 3;
         const w = Math.max(
-          minChartTexels,
+          minW,
           Math.min(atlasSize - padding * 2, Math.ceil(c.wMeters * tpm * c.priority)),
         );
         const h = Math.max(
-          minChartTexels,
+          minH,
           Math.min(atlasSize - padding * 2, Math.ceil(c.hMeters * tpm * c.priority)),
         );
         return { ...c, w, h };
@@ -45,14 +47,14 @@ export function packLightmapAtlas(charts, options = {}) {
     for (const r of rects) {
       if (cursorX + r.w + padding > atlasSize) {
         cursorX = padding;
-        cursorY += shelfHeight + padding * 2;
+        cursorY += shelfHeight + padding;
         shelfHeight = 0;
       }
       if (cursorY + r.h + padding > atlasSize) {
         return null;
       }
       placements[r.idx] = { x: cursorX, y: cursorY, w: r.w, h: r.h };
-      cursorX += r.w + padding * 2;
+      cursorX += r.w + padding;
       if (r.h > shelfHeight) shelfHeight = r.h;
       usedTexels += r.w * r.h;
     }
@@ -89,16 +91,17 @@ export function packLightmapAtlas(charts, options = {}) {
     packed = best;
   }
 
-  // Transform local [0..1] chart UVs to texel-center-aligned atlas UV2s.
-  // Mapping [0..1] -> [(x + 0.5) / N .. (x + w - 0.5) / N] prevents bilinear
-  // filtering from sampling neighboring charts across island edges.
+  // Transform local [0..1] chart UVs to [x + 0.25 .. x + w - 0.25] inside each chart rectangle.
+  // Placing quad edges 0.25 texels past outer texel centers guarantees GPU top-left rasterization
+  // covers 100% of boundary rows/columns (including wall-top ceiling seams!) while remaining strictly
+  // inside each chart's dilated 1-texel gutter for zero cross-island bilinear bleed.
   const inv = 1 / atlasSize;
   for (let i = 0; i < charts.length; i++) {
     const p = packed.placements[i];
-    const u0 = (p.x + 0.5) * inv;
-    const v0 = (p.y + 0.5) * inv;
-    const du = Math.max(0, p.w - 1) * inv;
-    const dv = Math.max(0, p.h - 1) * inv;
+    const u0 = (p.x + 0.25) * inv;
+    const v0 = (p.y + 0.25) * inv;
+    const du = Math.max(0, p.w - 0.5) * inv;
+    const dv = Math.max(0, p.h - 0.5) * inv;
     const chart = charts[i];
     for (const v of chart.vertices) {
       v.lu = u0 + Math.max(0, Math.min(1, v.localU)) * du;

@@ -35,8 +35,8 @@ export async function createWaterModule(
   const mapSizeZ = waterDesc.maxZ - waterDesc.minZ;
   const wl = waterDesc.level;
 
-  // Player-tracking local simulation window: 8 cm cell spacing resolves crisp 16-55 cm indoor pool
-  // ripples with ~20 Chebyshev passes instead of ~29, cutting GPU water compute cost by >2.5x!
+  // Player-tracking local simulation window: 8 cm cell spacing resolves lively 16-55 cm indoor pool
+  // ripples with active organic surface dynamics and fast Chebyshev propagation.
   const dx = 0.08;
   const maxWinCells = isSoftware ? 224 : 256; // 17.92 m (software) or 20.48 m (hardware GPU)
   const nx = Math.max(64, Math.min(maxWinCells, Math.ceil(mapSizeX / dx)));

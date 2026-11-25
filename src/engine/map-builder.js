@@ -370,12 +370,51 @@ export class MapBuilder {
       else this.box([x0, yb, a], [x1, yt, b], m, { solid: isSolid, skipFaces });
     };
     const internalSkip = alongX ? ["nx", "px"] : ["nz", "pz"];
+    const hasTrim = Boolean(opts.trim);
+    const th = hasTrim ? (opts.trimHeight ?? 0.10) : 0;
+    const td = hasTrim ? (opts.trimDepth ?? 0.008) : 0;
+    const wrapEnds = opts.trimWrapEnds ?? [false, false];
+    const trimPriority = opts.trimPriority ?? 0.48;
+
+    const emitSolidSeg = (a, b) => {
+      if (b - a < 1e-4) return;
+      if (!hasTrim) {
+        emitBox(a, b, y0, y1, opts.solid !== false);
+        return;
+      }
+      // Start upper wall cleanly at y0 + th (ZERO buried wall triangles inside the baseboard!),
+      // wrap non-buried slim baseboard strips around exposed faces & jambs, and keep exact full-height collision.
+      emitBox(a, b, y0 + th, y1, false, mat, ["ny", "py"]);
+      const isStart = Math.abs(a - spanStart) < 1e-4;
+      const isEnd = Math.abs(b - spanEnd) < 1e-4;
+      const wrapA = !isStart || wrapEnds[0];
+      const wrapB = !isEnd || wrapEnds[1];
+      if (alongX) {
+        this.baseboardWrap([a, y0, z0], [b, y0 + th, z1], opts.trim, {
+          depth: td,
+          sides: { nz: true, pz: true, nx: wrapA, px: wrapB },
+          priority: trimPriority,
+        });
+        if (opts.solid !== false) {
+          this.solids.push({ kind: "box", minX: a, maxX: b, minY: y0, maxY: y1, minZ: z0, maxZ: z1 });
+        }
+      } else {
+        this.baseboardWrap([x0, y0, a], [x1, y0 + th, b], opts.trim, {
+          depth: td,
+          sides: { nx: true, px: true, nz: wrapA, pz: wrapB },
+          priority: trimPriority,
+        });
+        if (opts.solid !== false) {
+          this.solids.push({ kind: "box", minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: a, maxZ: b });
+        }
+      }
+    };
 
     for (const op of openings) {
       const a = Math.max(cursor, op.a);
       const b = Math.min(spanEnd, op.b);
       if (a > cursor + 1e-4) {
-        emitBox(cursor, a, y0, y1, opts.solid !== false);
+        emitSolidSeg(cursor, a);
       }
       // Sill below opening (for windows)
       if (op.bottom > y0 + 1e-4) {
@@ -388,33 +427,40 @@ export class MapBuilder {
       cursor = Math.max(cursor, b);
     }
     if (spanEnd > cursor + 1e-4) {
-      emitBox(cursor, spanEnd, y0, y1, opts.solid !== false);
+      emitSolidSeg(cursor, spanEnd);
     }
 
-    // Optional baseboard trim along solid segments.
-    if (opts.trim) {
-      const th = opts.trimHeight ?? 0.12;
-      const td = opts.trimDepth ?? 0.025;
-      let c = spanStart;
-      const trimSeg = (a, b) => {
-        if (b - a < 1e-4) return;
-        if (alongX) {
-          this.box([a, y0, z0 - td], [b, y0 + th, z0], opts.trim, { solid: false, skipFaces: ["pz", "ny"] });
-          this.box([a, y0, z1], [b, y0 + th, z1 + td], opts.trim, { solid: false, skipFaces: ["nz", "ny"] });
-        } else {
-          this.box([x0 - td, y0, a], [x0, y0 + th, b], opts.trim, { solid: false, skipFaces: ["px", "ny"] });
-          this.box([x1, y0, a], [x1 + td, y0 + th, b], opts.trim, { solid: false, skipFaces: ["nx", "ny"] });
-        }
-      };
-      for (const op of openings) {
-        if (op.bottom <= y0 + th) {
-          trimSeg(c, op.a);
-          c = Math.max(c, op.b);
-        }
-      }
-      trimSeg(c, spanEnd);
-    }
+    return this;
+  }
 
+  // Emits strictly exterior perimeter baseboard strips around wall/pier footprint [x0..x1] x [z0..z1]
+  // so 0% of the baseboard top lip (py) is buried beneath the upper wall (eliminates 1 px dark lightmap seam!).
+  baseboardWrap(lo, hi, matSpec, opts = {}) {
+    const [x0, y0, z0] = lo;
+    const [x1, y1, z1] = hi;
+    const td = opts.depth ?? 0.008;
+    const s = opts.sides ?? { nx: true, px: true, nz: true, pz: true };
+    const p = opts.priority ?? 0.48;
+    const extNx = s.nx ? td : 0;
+    const extPx = s.px ? td : 0;
+    if (s.nz) {
+      const skip = ["ny", "pz"];
+      if (!s.nx) skip.push("nx");
+      if (!s.px) skip.push("px");
+      this.box([x0 - extNx, y0, z0 - td], [x1 + extPx, y1, z0], matSpec, { solid: false, skipFaces: skip, priority: p });
+    }
+    if (s.pz) {
+      const skip = ["ny", "nz"];
+      if (!s.nx) skip.push("nx");
+      if (!s.px) skip.push("px");
+      this.box([x0 - extNx, y0, z1], [x1 + extPx, y1, z1 + td], matSpec, { solid: false, skipFaces: skip, priority: p });
+    }
+    if (s.nx) {
+      this.box([x0 - td, y0, z0], [x0, y1, z1], matSpec, { solid: false, skipFaces: ["ny", "px", "nz", "pz"], priority: p });
+    }
+    if (s.px) {
+      this.box([x1, y0, z0], [x1 + td, y1, z1], matSpec, { solid: false, skipFaces: ["ny", "nx", "nz", "pz"], priority: p });
+    }
     return this;
   }
 
@@ -695,6 +741,112 @@ export class MapBuilder {
     return this;
   }
 
+  // Smooth concave trumpet-flared round concrete mushroom column (Level 1 Vaulted Garage!).
+  // Cylindrical shaft from y0..yFlare transitions smoothly via a hyperbolic bell flare to rTop at y1.
+  trumpetColumn(cx, cz, y0, y1, rShaft, rTop, matSpec, opts = {}) {
+    const segs = opts.segments ?? 24;
+    const rings = opts.rings ?? 7;
+    const yFlare = opts.yFlare ?? (y0 + (y1 - y0) * 0.48);
+    const prio = opts.priority ?? 0.65;
+    const circum = TAU * rShaft;
+    const chart = this._beginChart(circum, y1 - y0, prio);
+
+    // Profile points (y, r, ny_slope) from floor y0 to ceiling y1
+    const prof = [];
+    prof.push({ y: y0, r: rShaft, drdy: 0 });
+    prof.push({ y: yFlare, r: rShaft, drdy: 0 });
+    const flareH = Math.max(0.1, y1 - yFlare);
+    const power = opts.flarePower ?? 2.35;
+    for (let j = 1; j <= rings; j++) {
+      const t = j / rings;
+      const r = rShaft + (rTop - rShaft) * Math.pow(t, power);
+      const drdy = ((rTop - rShaft) * power * Math.pow(Math.max(t, 1e-3), power - 1)) / flareH;
+      prof.push({ y: yFlare + t * flareH, r, drdy });
+    }
+
+    const totalH = Math.max(1e-4, y1 - y0);
+    for (let j = 0; j < prof.length - 1; j++) {
+      const pA = prof[j];
+      const pB = prof[j + 1];
+      const lv0 = (pA.y - y0) / totalH;
+      const lv1 = (pB.y - y0) / totalH;
+      const v0 = pA.y;
+      const v1 = pB.y;
+      for (let i = 0; i < segs; i++) {
+        const f0 = i / segs;
+        const f1 = (i + 1) / segs;
+        const a0 = f0 * TAU;
+        const a1 = f1 * TAU;
+        const c0 = Math.cos(a0), s0 = Math.sin(a0);
+        const c1 = Math.cos(a1), s1 = Math.sin(a1);
+        const q0 = [cx + pA.r * c1, pA.y, cz + pA.r * s1];
+        const q1 = [cx + pA.r * c0, pA.y, cz + pA.r * s0];
+        const q2 = [cx + pB.r * c0, pB.y, cz + pB.r * s0];
+        const q3 = [cx + pB.r * c1, pB.y, cz + pB.r * s1];
+        const nA1 = norm3([c1, -pA.drdy, s1]);
+        const nA0 = norm3([c0, -pA.drdy, s0]);
+        const nB0 = norm3([c0, -pB.drdy, s0]);
+        const nB1 = norm3([c1, -pB.drdy, s1]);
+        this.addQuad(q0, q1, q2, q3, matSpec, {
+          u0: f1 * circum, v0, u1: f0 * circum, v1,
+          normals: [nA1, nA0, nB0, nB1],
+          chart,
+          lu0: f1, lv0, lu1: f0, lv1,
+        });
+      }
+    }
+
+    if (opts.solid !== false) {
+      this.solids.push({ kind: "circle", x: cx, z: cz, radius: rShaft, minY: y0, maxY: y1 });
+    }
+    return this;
+  }
+
+  // Organic procedural 3D hanging/climbing foliage ivy vine (2 crossed gently swaying continuous ribbons
+  // evaluated with botanical stem + 3-lobed ivy leaf alpha-cutout in WGSL — 32 tris/vine, 1 UV2 chart, zero collision!).
+  foliageVine(x, yTop, yBot, z, matSpec = "foliage_vine", opts = {}) {
+    const height = Math.max(0.3, yTop - yBot);
+    const seed = opts.seed ?? (x * 13.7 + z * 29.3);
+    const width = opts.width ?? (opts.leafSize ? opts.leafSize * 2.15 : 0.38);
+    const sway = opts.sway ?? 0.11;
+    const segs = Math.max(3, Math.min(6, Math.round(height / 0.95)));
+    const prio = opts.priority ?? 0.14;
+    const baseAngle = (Math.abs(Math.sin(seed * 7.31)) * TAU);
+    const vOff = Math.abs(Math.sin(seed * 3.17)) * 11.3;
+    const vScale = opts.vScale ?? 2.05;
+
+    // Single shared non-overlapping UV2 chart per vine strand
+    const chart = this._beginChart(width * 2.0, height, prio);
+
+    for (let c = 0; c < 2; c++) {
+      const ang = baseAngle + c * (Math.PI * 0.5);
+      const px = Math.cos(ang);
+      const pz = Math.sin(ang);
+      const luBase = c * 0.5;
+      for (let i = 0; i < segs; i++) {
+        const f0 = i / segs;
+        const f1 = (i + 1) / segs;
+        const y0 = yTop - f0 * height;
+        const y1 = yTop - f1 * height;
+        const hw0 = width * 0.5 * (0.95 + 0.18 * Math.sin(f0 * 4.5 + seed));
+        const hw1 = width * 0.5 * (0.95 + 0.18 * Math.sin(f1 * 4.5 + seed));
+        const ox0 = Math.sin(f0 * 4.2 + seed) * sway;
+        const oz0 = Math.cos(f0 * 3.6 + seed * 1.4) * sway;
+        const ox1 = Math.sin(f1 * 4.2 + seed) * sway;
+        const oz1 = Math.cos(f1 * 3.6 + seed * 1.4) * sway;
+        const p0 = [x + ox0 - px * hw0, y0, z + oz0 - pz * hw0];
+        const p1 = [x + ox0 + px * hw0, y0, z + oz0 + pz * hw0];
+        const p2 = [x + ox1 + px * hw1, y1, z + oz1 + pz * hw1];
+        const p3 = [x + ox1 - px * hw1, y1, z + oz1 - pz * hw1];
+        const v0 = vOff + f0 * height * vScale;
+        const v1 = vOff + f1 * height * vScale;
+        this.addQuad(p0, p1, p2, p3, matSpec, { u0: 0, v0, u1: 1, v1, chart, lu0: luBase, lv0: f0, lu1: luBase + 0.25, lv1: f1 });
+        this.addQuad(p1, p0, p3, p2, matSpec, { u0: 0, v0, u1: 1, v1, chart, lu0: luBase + 0.25, lv0: f0, lu1: luBase + 0.5, lv1: f1 });
+      }
+    }
+    return this;
+  }
+
   // Straight staircase ascending along '+x', '-x', '+z', or '-z'.
   // Emits solid step geometry + smooth walkable ramp zone for collision.
   stairs(lo, hi, dir, steps, matSpec, opts = {}) {
@@ -702,22 +854,62 @@ export class MapBuilder {
     const [x1, y1, z1] = hi;
     const count = Math.max(2, Math.round(steps));
     const dy = (y1 - y0) / count;
+    const isX = dir === "+x" || dir === "-x";
+    const span = isX ? x1 - x0 : z1 - z0;
+    const prio = opts.priority ?? 1.0;
 
     for (let i = 0; i < count; i++) {
       const f0 = i / count;
       const f1 = (i + 1) / count;
-      const bot = y0 + i * dy;
+      const prevTop = y0 + i * dy;
       const top = y0 + (i + 1) * dy;
       let sx0 = x0, sx1 = x1, sz0 = z0, sz1 = z1;
-      if (dir === "+x") { sx0 = x0 + f0 * (x1 - x0); sx1 = x1; }
-      if (dir === "-x") { sx0 = x0; sx1 = x1 - f0 * (x1 - x0); }
-      if (dir === "+z") { sz0 = z0 + f0 * (z1 - z0); sz1 = z1; }
-      if (dir === "-z") { sz0 = z0; sz1 = z1 - f0 * (z1 - z0); }
-      this.box([sx0, bot, sz0], [sx1, top, sz1], matSpec, {
+      if (dir === "+x") { sx0 = x0 + f0 * span; sx1 = x0 + f1 * span; }
+      if (dir === "-x") { sx0 = x1 - f1 * span; sx1 = x1 - f0 * span; }
+      if (dir === "+z") { sz0 = z0 + f0 * span; sz1 = z0 + f1 * span; }
+      if (dir === "-z") { sz0 = z1 - f1 * span; sz1 = z1 - f0 * span; }
+
+      // Emit each step as a solid vertical masonry column from y0 to top, skipping
+      // buried internal walls against adjacent steps so lightmap texels never bleed black seams.
+      const skip = ["ny"];
+      if (dir === "+x") {
+        skip.push("nx");
+        if (i < count - 1) skip.push("px");
+      } else if (dir === "-x") {
+        skip.push("px");
+        if (i < count - 1) skip.push("nx");
+      } else if (dir === "+z") {
+        skip.push("nz");
+        if (i < count - 1) skip.push("pz");
+      } else if (dir === "-z") {
+        skip.push("pz");
+        if (i < count - 1) skip.push("nz");
+      }
+
+      this.box([sx0, y0, sz0], [sx1, top, sz1], matSpec, {
         solid: false,
-        skipFaces: ["ny"],
-        priority: opts.priority ?? 1.0,
+        skipFaces: skip,
+        priority: prio,
       });
+
+      // Emit ONLY the exposed riser face [prevTop .. top] on the descending side.
+      if (dir === "+x") {
+        this.addQuad([sx0, prevTop, sz0], [sx0, prevTop, sz1], [sx0, top, sz1], [sx0, top, sz0], matSpec, {
+          u0: sz0, v0: prevTop, u1: sz1, v1: top, priority: prio,
+        });
+      } else if (dir === "-x") {
+        this.addQuad([sx1, prevTop, sz1], [sx1, prevTop, sz0], [sx1, top, sz0], [sx1, top, sz1], matSpec, {
+          u0: -sz1, v0: prevTop, u1: -sz0, v1: top, priority: prio,
+        });
+      } else if (dir === "+z") {
+        this.addQuad([sx1, prevTop, sz0], [sx0, prevTop, sz0], [sx0, top, sz0], [sx1, top, sz0], matSpec, {
+          u0: -sx1, v0: prevTop, u1: -sx0, v1: top, priority: prio,
+        });
+      } else if (dir === "-z") {
+        this.addQuad([sx0, prevTop, sz1], [sx1, prevTop, sz1], [sx1, top, sz1], [sx0, top, sz1], matSpec, {
+          u0: sx0, v0: prevTop, u1: sx1, v1: top, priority: prio,
+        });
+      }
     }
 
     if (opts.walkable !== false) {
@@ -1110,7 +1302,7 @@ export class MapBuilder {
   }
 
   // Cantilevered spiral staircase wrapping a cylindrical column (clean non-overlapping slabs,
-  // world-elevation tile courses, and solid collision on lower reachable steps).
+  // distortion-free Euclidean square tile UVs aligned across treads, soffits & rims, and solid lower collision).
   spiralStairs(cx, cz, y0, y1, innerR, outerR, startAngle, sweepAngle, steps, matSpec, opts = {}) {
     const count = Math.max(4, Math.round(steps));
     const dy = (y1 - y0) / count;
@@ -1118,9 +1310,15 @@ export class MapBuilder {
     const tileMod = opts.tileModule ?? 0.20;
     const slabH = opts.slabThickness ?? dy;
     const treadW = outerR - innerR;
-    const treadTiles = Math.max(1, Math.round(treadW / tileMod)) * tileMod;
-    const arcOut = Math.abs(da) * outerR;
-    const arcTiles = Math.max(1, Math.round(arcOut / tileMod)) * tileMod;
+    const radialTiles = Math.max(1, Math.round(treadW / tileMod)) * tileMod;
+    const slabTiles = Math.max(1, Math.round(slabH / tileMod)) * tileMod;
+    const outerChord = 2 * outerR * Math.sin(Math.abs(da) * 0.5);
+    const outerTiles = Math.max(1, Math.round(outerChord / tileMod)) * tileMod;
+    // Scale radial U slightly (~1%) so inner->outer edge lands cleanly on a full tile joint with zero slivers.
+    const rScale = radialTiles / Math.max(treadW, 1e-4);
+    // Odd outer tile count centers a full tile on step midline (t=0); even count centers a joint on t=0.
+    const outerTileCount = Math.max(1, Math.round(outerChord / tileMod));
+    const vCenterShift = (outerTileCount & 1) ? 0.5 * tileMod : 0.0;
 
     for (let i = 0; i < count; i++) {
       const a0 = startAngle + i * da;
@@ -1142,10 +1340,22 @@ export class MapBuilder {
 
       const prio = opts.priority ?? 0.9;
       const aMid = 0.5 * (a0 + a1);
+      const rx = Math.cos(aMid), rz = Math.sin(aMid);
+      const tx = -rz, tz = rx;
       const rMid = 0.5 * (innerR + outerR);
-      const stepCenter = [cx + rMid * Math.cos(aMid), 0.5 * (yBot + yTop), cz + rMid * Math.sin(aMid)];
+      const stepCenter = [cx + rMid * rx, 0.5 * (yBot + yTop), cz + rMid * rz];
 
-      const emitOut = (q0, q1, q2, q3, u0, u1, v0, v1) => {
+      // Exact isometric 2D Euclidean UV projection on horizontal step faces -> 100% square undistorted tiles!
+      const horizUV = (p) => {
+        const dx = p[0] - cx;
+        const dz = p[2] - cz;
+        const rProj = (dx * rx + dz * rz - innerR) * rScale;
+        const tProj = dx * tx + dz * tz;
+        return [rProj, tProj + vCenterShift];
+      };
+
+      // Always keep every vertex paired with its exact UV even when winding flips!
+      const emitQuadUV = (q0, q1, q2, q3, uv0, uv1, uv2, uv3) => {
         const n = cross3(sub3(q1, q0), sub3(q3, q0));
         const qc = [
           0.25 * (q0[0] + q1[0] + q2[0] + q3[0]),
@@ -1154,18 +1364,20 @@ export class MapBuilder {
         ];
         const out = sub3(qc, stepCenter);
         if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] >= 0) {
-          this.addQuad(q0, q1, q2, q3, matSpec, { u0, v0, u1, v1, priority: prio });
+          this.addQuad(q0, q1, q2, q3, matSpec, { uvs: [uv0, uv1, uv2, uv3], priority: prio });
         } else {
-          this.addQuad(q0, q3, q2, q1, matSpec, { u0, v0, u1, v1, priority: prio });
+          this.addQuad(q0, q3, q2, q1, matSpec, { uvs: [uv0, uv3, uv2, uv1], priority: prio });
         }
       };
 
-      // Top tread, bottom soffit, outer arc riser, and front/back step risers — zero Z-fighting!
-      emitOut(in0T, out0T, out1T, in1T, 0, treadTiles, 0, arcTiles);
-      emitOut(in0B, in1B, out1B, out0B, 0, arcTiles, 0, treadTiles);
-      emitOut(out0B, out1B, out1T, out0T, i * arcTiles, (i + 1) * arcTiles, yBot, yTop);
-      emitOut(in0B, out0B, out0T, in0T, 0, treadTiles, yBot, yTop);
-      emitOut(out1B, in1B, in1T, out1T, 0, treadTiles, yBot, yTop);
+      // Top tread & bottom soffit: distortion-free Euclidean square tiles aligned to outer rim joints
+      emitQuadUV(in0T, out0T, out1T, in1T, horizUV(in0T), horizUV(out0T), horizUV(out1T), horizUV(in1T));
+      emitQuadUV(in0B, in1B, out1B, out0B, horizUV(in0B), horizUV(in1B), horizUV(out1B), horizUV(out0B));
+
+      // Outer rim & radial risers: exact full tile courses (zero horizontal sliver drift across steps!)
+      emitQuadUV(out0B, out1B, out1T, out0T, [0, 0], [outerTiles, 0], [outerTiles, slabTiles], [0, slabTiles]);
+      emitQuadUV(in0B, out0B, out0T, in0T, [0, 0], [radialTiles, 0], [radialTiles, slabTiles], [0, slabTiles]);
+      emitQuadUV(out1B, in1B, in1T, out1T, [0, 0], [radialTiles, 0], [radialTiles, slabTiles], [0, slabTiles]);
 
       // Register collision on lower reachable steps so the player cannot clip through the staircase.
       if (opts.solid !== false && yBot < y0 + 1.85) {
@@ -1351,23 +1563,17 @@ export class MapBuilder {
       frames.push({ u: curU, v: curV });
     }
 
+    const wallThick = opts.wallThickness ?? 0.042;
+    const innerR = Math.max(0.05, radius - wallThick);
     const chart = this._beginChart(TAU * radius, Math.max(1, totalLen), opts.priority ?? 0.65);
+
+    // 1. Smooth constant-radius outer fiberglass shell (zero soft organic worm-lumps!).
     for (let i = 0; i < pts.length - 1; i++) {
       const pA = pts[i], pB = pts[i + 1];
       const fA = frames[i], fB = frames[i + 1];
       const v0 = cumLen[i], v1 = cumLen[i + 1];
       const lv0 = v0 / Math.max(totalLen, 1e-4);
       const lv1 = v1 / Math.max(totalLen, 1e-4);
-      // Optional subtle smooth fiberglass joint collar every ~2.2m (zero sharp normal kinks)
-      const flangeAt = (idx) => {
-        if (!opts.flanges || idx <= 1) return radius;
-        const m = idx % 9;
-        if (m === 0) return radius * 1.032;
-        if (m === 1 || m === 8) return radius * 1.012;
-        return radius;
-      };
-      const rA = flangeAt(i);
-      const rB = flangeAt(i + 1);
 
       for (let j = 0; j < radialSegs; j++) {
         const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;
@@ -1379,15 +1585,108 @@ export class MapBuilder {
         const nB0 = [fB.u[0] * c0 + fB.v[0] * s0, fB.u[1] * c0 + fB.v[1] * s0, fB.u[2] * c0 + fB.v[2] * s0];
         const nB1 = [fB.u[0] * c1 + fB.v[0] * s1, fB.u[1] * c1 + fB.v[1] * s1, fB.u[2] * c1 + fB.v[2] * s1];
 
-        const q0 = [pA[0] + nA0[0] * rA, pA[1] + nA0[1] * rA, pA[2] + nA0[2] * rA];
-        const q1 = [pA[0] + nA1[0] * rA, pA[1] + nA1[1] * rA, pA[2] + nA1[2] * rA];
-        const q2 = [pB[0] + nB1[0] * rB, pB[1] + nB1[1] * rB, pB[2] + nB1[2] * rB];
-        const q3 = [pB[0] + nB0[0] * rB, pB[1] + nB0[1] * rB, pB[2] + nB0[2] * rB];
+        const q0 = [pA[0] + nA0[0] * radius, pA[1] + nA0[1] * radius, pA[2] + nA0[2] * radius];
+        const q1 = [pA[0] + nA1[0] * radius, pA[1] + nA1[1] * radius, pA[2] + nA1[2] * radius];
+        const q2 = [pB[0] + nB1[0] * radius, pB[1] + nB1[1] * radius, pB[2] + nB1[2] * radius];
+        const q3 = [pB[0] + nB0[0] * radius, pB[1] + nB0[1] * radius, pB[2] + nB0[2] * radius];
         this.addQuad(q0, q1, q2, q3, matSpec, {
           u0: u0 * TAU * radius, v0, u1: u1 * TAU * radius, v1,
           normals: [nA0, nA1, nB1, nB0],
           chart, lu0: u0, lv0, lu1: u1, lv1,
         });
+      }
+    }
+
+    // 2. Crisp rigid bolted fiberglass flange collars along tube sections (authentic aqua-park slide joints!).
+    if (opts.flanges) {
+      const flangeMat = opts.flangeMaterial ?? matSpec;
+      const flangeSpacing = opts.flangeSpacing ?? 2.05;
+      const hw = 0.028;
+      const rF = radius + 0.040;
+      let nextDist = 1.35;
+      for (let i = 2; i < pts.length - 2; i++) {
+        if (cumLen[i] < nextDist || totalLen - cumLen[i] < 0.55) continue;
+        nextDist = cumLen[i] + flangeSpacing;
+        const fChart = this._beginChart(TAU * rF, 0.25, 0.35);
+        const p = pts[i], t = tangents[i], f = frames[i];
+        const pBack = [p[0] - t[0] * hw, p[1] - t[1] * hw, p[2] - t[2] * hw];
+        const pFwd = [p[0] + t[0] * hw, p[1] + t[1] * hw, p[2] + t[2] * hw];
+        const nBack = [-t[0], -t[1], -t[2]];
+        for (let j = 0; j < radialSegs; j++) {
+          const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;
+          const a0 = u0 * TAU, a1 = u1 * TAU;
+          const c0 = Math.cos(a0), s0 = Math.sin(a0);
+          const c1 = Math.cos(a1), s1 = Math.sin(a1);
+          const n0 = [f.u[0] * c0 + f.v[0] * s0, f.u[1] * c0 + f.v[1] * s0, f.u[2] * c0 + f.v[2] * s0];
+          const n1 = [f.u[0] * c1 + f.v[0] * s1, f.u[1] * c1 + f.v[1] * s1, f.u[2] * c1 + f.v[2] * s1];
+          const bR0 = [pBack[0] + n0[0] * radius, pBack[1] + n0[1] * radius, pBack[2] + n0[2] * radius];
+          const bR1 = [pBack[0] + n1[0] * radius, pBack[1] + n1[1] * radius, pBack[2] + n1[2] * radius];
+          const bF0 = [pBack[0] + n0[0] * rF, pBack[1] + n0[1] * rF, pBack[2] + n0[2] * rF];
+          const bF1 = [pBack[0] + n1[0] * rF, pBack[1] + n1[1] * rF, pBack[2] + n1[2] * rF];
+          const fR0 = [pFwd[0] + n0[0] * radius, pFwd[1] + n0[1] * radius, pFwd[2] + n0[2] * radius];
+          const fR1 = [pFwd[0] + n1[0] * radius, pFwd[1] + n1[1] * radius, pFwd[2] + n1[2] * radius];
+          const fF0 = [pFwd[0] + n0[0] * rF, pFwd[1] + n0[1] * rF, pFwd[2] + n0[2] * rF];
+          const fF1 = [pFwd[0] + n1[0] * rF, pFwd[1] + n1[1] * rF, pFwd[2] + n1[2] * rF];
+          this.addQuad(bF0, bF1, fF1, fF0, flangeMat, { normals: [n0, n1, n1, n0], chart: fChart, lu0: u0, lv0: 0.3, lu1: u1, lv1: 0.7 });
+          this.addQuad(bR0, bR1, bF1, bF0, flangeMat, { normals: [nBack, nBack, nBack, nBack], chart: fChart, lu0: u0, lv0: 0.0, lu1: u1, lv1: 0.3 });
+          this.addQuad(fF0, fF1, fR1, fR0, flangeMat, { normals: [t, t, t, t], chart: fChart, lu0: u0, lv0: 0.7, lu1: u1, lv1: 1.0 });
+        }
+      }
+    }
+
+    // 3. Optional hollow fiberglass interior tunnel + rolled open exit rim lip!
+    if (opts.hollow) {
+      const innerMat = opts.innerMaterial ?? matSpec;
+      const inChart = this._beginChart(TAU * innerR, Math.max(1, totalLen), (opts.priority ?? 0.65) * 0.9);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const pA = pts[i], pB = pts[i + 1];
+        const fA = frames[i], fB = frames[i + 1];
+        const v0 = cumLen[i], v1 = cumLen[i + 1];
+        const lv0 = v0 / Math.max(totalLen, 1e-4);
+        const lv1 = v1 / Math.max(totalLen, 1e-4);
+        for (let j = 0; j < radialSegs; j++) {
+          const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;
+          const a0 = u0 * TAU, a1 = u1 * TAU;
+          const c0 = Math.cos(a0), s0 = Math.sin(a0);
+          const c1 = Math.cos(a1), s1 = Math.sin(a1);
+          const nA0 = [fA.u[0] * c0 + fA.v[0] * s0, fA.u[1] * c0 + fA.v[1] * s0, fA.u[2] * c0 + fA.v[2] * s0];
+          const nA1 = [fA.u[0] * c1 + fA.v[0] * s1, fA.u[1] * c1 + fA.v[1] * s1, fA.u[2] * c1 + fA.v[2] * s1];
+          const nB0 = [fB.u[0] * c0 + fB.v[0] * s0, fB.u[1] * c0 + fB.v[1] * s0, fB.u[2] * c0 + fB.v[2] * s0];
+          const nB1 = [fB.u[0] * c1 + fB.v[0] * s1, fB.u[1] * c1 + fB.v[1] * s1, fB.u[2] * c1 + fB.v[2] * s1];
+          const q0 = [pA[0] + nA0[0] * innerR, pA[1] + nA0[1] * innerR, pA[2] + nA0[2] * innerR];
+          const q1 = [pA[0] + nA1[0] * innerR, pA[1] + nA1[1] * innerR, pA[2] + nA1[2] * innerR];
+          const q2 = [pB[0] + nB1[0] * innerR, pB[1] + nB1[1] * innerR, pB[2] + nB1[2] * innerR];
+          const q3 = [pB[0] + nB0[0] * innerR, pB[1] + nB0[1] * innerR, pB[2] + nB0[2] * innerR];
+          const su0 = u0 * TAU * innerR, su1 = u1 * TAU * innerR;
+          this.addQuad(q0, q3, q2, q1, innerMat, {
+            uvs: [[su0, v0], [su0, v1], [su1, v1], [su1, v0]],
+            normals: [[-nA0[0], -nA0[1], -nA0[2]], [-nB0[0], -nB0[1], -nB0[2]], [-nB1[0], -nB1[1], -nB1[2]], [-nA1[0], -nA1[1], -nA1[2]]],
+            chart: inChart,
+            luvs: [[u0, lv0], [u0, lv1], [u1, lv1], [u1, lv0]],
+          });
+        }
+      }
+      // Flared exit rim collar at pts[last] so the open slide mouth has crisp molded fiberglass thickness
+      const last = pts.length - 1;
+      const pEnd = pts[last], tEnd = tangents[last], fEnd = frames[last];
+      const rimR = radius + 0.022;
+      const lipChart = this._beginChart(TAU * rimR, 0.2, 0.45);
+      const pLip = [pEnd[0] + tEnd[0] * 0.04, pEnd[1] + tEnd[1] * 0.04, pEnd[2] + tEnd[2] * 0.04];
+      for (let j = 0; j < radialSegs; j++) {
+        const u0 = j / radialSegs, u1 = (j + 1) / radialSegs;
+        const a0 = u0 * TAU, a1 = u1 * TAU;
+        const c0 = Math.cos(a0), s0 = Math.sin(a0);
+        const c1 = Math.cos(a1), s1 = Math.sin(a1);
+        const n0 = [fEnd.u[0] * c0 + fEnd.v[0] * s0, fEnd.u[1] * c0 + fEnd.v[1] * s0, fEnd.u[2] * c0 + fEnd.v[2] * s0];
+        const n1 = [fEnd.u[0] * c1 + fEnd.v[0] * s1, fEnd.u[1] * c1 + fEnd.v[1] * s1, fEnd.u[2] * c1 + fEnd.v[2] * s1];
+        const o0 = [pEnd[0] + n0[0] * radius, pEnd[1] + n0[1] * radius, pEnd[2] + n0[2] * radius];
+        const o1 = [pEnd[0] + n1[0] * radius, pEnd[1] + n1[1] * radius, pEnd[2] + n1[2] * radius];
+        const l0 = [pLip[0] + n0[0] * rimR, pLip[1] + n0[1] * rimR, pLip[2] + n0[2] * rimR];
+        const l1 = [pLip[0] + n1[0] * rimR, pLip[1] + n1[1] * rimR, pLip[2] + n1[2] * rimR];
+        const i0 = [pEnd[0] + n0[0] * innerR, pEnd[1] + n0[1] * innerR, pEnd[2] + n0[2] * innerR];
+        const i1 = [pEnd[0] + n1[0] * innerR, pEnd[1] + n1[1] * innerR, pEnd[2] + n1[2] * innerR];
+        this.addQuad(o0, o1, l1, l0, matSpec, { normals: [n0, n1, n1, n0], chart: lipChart, lu0: u0, lv0: 0, lu1: u1, lv1: 0.5 });
+        this.addQuad(l0, l1, i1, i0, matSpec, { normals: [tEnd, tEnd, tEnd, tEnd], chart: lipChart, lu0: u0, lv0: 0.5, lu1: u1, lv1: 1.0 });
       }
     }
 
@@ -1436,16 +1735,24 @@ export class MapBuilder {
     const flicker = opts.flicker ?? 0;
     const off = Boolean(opts.off);
 
-    // Flush inset aluminum troffer frame fitting strictly inside the 1.20x0.60 m T-bar grid cell
+    // Flush inset white-enameled aluminum troffer frame fitting strictly inside the 1.20x0.60 m T-bar grid cell
     const margin = 0.014;
-    const bezel = 0.026;
-    const h = 0.022;
+    const bezel = 0.022;
+    const h = 0.009;
     const bx = Math.max(0.05, hw - margin);
     const bz = Math.max(0.05, hd - margin);
-    this.box([cx - bx, y - h, cz - bz], [cx + bx, y, cz + bz], "dark_metal", {
+    const frameMat = this.material({
+      base: "plaster_warm",
+      name: "troffer_bezel_enamel",
+      albedo: [0.76, 0.75, 0.68],
+      roughness: 0.28,
+      coat: 0.38,
+      seed: 14.5,
+    });
+    this.box([cx - bx, y - h, cz - bz], [cx + bx, y, cz + bz], frameMat, {
       solid: false,
       skipFaces: ["py"],
-      priority: 0.25,
+      priority: 0.18,
     });
 
     const mat =
@@ -1461,16 +1768,16 @@ export class MapBuilder {
     // Downward-facing prismatic diffuser quad cleanly inset within bezel frame
     const dx = Math.max(0.04, bx - bezel);
     const dz = Math.max(0.04, bz - bezel);
-    const ly = y - h - 0.002;
+    const ly = y - h - 0.0015;
     const p0 = [cx - dx, ly, cz - dz];
     const p1 = [cx + dx, ly, cz - dz];
     const p2 = [cx + dx, ly, cz + dz];
     const p3 = [cx - dx, ly, cz + dz];
-    this.addQuad(p0, p1, p2, p3, mat, { u0: 0, v0: 0, u1: 1, v1: 1, priority: 0.25 });
+    this.addQuad(p0, p1, p2, p3, mat, { u0: 0, v0: 0, u1: 1, v1: 1, priority: 0.18 });
 
     if (!off && intensity > 0) {
-      // Lightmapper emitter slightly offset below diffuser so shadow rays clear bezel
-      const ey = y - h - 0.018;
+      // Lightmapper emitter slightly offset below diffuser so shadow rays clear bezel cleanly
+      const ey = y - h - 0.014;
       this.addAreaLight([cx - dx, ey, cz - dz], [cx + dx, ey, cz - dz], [cx - dx, ey, cz + dz], color, intensity, { flicker });
     }
     return this;
@@ -1525,6 +1832,47 @@ export class MapBuilder {
     if (!off && intensity > 0) {
       const ey = y - 0.02;
       this.addAreaLight([cx - hx, ey, cz - hz], [cx + hx, ey, cz - hz], [cx - hx, ey, cz + hz], color, intensity, { flicker });
+    }
+    return this;
+  }
+
+  // Vertical industrial fluorescent batten mounted directly onto a concrete column or corrugated metal wall!
+  verticalTubeLight(cx, y0, y1, cz, facing = "+x", opts = {}) {
+    const color = opts.color ?? [0.94, 0.99, 1.0];
+    const intensity = opts.intensity ?? 48.0;
+    const width = opts.width ?? 0.14;
+    const depth = opts.depth ?? 0.065;
+    const hw = width * 0.5;
+    const mat =
+      opts.material ??
+      this.material({
+        base: "fluorescent_panel",
+        emissive: color,
+        emissiveStrength: opts.emissiveStrength ?? 34.0,
+        flicker: opts.flicker ?? 0,
+      });
+
+    const eps = 0.025;
+    if (facing === "+x") {
+      this.box([cx, y0, cz - hw - 0.02], [cx + 0.032, y1, cz + hw + 0.02], "dark_metal", { solid: false, skipFaces: ["nx"], priority: 0.16 });
+      this.box([cx + 0.032, y0 + 0.02, cz - hw], [cx + depth, y1 - 0.02, cz + hw], mat, { solid: false, skipFaces: ["nx"], priority: 0.22 });
+      const fx = cx + depth + eps;
+      this.addAreaLight([fx, y0, cz + hw], [fx, y0, cz - hw], [fx, y1, cz + hw], color, intensity, { flicker: opts.flicker ?? 0 });
+    } else if (facing === "-x") {
+      this.box([cx - 0.032, y0, cz - hw - 0.02], [cx, y1, cz + hw + 0.02], "dark_metal", { solid: false, skipFaces: ["px"], priority: 0.16 });
+      this.box([cx - depth, y0 + 0.02, cz - hw], [cx - 0.032, y1 - 0.02, cz + hw], mat, { solid: false, skipFaces: ["px"], priority: 0.22 });
+      const fx = cx - depth - eps;
+      this.addAreaLight([fx, y0, cz - hw], [fx, y0, cz + hw], [fx, y1, cz - hw], color, intensity, { flicker: opts.flicker ?? 0 });
+    } else if (facing === "+z") {
+      this.box([cx - hw - 0.02, y0, cz], [cx + hw + 0.02, y1, cz + 0.032], "dark_metal", { solid: false, skipFaces: ["nz"], priority: 0.16 });
+      this.box([cx - hw, y0 + 0.02, cz + 0.032], [cx + hw, y1 - 0.02, cz + depth], mat, { solid: false, skipFaces: ["nz"], priority: 0.22 });
+      const fz = cz + depth + eps;
+      this.addAreaLight([cx - hw, y0, fz], [cx + hw, y0, fz], [cx - hw, y1, fz], color, intensity, { flicker: opts.flicker ?? 0 });
+    } else {
+      this.box([cx - hw - 0.02, y0, cz - 0.032], [cx + hw + 0.02, y1, cz], "dark_metal", { solid: false, skipFaces: ["pz"], priority: 0.16 });
+      this.box([cx - hw, y0 + 0.02, cz - depth], [cx + hw, y1 - 0.02, cz - 0.032], mat, { solid: false, skipFaces: ["pz"], priority: 0.22 });
+      const fz = cz - depth - eps;
+      this.addAreaLight([cx + hw, y0, fz], [cx - hw, y0, fz], [cx + hw, y1, fz], color, intensity, { flicker: opts.flicker ?? 0 });
     }
     return this;
   }

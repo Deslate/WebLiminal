@@ -9,7 +9,7 @@ export default {
   id: "my-corridor",
   title: "Level 4 · Abandoned Office",
   subtitle: "EMPTY CUBICLES",
-  audio: "backrooms", // "poolrooms" | "backrooms" | "parking" | "horror"
+  audio: "backrooms", // "backrooms" | "poolrooms" | "horror"
   spawn: { x: 0, y: 1.65, z: 6, yaw: 0, pitch: 0 },
   atmosphere: {
     fogColor: [0.02, 0.022, 0.02],
@@ -18,13 +18,14 @@ export default {
     skyTop: [0.02, 0.02, 0.02],
     skyHorizon: [0.04, 0.04, 0.04],
     sun: null, // or { direction: [x,y,z], color: [r,g,b], intensity: 22, angularRadius: 0.0085 }
-    exposure: 1.1,
+    perPixelAreaLights: false, // false = full unbiased baked soft area lights + MRP specular + Contact GTAO
+    exposure: 1.15,
     fov: 68, // optional per-level vertical FOV in degrees
-    bloomStrength: 0.25,
-    volumetricStrength: 0.35,
-    ambientFloor: 0.002,
-    bounceBoost: 1.4,
-    aoRadius: 1.6,
+    bloomStrength: 0.28,
+    volumetricStrength: 0.08,
+    ambientFloor: 0.001,
+    bounceBoost: 1.0,
+    aoRadius: 0.52,
   },
   build(m, opts = {}) {
     m.room([-8, 0, -10], [8, 3.2, 8], {

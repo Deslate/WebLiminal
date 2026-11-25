@@ -21,10 +21,15 @@ const audioStatus = document.getElementById("audio-status");
 const fatalEl = document.getElementById("fatal-error");
 
 const inspector = document.getElementById("inspector");
+const btnBgm = document.getElementById("btn-bgm");
 const btnInspector = document.getElementById("btn-inspector");
 const btnCloseInsp = document.getElementById("btn-close-insp");
 const levelButtonsEl = document.getElementById("level-buttons");
 const bookmarkButtonsEl = document.getElementById("bookmark-buttons");
+const bgmTrackEl = document.getElementById("bgm-track");
+const chkBgm = document.getElementById("chk-bgm");
+const rngBgmVol = document.getElementById("rng-bgm-vol");
+const outBgmVol = document.getElementById("out-bgm-vol");
 const selDebug = document.getElementById("sel-debug");
 const rngExposure = document.getElementById("rng-exposure");
 const outExposure = document.getElementById("out-exposure");
@@ -141,6 +146,31 @@ function jumpToBookmark(index) {
   renderBookmarkButtons();
 }
 
+function syncBgmUi() {
+  const b = audio.inspect().bgm;
+  if (!b) return;
+  if (btnBgm) {
+    btnBgm.textContent = b.enabled ? "♪ BGM: On (N)" : "♪ BGM: Off (N)";
+    btnBgm.classList.toggle("active", b.enabled);
+    btnBgm.setAttribute("aria-pressed", String(b.enabled));
+    btnBgm.title = b.enabled
+      ? `${b.track} — ${b.style}`
+      : b.profile === "backrooms"
+        ? `Ambient Only (Fluorescent Hum) · Press N for ${b.track}`
+        : `BGM Off · Press N for ${b.track}`;
+  }
+  if (chkBgm) chkBgm.checked = b.enabled;
+  if (bgmTrackEl) {
+    bgmTrackEl.textContent = b.enabled
+      ? `♪ ${b.track} · ${b.style}`
+      : b.profile === "backrooms"
+        ? `Ambient · Harsh Fluorescent Ballast Hum (${b.track} off)`
+        : `Ambient · Quiet Natatorium Stillness (${b.track} off)`;
+  }
+  if (rngBgmVol) rngBgmVol.value = String(b.volume);
+  if (outBgmVol) outBgmVol.textContent = `${Math.round(b.volume * 100)}%`;
+}
+
 async function loadLevel(levelId) {
   if (loadingLevel) return;
   loadingLevel = true;
@@ -163,6 +193,7 @@ async function loadLevel(levelId) {
     setPose(lvl.spawn);
 
     audio.setProfile(lvl.audio);
+    syncBgmUi();
     rngExposure.value = String(renderer.settings.exposure);
     outExposure.textContent = renderer.settings.exposure.toFixed(2);
     renderLevelButtons();
@@ -201,6 +232,11 @@ addEventListener("keydown", (e) => {
   }
   if (e.code === "KeyM" && !e.repeat) {
     audio.toggle();
+    return;
+  }
+  if (e.code === "KeyN" && !e.repeat) {
+    audio.toggleBgm();
+    syncBgmUi();
     return;
   }
   if (e.code === "KeyV" && !e.repeat) {
@@ -258,7 +294,19 @@ addEventListener("pointermove", (e) => {
   }
 });
 
-// Inspector UI hooks
+// Inspector & HUD Audio UI hooks
+btnBgm?.addEventListener("click", () => {
+  audio.toggleBgm();
+  syncBgmUi();
+});
+chkBgm?.addEventListener("change", () => {
+  audio.setBgmEnabled(chkBgm.checked);
+  syncBgmUi();
+});
+rngBgmVol?.addEventListener("input", () => {
+  audio.setBgmVolume(Number(rngBgmVol.value));
+  syncBgmUi();
+});
 btnInspector.addEventListener("click", () => {
   inspector.hidden = !inspector.hidden;
 });
@@ -338,8 +386,8 @@ function tick(now) {
   if (!nowInWater && movedDist > 1e-5 && movedDist < 0.4) {
     dryStrideDist += movedDist;
     const starting = dryFootCount === 0 || elapsed - lastDryStepTime >= 0.75;
-    const reqDist = starting ? 0.24 : 0.72;
-    const reqInterval = starting ? 0.12 : 0.28;
+    const reqDist = starting ? 0.28 : 0.86;
+    const reqInterval = starting ? 0.14 : 0.30;
     if (dryStrideDist >= reqDist && elapsed - lastDryStepTime >= reqInterval) {
       dryStrideDist = 0;
       lastDryStepTime = elapsed;
@@ -357,9 +405,10 @@ function tick(now) {
 
   audio.update(elapsed);
 
-  // Smooth damped footstep weight-shift dip (100% step-driven, zero jitter when standing still)
-  walkBobPhase = Math.max(0, walkBobPhase - dt * (nowInWater ? 2.4 : 3.8));
-  const bobAmp = nowInWater ? 0.026 : 0.014;
+  // Smooth damped footstep weight-shift dip (100% step-driven, scaled to wading vs dry speed)
+  const bobRate = nowInWater ? (1.35 + Math.min(1.2, actualSpeed * 0.65)) : 3.6;
+  walkBobPhase = Math.max(0, walkBobPhase - dt * bobRate);
+  const bobAmp = nowInWater ? 0.024 : 0.014;
   const bob = -Math.sin(walkBobPhase * Math.PI) * bobAmp;
   const renderPose = { ...pose, y: pose.y + bob };
   renderer.render(renderPose, elapsed, dt);
@@ -421,6 +470,16 @@ window.__WEBLIMINAL__ = {
       errors: renderer.getErrors(),
     };
   },
+  async renderReferencePT({ spp = 96, batchSpp = 8 } = {}) {
+    paused = true;
+    await new Promise((r) => requestAnimationFrame(r));
+    const res = await renderer.renderReferencePT(pose, elapsed, { spp, batchSpp });
+    return {
+      level: activeLevel?.id,
+      ...res,
+      errors: renderer.getErrors(),
+    };
+  },
   // Steps real collision-resolved wading locomotion to physically evolve the FFT Kelvin V-wake,
   // alternating footsteps, and ballistic kick splashes, then renders the requested view pose.
   async walkWading({ distance = 3.0, speed = 0.95, dt = 1 / 30, targetSpp = null, observerPose = null } = {}) {
@@ -457,6 +516,21 @@ window.__WEBLIMINAL__ = {
       errors: renderer.getErrors(),
     };
   },
+  audio: () => audio.inspect(),
+  toggleBgm: () => {
+    const on = audio.toggleBgm();
+    syncBgmUi();
+    return on;
+  },
+  setBgmEnabled: (v) => {
+    const on = audio.setBgmEnabled(v);
+    syncBgmUi();
+    return on;
+  },
+  setBgmVolume: (v) => {
+    audio.setBgmVolume(v);
+    syncBgmUi();
+  },
   snapshot: () => ({
     level: activeLevel?.id,
     pose: { ...pose },
@@ -466,5 +540,6 @@ window.__WEBLIMINAL__ = {
     bake: renderer.getBakeState(),
     errors: renderer.getErrors(),
     isSoftware: renderer.isSoftware,
+    audio: audio.inspect(),
   }),
 };

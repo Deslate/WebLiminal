@@ -119,11 +119,23 @@ fn agxToneMap(val: vec3f) -> vec3f {
   v = clamp((log2(v) - (-12.47393)) / (4.026069 - (-12.47393)), vec3f(0.0), vec3f(1.0));
   v = agxDefaultContrastApprox(v);
   v = agxInv * v;
-  // Subtle cinematic punch look (gentle contrast & saturation preservation).
+  // Photographic contrast punch (deep obsidian shadows like v1 ACES + smooth AgX highlight roll-off).
   let luma = dot(v, vec3f(0.2126, 0.7152, 0.0722));
-  v = pow(max(v, vec3f(0.0)), vec3f(1.06));
-  v = mix(vec3f(luma), v, 1.08);
+  v = pow(max(v, vec3f(0.0)), vec3f(1.14));
+  v = mix(vec3f(luma), v, 1.10);
   return clamp(v, vec3f(0.0), vec3f(1.0));
+}
+
+fn acesToneMap(x: vec3f) -> vec3f {
+  let a = x * (2.51 * x + 0.03);
+  let b = x * (2.43 * x + 0.59) + 0.14;
+  return clamp(a / b, vec3f(0.0), vec3f(1.0));
+}
+
+fn linearToSRGB(c: vec3f) -> vec3f {
+  let lo = c * 12.92;
+  let hi = 1.055 * pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.4)) - 0.055;
+  return select(lo, hi, c > vec3f(0.0031308));
 }
 
 fn hash12(p: vec2f) -> f32 {
@@ -135,6 +147,7 @@ fn hash12(p: vec2f) -> f32 {
 @fragment
 fn fsPresent(i: VSOut) -> @location(0) vec4f {
   let vhs = (u32(frame.waterInfo.w + 0.5) & 1u) != 0u;
+  let hasWater = frame.waterInfo.y > 0.5;
   var uv = i.uv;
 
   // Subtle barrel distortion in Found-Footage camcorder mode.
@@ -148,13 +161,19 @@ fn fsPresent(i: VSOut) -> @location(0) vec4f {
   let px = clamp(vec2i(uv * vec2f(fullDims)), vec2i(0), fullDims - vec2i(1));
   let depth = textureLoad(depthTex, px, 0);
 
-  // Sample HDR color (with subtle corner chromatic aberration in camcorder mode).
+  // Sample HDR color (subtle v1 present.wgsl optical lens CA on Poolrooms; stronger corner CA in VHS mode).
   var col: vec3f;
   if (vhs) {
     let offset = (uv - 0.5) * 0.0042;
     col.r = textureSampleLevel(hdrTex, linSampler, uv + offset, 0.0).r;
     col.g = textureSampleLevel(hdrTex, linSampler, uv, 0.0).g;
     col.b = textureSampleLevel(hdrTex, linSampler, uv - offset, 0.0).b;
+  } else if (hasWater) {
+    let cUV = uv - 0.5;
+    let ca = cUV * dot(cUV, cUV) * 0.0016;
+    col.r = textureSampleLevel(hdrTex, linSampler, uv + ca, 0.0).r;
+    col.g = textureSampleLevel(hdrTex, linSampler, uv, 0.0).g;
+    col.b = textureSampleLevel(hdrTex, linSampler, uv - ca, 0.0).b;
   } else {
     col = textureSampleLevel(hdrTex, linSampler, uv, 0.0).rgb;
   }
@@ -178,28 +197,35 @@ fn fsPresent(i: VSOut) -> @location(0) vec4f {
     col += vol + bloom * frame.fogParams.z;
   }
 
-  // Exposure + AgX Filmic Tone Mapping.
-  // Note: AgX sigmoid outputs display-encoded sRGB directly; only raw linear debug views need gamma.
+  // Exposure + Tone Mapping:
+  // - Poolrooms (hasWater): exact v1 present.wgsl ACES Filmic + sRGB for radiant sunlit cream highlights
+  //   and deep obsidian foreground framing.
+  // - Dry interiors (Level 0): GTPT-calibrated AgX Filmic curve.
   let exposure = frame.skyTop.w;
   var mapped: vec3f;
   if (dbg == 2u || dbg == 3u || dbg == 4u) {
     mapped = pow(clamp(col, vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2));
+  } else if (hasWater) {
+    let vig = 1.0 - dot(uv - 0.5, uv - 0.5) * select(0.24, 0.52, vhs);
+    mapped = linearToSRGB(acesToneMap(max(col * exposure * vig, vec3f(0.0))));
   } else {
     mapped = agxToneMap(col * exposure);
+    let dCenter = length((uv - 0.5) * vec2f(1.22, 1.0));
+    let vigStrength = select(0.24, 0.48, vhs);
+    mapped *= 1.0 - smoothstep(0.38, 1.08, dCenter) * vigStrength;
   }
 
-  // Subtle optical lens vignette.
-  let dCenter = length((uv - 0.5) * vec2f(1.22, 1.0));
-  let vigStrength = select(0.24, 0.48, vhs);
-  mapped *= 1.0 - smoothstep(0.38, 1.08, dCenter) * vigStrength;
-
-  // Clean mode: zero time-animated grain (only ultra-subtle static 8-bit banding dither).
-  // Found-Footage VHS mode retains authentic animated camcorder grain & scanlines.
+  // Clean mode: zero time-animated grain (only ultra-subtle static 8-bit banding dither, plus v1-subtle
+  // luminance-weighted emulsion texture on Poolrooms). VHS mode keeps animated camcorder grain & scanlines.
   if (vhs) {
     let grain = (hash12(i.clipPos.xy + fract(frame.cameraPos.w * 13.7) * 512.0) - 0.5) * 0.036;
     mapped += vec3f(grain);
     let scan = 0.972 + 0.028 * sin(i.clipPos.y * 3.14159);
     mapped *= scan;
+  } else if (hasWater) {
+    let g = hash12(i.clipPos.xy) - 0.5;
+    let lum = dot(mapped, vec3f(0.2126, 0.7152, 0.0722));
+    mapped += vec3f(g * 0.009 * (0.25 + 0.75 * smoothstep(0.02, 0.4, lum)));
   } else {
     let dither = (hash12(i.clipPos.xy) - 0.5) * (1.0 / 255.0);
     mapped += vec3f(dither);

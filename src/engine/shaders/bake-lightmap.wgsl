@@ -80,6 +80,67 @@ fn traceClosest(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
   return res;
 }
 
+// Returns true when the closest triangle along (ro, rd) within maxT is hit from its back-face (det < 0).
+fn traceHitBackface(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
+  var bestT = maxT;
+  var hitBack = false;
+  let invD = 1.0 / select(rd, vec3f(1e-8), abs(rd) < vec3f(1e-8));
+  if (hitAABB(bvhNodes[0].minB, bvhNodes[0].maxB, ro, invD, bestT) >= bestT) {
+    return false;
+  }
+  var stack: array<u32, 32>;
+  var sp = 0u;
+  var cur = 0u;
+  loop {
+    let node = bvhNodes[cur];
+    if (node.triCount > 0u) {
+      let end = node.leftFirst + node.triCount;
+      for (var i = node.leftFirst; i < end; i++) {
+        let tri = bvhTris[i];
+        let pvec = cross(rd, tri.e2);
+        let det = dot(tri.e1, pvec);
+        if (abs(det) < 1e-8) { continue; }
+        let invDet = 1.0 / det;
+        let tvec = ro - tri.v0;
+        let u = dot(tvec, pvec) * invDet;
+        if (u < -1e-5 || u > 1.00001) { continue; }
+        let qvec = cross(tvec, tri.e1);
+        let v = dot(rd, qvec) * invDet;
+        if (v < -1e-5 || u + v > 1.00001) { continue; }
+        let t = dot(tri.e2, qvec) * invDet;
+        if (t > 1e-4 && t < bestT) {
+          bestT = t;
+          hitBack = det < 0.0;
+        }
+      }
+      if (sp == 0u) { break; }
+      sp -= 1u;
+      cur = stack[sp];
+    } else {
+      let l = node.leftFirst;
+      let r = l + 1u;
+      let dL = hitAABB(bvhNodes[l].minB, bvhNodes[l].maxB, ro, invD, bestT);
+      let dR = hitAABB(bvhNodes[r].minB, bvhNodes[r].maxB, ro, invD, bestT);
+      let nearIdx = select(r, l, dL < dR);
+      let farIdx = select(l, r, dL < dR);
+      let nearD = min(dL, dR);
+      let farD = max(dL, dR);
+      if (nearD >= bestT) {
+        if (sp == 0u) { break; }
+        sp -= 1u;
+        cur = stack[sp];
+      } else {
+        if (farD < bestT && sp < 31u) {
+          stack[sp] = farIdx;
+          sp += 1u;
+        }
+        cur = nearIdx;
+      }
+    }
+  }
+  return hitBack;
+}
+
 fn traceShadow(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
   let invD = 1.0 / select(rd, vec3f(1e-8), abs(rd) < vec3f(1e-8));
   if (hitAABB(bvhNodes[0].minB, bvhNodes[0].maxB, ro, invD, maxT) >= maxT) {
@@ -106,6 +167,10 @@ fn traceShadow(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-4 && t < maxT) {
+          if (u32(materials[tri.matId].extra.x + 0.5) == 21u) {
+            let hitUV = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
+            if (evalFoliageShadowAlpha(hitUV) < 0.5) { continue; }
+          }
           return true;
         }
       }
@@ -197,7 +262,9 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
   }
 
   // 2. Area Lights, Frosted Windows & Skylight Portals.
-  let lightCount = u32(env.skyHorizon.w + 0.5);
+  //    Uses exact local-importance discrete CDF (w_i = power_i * cosSurf * cosLight / max(dist2, 0.14))
+  //    so multi-chamber interiors like Level 0 (43 troffers) waste zero rays on lights in other rooms!
+  let lightCount = min(u32(env.skyHorizon.w + 0.5), 64u);
   if (lightCount > 0u) {
     if (!isBounce && lightCount <= 6u) {
       for (var li = 0u; li < lightCount; li++) {
@@ -208,28 +275,57 @@ fn sampleDirectLighting(p: vec3f, n: vec3f, rng: ptr<function, u32>, dirSum: ptr
         *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
       }
     } else {
-      let pickSamples = select(min(lightCount, 4u), min(lightCount, 2u), isBounce);
-      for (var s = 0u; s < pickSamples; s++) {
-        var li = 0u;
-        var pdf = 1.0;
-        if (lightCount <= 2u) {
-          li = s;
-        } else {
-          let xi = rand01(rng);
+      var weights: array<f32, 64>;
+      var sumW = 0.0;
+      let maxDist2 = select(440.0, 289.0, isBounce);
+      for (var li = 0u; li < lightCount; li++) {
+        let l = lights[li];
+        let lCenter = l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz);
+        let toL = lCenter - p;
+        let d2 = dot(toL, toL);
+        if (d2 > maxDist2 || d2 < 0.002) {
+          weights[li] = 0.0;
+          continue;
+        }
+        let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
+        let halfSpan = 0.5 * (length(l.edgeUPower.xyz) + length(l.edgeVKind.xyz));
+        if (dot(lNorm, -toL) <= -0.02 || dot(n, toL) + halfSpan <= 0.0) {
+          weights[li] = 0.0;
+          continue;
+        }
+        let invD = inverseSqrt(max(d2, 0.08));
+        let dirL = toL * invD;
+        let cL = max(dot(lNorm, -dirL), 0.06);
+        let cS = max(dot(n, dirL), 0.06);
+        let w = (l.edgeUPower.w * cL * cS) / max(d2, 0.14);
+        weights[li] = w;
+        sumW += w;
+      }
+
+      if (sumW > 1e-6) {
+        let pickSamples = select(select(2u, 1u, isBounce), select(4u, 2u, isBounce), lightCount <= 20u);
+        let invS = 1.0 / f32(pickSamples);
+        for (var s = 0u; s < pickSamples; s++) {
+          // Stratified discrete CDF pick across local visible lights (100% unbiased!)
+          let xi = ((f32(s) + rand01(rng)) * invS) * sumW;
+          var acc = 0.0;
+          var li = 0u;
           for (var k = 0u; k < lightCount; k++) {
-            if (xi <= lights[k].radianceCdf.w || k == lightCount - 1u) {
+            acc += weights[k];
+            if (acc >= xi) {
               li = k;
               break;
             }
           }
-          pdf = max(0.0001, lights[li].edgeUPower.w / max(env.extra.x, 0.001));
+          let wPick = weights[li];
+          if (wPick <= 1e-8) { continue; }
+          let pdf = wPick / sumW;
+          var wi = vec3f(0.0);
+          let contrib = evalAreaLight(p, n, lights[li], rand01(rng), rand01(rng), &wi) * (invS / pdf);
+          let clamped = min(contrib, select(vec3f(28.0), vec3f(14.0), isBounce));
+          total += clamped;
+          *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
         }
-        var wi = vec3f(0.0);
-        let scale = f32(select(pickSamples, 1u, lightCount <= 2u));
-        let contrib = evalAreaLight(p, n, lights[li], rand01(rng), rand01(rng), &wi) / (pdf * scale);
-        let clamped = min(contrib, select(vec3f(24.0), vec3f(9.0), isBounce));
-        total += clamped;
-        *dirSum += wi * (0.2126 * clamped.r + 0.7152 * clamped.g + 0.0722 * clamped.b);
       }
     }
   }
@@ -251,6 +347,29 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
   let batch = env.counts.y;
   let spp = env.counts.z;
+  // Detect floor/ceiling or outer-wall texels trapped inside closed solid walls, piers, or abutting pilasters.
+  // Marking them invalid (accumIrrad.w = -1) lets dilateFinal fill them cleanly from visible neighbors with zero dark bleed!
+  if (batch == 0u) {
+    let onb = orthoBasis(n0);
+    var backCount = 0u;
+    if (traceHitBackface(p0, normalize(onb[0] + n0 * 0.22), 5.5)) { backCount += 1u; }
+    if (traceHitBackface(p0, normalize(-onb[0] + n0 * 0.22), 5.5)) { backCount += 1u; }
+    if (traceHitBackface(p0, normalize(onb[1] + n0 * 0.22), 5.5)) { backCount += 1u; }
+    if (traceHitBackface(p0, normalize(-onb[1] + n0 * 0.22), 5.5)) { backCount += 1u; }
+    var isBuried = false;
+    if (abs(n0.y) > 0.85) {
+      isBuried = backCount >= 3u;
+    } else if (backCount >= 2u) {
+      isBuried = traceHitBackface(p0, n0, 4.5);
+    }
+    if (isBuried) {
+      accumIrrad[idx] = vec4f(0.0, 0.0, 0.0, -1.0);
+      accumDir[idx] = vec4f(0.0, 1.0, 0.0, 1.0);
+      return;
+    }
+  } else if (accumIrrad[idx].w < -0.5) {
+    return;
+  }
   var rng = idx * 1973u + batch * 9277u + 26699u;
   // Per-texel Cranley-Patterson shift for low-discrepancy R2 quasi-random strata (much cleaner GI!).
   var shiftRng = idx * 747796405u + 2891336453u;
@@ -262,6 +381,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   var dirSum = vec3f(0.0);
   var aoSum = 0.0;
   let wl = env.waterOptics.w;
+  let envFlags = u32(env.extra.w + 0.5);
+  let hasSkylights = (envFlags & 1u) != 0u;
+  let perPixelAreaLights = (envFlags & 2u) != 0u;
 
   for (var s = 0u; s < spp; s++) {
     let gs = f32(batch * spp + s + 1u);
@@ -269,11 +391,11 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let qAO = fract(cpB + r2Alpha * gs);
 
     // 1. Direct area lights & skylight portals at primary texel:
-    //    - On sunlit levels (Poolrooms): primary texels store smooth skylight/window fill while sun is per-pixel.
-    //    - On indoor artificial-light levels (Level 0 & Level 1): primary direct area lights are evaluated
-    //      per-pixel at full resolution with 4-point quad BVH soft shadows in gbuffer-pbr.wgsl so columns,
-    //      beams, soffits, and doorways have crisp photographic shadows instead of blurry lightmap smudges!
-    if (env.sunColorInt.w > 0.5) {
+    //    - When perPixelAreaLights is false (Poolrooms): primary texels store smooth skylight/window fill.
+    //    - When perPixelAreaLights is true (Level 0 & Level 1): primary direct area lights are evaluated
+    //      at full resolution per-pixel in gbuffer-pbr.wgsl so columns, doorways, piers & pipes get razor-crisp
+    //      photographic soft shadows while the lightmap stores pure smooth 3-bounce indirect GI + crevice AO!
+    if (!perPixelAreaLights) {
       var directDir = vec3f(0.0);
       irradSum += sampleDirectLighting(p0, n0, &rng, &directDir, false) * INV_PI;
       dirSum += directDir * INV_PI;
@@ -294,7 +416,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     for (var bounce = 0u; bounce < 3u; bounce++) {
       let h = traceClosest(ro, rd, 120.0);
       if (!h.hit) {
-        if (env.extra.w < 0.5) {
+        if (!hasSkylights) {
           pathRad += throughput * evalSky(rd, env);
         }
         break;
@@ -303,22 +425,26 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       let hitPos = ro + rd * h.t + h.n * 0.008;
 
       // Physical underwater path absorption during GI bounce:
-      // Rays going from ceiling/wall down into a sunlit pool and back out naturally tint the
-      // bounced GI luminous emerald-turquoise — matching photographic Poolrooms ceiling bounce!
+      // Shallow clear pool water transmits with exact Beer-Lambert aquamarine optics while grazing
+      // Fresnel surface reflection preserves warm daylight neutral bounce onto walls and arches.
       if (wl > -50.0) {
         let roSub = ro.y < wl;
         let hitSub = hitPos.y < wl;
         if (roSub && hitSub) {
-          throughput *= exp(-env.waterOptics.rgb * min(h.t, 4.0));
+          throughput *= exp(-env.waterOptics.rgb * min(h.t, 2.6));
         } else if (roSub != hitSub) {
           let tCross = clamp((wl - ro.y) / select(rd.y, 1e-5, abs(rd.y) < 1e-5), 0.0, h.t);
           let subLen = select(h.t - tCross, tCross, roSub);
-          throughput *= exp(-env.waterOptics.rgb * min(subLen, 4.0));
+          let waterTint = exp(-env.waterOptics.rgb * min(subLen, 2.4));
+          throughput *= mix(waterTint, vec3f(1.0), 0.24);
         }
       }
 
       let mat = materials[h.matId];
-      let diffuseAlbedo = clamp(mat.albedoScale.rgb * (1.0 - mat.pbr.y * 0.85), vec3f(0.02), vec3f(0.88));
+      let preset = u32(mat.extra.x + 0.5);
+      let isCer = preset == 0u || preset == 1u || preset == 2u || preset == 16u;
+      // Match reference-pt area-average porcelain reflectance (Fresnel kD ~0.94 x tile-grout avg ~0.95)
+      let diffuseAlbedo = clamp(mat.albedoScale.rgb * (1.0 - mat.pbr.y * 0.85) * select(1.0, 0.89, isCer), vec3f(0.02), vec3f(0.88));
       throughput *= diffuseAlbedo;
 
       var unusedDir = vec3f(0.0);

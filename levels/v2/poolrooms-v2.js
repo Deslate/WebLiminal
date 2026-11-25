@@ -1,9 +1,11 @@
-// Level 37 · The Poolrooms (v2 Photographic Multi-Chamber Showcase).
+// Level 37 · The Poolrooms (v2 Photorealistic Multi-Chamber Showcase).
 // Four seamlessly connected, explorable Poolrooms halls built purely with declarative MapBuilder
 // primitives (zero custom shaders, zero bitmap assets):
-//   1. Ring Passage       — receding white-tiled circular arches, diagonal sun, pitch-black tunnel
-//   2. Misty Lightwell    — dark tiled corridor opening into warm volumetric mist & steel rail
-//   3. Spiral Column      — sunlit tiled cylinder, cantilevered spiral stairs, turquoise ceiling GI
+//   1. Ring Passage       — v1-matched continuous tiled ceiling, hidden right-side roofless sky court,
+//                           smooth 64-segment circular arches, obsidian foreground framing, crisp white
+//                           daylight sunbeam, 3 receding luminous caustic pools & velvety dark tunnel
+//   2. Misty Lightwell    — dark tiled corridor opening into bright sunlit volumetric atrium & steel rail
+//   3. Spiral Column      — sunlit tiled cylinder, grounded cantilevered spiral stairs, dark arch
 //   4. Slide & Portholes  — wet deck, emerald tile dado, backlit pill windows & curved water slide
 
 export default {
@@ -11,142 +13,169 @@ export default {
   title: "Poolrooms · 4-Hall Showcase (v2)",
   subtitle: "BVH PHOTON CAUSTICS · ANALYTIC PORCELAIN · MULTI-BOUNCE GI",
   audio: "poolrooms",
-  spawn: { x: 0.90, y: 1.66, z: 8.20, yaw: 0.14, pitch: -0.07 },
+  spawn: { x: 1.02, y: 1.56, z: 6.42, yaw: 0.14, pitch: -0.02 },
   atmosphere: {
-    // Near-black fog extinction color: unlit tunnels drop naturally into true abyssal darkness,
-    // while sunlit/skylit air glows purely via BVH-occluded volumetric scattering.
-    fogColor: [0.005, 0.009, 0.007],
-    fogDensity: 0.014,
-    heightFogFalloff: 0.16,
-    skyTop: [0.30, 0.48, 0.64],
-    skyHorizon: [0.95, 0.91, 0.78],
+    // Near-black fog extinction color: unlit tunnels drop naturally into true velvety darkness,
+    // while sunlit/skylit air glows cleanly via subtle BVH-occluded volumetric scattering.
+    fogColor: [0.002, 0.004, 0.004],
+    fogDensity: 0.0085,
+    heightFogFalloff: 0.14,
+    skyTop: [0.31, 0.52, 0.88],
+    skyHorizon: [0.68, 0.80, 0.97],
     sun: {
-      // Upper-left-behind diagonal sun: pours cleanly through Ring 1 onto foreground steps & emerald
-      // floor in Chamber 1 (with skylight hidden behind camera!), illuminates the lightwell mist in
-      // Chamber 2, and lights the front-left curved belly of the cylindrical column in Chamber 3!
-      direction: [-0.52, 0.68, 0.52],
-      color: [1.0, 0.94, 0.80],
-      intensity: 6.8,
-      angularRadius: 0.008, // crisp ~0.5° solar disc for photographic shadow boundaries
+      // Exact v1 Ring Passage sun direction (+X right sky court -> slashing diagonally into passage!)
+      // Clean crisp neutral daylight (zero heavy yellow cast!).
+      direction: [0.75, 0.60, 0.25],
+      color: [1.0, 0.975, 0.93],
+      intensity: 17.5,
+      angularRadius: 0.0092,
     },
-    exposure: 1.04,
-    bloomStrength: 0.24,
-    volumetricStrength: 0.88,
-    ambientFloor: 0.0005,
-    bounceBoost: 1.45,
-    aoRadius: 1.8,
+    exposure: 0.88,
+    bloomStrength: 0.16,
+    volumetricStrength: 0.18,
+    ambientFloor: 0.00005,
+    bounceBoost: 1.00,
+    aoRadius: 0.90,
   },
 
   build(m) {
-    // Authentic warm architectural alabaster porcelain on a shared 200 mm (0.20 m) masonry module
-    // (baseFreq 4.0 * tileScale 1.25 = 5 tiles/m -> every wall, deck, step, column & arch snaps to 0.20 m!).
-    const whiteTile = m.material({ base: "tile_white", tint: [1.0, 1.0, 0.97], roughness: 0.145, coat: 0.88, tileScale: 1.25 });
-    const ringTile = m.material({ base: "tile_white", tint: [0.99, 1.0, 0.96], roughness: 0.15, coat: 0.86, tileScale: 1.25 });
-    const poolFloor = m.material({ base: "tile_pool", tint: [0.98, 1.0, 0.97], roughness: 0.16, coat: 0.84, tileScale: 1.25 });
-    const plasterMat = m.material({ base: "plaster_warm", tint: [0.94, 0.92, 0.84], roughness: 0.84, coat: 0.02 });
-    const dadoGreen = m.material({ base: "tile_dado_green", roughness: 0.09, coat: 0.94, tileScale: 1.25 });
-    const frostedWin = m.material({ base: "frosted_window", emissive: [1.0, 0.95, 0.80], emissiveStrength: 16.5 });
-    const slideMat = m.material({ base: "fiberglass_slide", roughness: 0.12, coat: 0.94 });
+    // Clean neutral architectural glazed white porcelain on crisp 180 mm (0.18 m) tile module.
+    // Satin-glazed porcelain roughness (0.26, matching v1 cleanPorcelain) avoids mirror-wall reflections!
+    const whiteTile = m.material({ base: "tile_white", tint: [0.97, 0.98, 0.97], roughness: 0.26, coat: 0.78, tileScale: 1.3889 });
+    const ringTile = m.material({ base: "tile_white", tint: [0.97, 0.98, 0.97], roughness: 0.26, coat: 0.78, tileScale: 1.3889 });
+    const poolFloor = m.material({ base: "tile_pool", tint: [0.85, 0.96, 0.90], roughness: 0.22, coat: 0.78, tileScale: 1.3889 });
+    const plasterMat = m.material({ base: "plaster_warm", tint: [0.93, 0.94, 0.92], roughness: 0.84, coat: 0.02 });
+    const dadoGreen = m.material({ base: "tile_dado_green", roughness: 0.28, coat: 0.65, tileScale: 1.25 });
+    const frostedWin = m.material({ base: "frosted_window", emissive: [0.96, 0.98, 1.00], emissiveStrength: 16.5 });
+    const slideMat = m.material({ base: "fiberglass_slide", roughness: 0.14, coat: 0.92 });
     const steel = m.material({ base: "stainless_steel", roughness: 0.14 });
 
-    // Shared submerged pool floor spanning all four connected halls (aligned to exact 0.20 m grid).
-    m.floor(-20.20, -17.20, 22.20, 13.20, 0, poolFloor, { priority: 1.25 });
-    m.walkBounds = { minX: -19.40, maxX: 21.50, minZ: -15.90, maxZ: 12.20 };
+    // Shared submerged pool floor spanning all four connected halls.
+    m.floor(-20.20, -17.20, 22.40, 13.20, 0, poolFloor, { priority: 1.45 });
+    m.walkBounds = { minX: -19.40, maxX: 21.60, minZ: -15.80, maxZ: 12.00 };
 
     // =========================================================================
-    // CHAMBER 1: RING PASSAGE (x: -5.20..5.20, z: -16.40..12.40, H1: 4.60 = 23 tiles)
-    // Receding circular arches into pitch-black abyss + hidden behind-camera skylight + anchored steps.
+    // CHAMBER 1: RING PASSAGE (x: -5.40..4.60, z: -16.40..10.20, H1: 4.40 m)
+    // Exact v1 architectural lightwell: continuous solid tiled ceiling (sky NEVER visible!),
+    // hidden right-side roofless sky court (x: 4.90..7.00, z: -7.20..3.00) with 3 full-height
+    // hidden openings behind the right ring piers -> dramatic obsidian foreground framing,
+    // crisp white daylight sunbeam across the right wall/rings, 3 receding glowing caustic squares,
+    // solid walkable tiled steps against Ring 3, and a velvety dark circular terminal tunnel!
     // =========================================================================
-    const H1 = 4.60;
-    m.box([-5.80, 0, 12.40], [5.80, H1, 13.00], whiteTile, { skipFaces: ["ny"] });
-    m.box([-5.80, 0, -17.00], [5.80, H1, -16.40], whiteTile, { skipFaces: ["ny"] });
+    const H1 = 4.40;
+    const courtWallTop = 4.55;
+    // South & north end walls of Ring Passage
+    m.box([-5.80, 0, 10.20], [5.00, H1, 10.80], whiteTile, { skipFaces: ["ny"] });
+    m.box([-5.80, 0, -17.00], [5.00, H1, -16.40], whiteTile, { skipFaces: ["ny"] });
 
-    // West divider wall between Ring Passage (x=-5.20) and Chambers 3 & 4 (flush, zero overlap!)
-    m.wallWithDoorway([-5.80, 0, -16.40], [-5.20, H1, 12.40], {
+    // Continuous 100% solid tiled ceiling across the entire Ring Passage (zero visible ceiling holes!)
+    m.ceiling(-5.40, -16.40, 4.60, 10.20, H1, whiteTile, { priority: 1.25 });
+
+    // West divider wall (x = -5.80..-5.40) between Ring Passage and Chambers 3 & 4
+    // Rear doorway to Spiral Column sits further south (z: 6.80..9.80) so Ring 1's front stays obsidian dark!
+    m.wallWithDoorway([-5.80, 0, -16.40], [-5.40, H1, 10.20], {
       material: whiteTile,
       openings: [
         { pos: -5.00, width: 2.40, top: 3.20 }, // z: -6.20..-3.80 -> Slide & Porthole Hall
-        { pos: 8.60, width: 3.20, top: 3.40 },  // z: 7.00..10.20 -> Spiral Column Basin
+        { pos: 8.30, width: 3.00, top: 3.10 },  // z: 6.80..9.80 -> Spiral Column Basin
       ],
     });
-    // East divider wall between Ring Passage (x=5.20) and Chamber 2 Misty Lightwell
-    // Opening z=6.20..9.60 aligns flush with Chamber 2 corridor inner walls and clears Ring 1 (z=5.40..6.00)!
-    m.wallWithDoorway([5.20, 0, -16.40], [5.80, H1, 12.40], {
-      material: whiteTile,
-      openings: [{ pos: 7.90, width: 3.40, top: 3.60 }],
-    });
 
-    // Watertight single-plane ceiling subdivided cleanly around hidden behind-camera skylight shaft.
-    m.ceiling(-5.20, -16.40, 5.20, 12.40, H1, whiteTile, {
-      holes: [[-5.20, 6.20, -0.40, 11.00]],
-    });
-    m.box([-5.80, H1, 6.20], [-5.20, H1 + 2.00, 11.00], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-0.40, H1, 6.20], [0.00, H1 + 2.00, 11.00], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-5.80, H1, 5.80], [0.00, H1 + 2.00, 6.20], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-5.80, H1, 11.00], [0.00, H1 + 2.00, 11.40], whiteTile, { solid: false, priority: 0.4 });
-    m.skylight(-5.20, 6.20, -0.40, 11.00, H1 + 1.95, { color: [0.94, 0.96, 0.94], intensity: 2.2 });
+    // East wall (x = 4.60..4.90) with:
+    //   - 3 hidden full-height bay openings into the roofless sky court (z = [-6.6..-4.0], [-3.2..-0.6], [0.2..2.8])
+    //   - Solid dark pier z = 2.80..6.60 keeping foreground Ring 1 face in dramatic velvety obsidian shadow
+    //   - Corridor doorway z = 6.60..9.80 leading east into Chamber 2 (Misty Lightwell)
+    m.box([4.60, 0, -16.40], [4.90, H1, -6.60], whiteTile, { skipFaces: ["ny"] });
+    m.box([4.60, 0, -4.00], [4.90, H1, -3.20], whiteTile, { skipFaces: ["ny"] });
+    m.box([4.60, 0, -0.60], [4.90, H1, 0.20], whiteTile, { skipFaces: ["ny"] });
+    m.box([4.60, 0, 2.80], [4.90, H1, 6.60], whiteTile, { skipFaces: ["ny"] });
+    m.box([4.60, 3.20, 6.60], [4.90, H1, 9.80], whiteTile, { solid: false, skipFaces: ["py"] });
+    m.box([4.60, 0, 9.80], [4.90, H1, 10.20], whiteTile, { skipFaces: ["ny"] });
+    // Keep player inside the Ring Passage (prevent wandering out into the narrow sky court)
+    m.solids.push({ minX: 4.55, maxX: 4.95, minZ: -7.20, maxZ: 3.00, minY: 0, maxY: H1 });
 
-    // Five receding circular tunnel rings (0.60 m = 3 exact full tiles deep, symmetric crown joints,
-    // flush between x=-5.20..5.20 and y=0..4.60 with zero wall/ceiling interpenetration!).
-    const rings = [
-      { z: 5.40, r: 2.60, cy: 1.60 },
-      { z: 1.20, r: 2.50, cy: 1.60 },
-      { z: -3.00, r: 2.40, cy: 1.40 },
-      { z: -7.20, r: 2.30, cy: 1.40 },
-      { z: -11.40, r: 2.20, cy: 1.40 },
-    ];
-    for (const rg of rings) {
-      m.ringWall([-5.20, 0, rg.z], [5.20, H1, rg.z + 0.60], {
-        material: ringTile,
-        center: 0.0,
-        centerY: rg.cy,
-        radius: rg.r,
-        segments: 44,
-        tileModule: 0.20,
-      });
+    // Hidden roofless right-side sky court (x = 4.90..7.00, z = -7.20..3.00)
+    m.box([7.00, 0, -7.20], [7.40, courtWallTop, 3.00], whiteTile, { skipFaces: ["ny"], priority: 0.45 });
+    m.box([4.90, 0, -7.50], [7.40, courtWallTop, -7.20], whiteTile, { skipFaces: ["ny"], priority: 0.35 });
+    m.box([4.90, 0, 3.00], [7.40, courtWallTop, 3.30], whiteTile, { skipFaces: ["ny"], priority: 0.35 });
+    m.skylight(4.90, -7.20, 7.00, 3.00, courtWallTop - 0.04, { color: [0.90, 0.95, 1.00], intensity: 2.9 });
+
+    // Invisible vertical daylight portals flush inside the 3 hidden side openings (facing -X into each bay)
+    // carrying crisp neutral daylight bounce so shadowed left walls read clean neutral porcelain!
+    for (const [oz0, oz1] of [[0.20, 2.80], [-3.20, -0.60], [-6.60, -4.00]]) {
+      m.addAreaLight([4.84, 0.44, oz0], [4.84, 0.44, oz1], [4.84, H1 - 0.06, oz0], [0.95, 0.98, 1.00], 1.25, { kind: 1 });
     }
 
-    // Sunlit white-tiled steps anchored flush against the west wall (-5.20) and Ring 1/Ring 2 piers:
-    // 4 exact 0.20 m risers x 0.40 m treads (1 tile tall x 2 tiles deep each, zero floating slabs!).
-    m.box([-5.20, 0, 1.80], [-3.00, 0.80, 5.40], whiteTile, { walkable: true, skipFaces: ["nx", "ny", "nz", "pz"] });
-    m.stairs([-3.00, 0, 1.80], [-1.40, 0.80, 5.40], "-x", 4, whiteTile);
+    // Four smooth 64-segment circular rings (exact v1 radius=2.60, axisY=1.35, 0.40 m thick)
+    // + one deep smooth dark circular terminal tunnel (z = -16.40..-10.20, radius=2.30)!
+    for (const z of [3.00, -0.40, -3.80, -7.20]) {
+      m.ringWall([-5.40, 0, z], [4.60, H1, z + 0.40], {
+        material: ringTile,
+        center: 0.0,
+        centerY: 1.35,
+        radius: 2.60,
+        segments: 64,
+        tileModule: 0.18,
+        priority: 1.30,
+      });
+    }
+    m.ringWall([-5.40, 0, -16.40], [4.60, H1, -10.20], {
+      material: ringTile,
+      center: 0.0,
+      centerY: 1.35,
+      radius: 2.30,
+      segments: 64,
+      tileModule: 0.18,
+      priority: 0.70,
+    });
+
+    // Solid walkable tiled staircase tucked flush against Ring 3 on the left (visible through Ring 2):
+    // Matches v1's 3 chunky visible architectural steps above water (y=1.08, 0.90, 0.60, ending at x=-2.60)
+    // plus a submerged underwater entry step (y=0.30) and smooth walkable ramp from the pool floor!
+    m.box([-5.40, 0, -3.40], [-3.24, 1.08, -2.50], whiteTile, { walkable: true, skipFaces: ["nx", "ny", "nz"] });
+    m.stairs([-3.24, 0, -3.40], [-2.28, 0.90, -2.50], "-x", 3, whiteTile);
 
     // =========================================================================
-    // CHAMBER 2: MISTY LIGHTWELL CORRIDOR (x: 5.80..22.00, z: 4.00..12.60, H2: 4.00 = 20 tiles)
-    // Dark shadowed narrow tiled corridor opening into warm humid volumetric mist & right-side rail!
+    // CHAMBER 2: MISTY LIGHTWELL CORRIDOR (x: 4.90..22.00, z: 3.80..12.60, H2: 4.00 m)
+    // Dark shadowed narrow tiled corridor opening into bright sunlit volumetric atrium & steel rail!
     // =========================================================================
     const H2 = 4.00;
     const H2Well = 9.20;
-    m.box([5.80, 0, 5.80], [13.40, H2, 6.20], whiteTile, { skipFaces: ["ny", "nx"] });
-    m.box([5.80, 0, 9.60], [13.40, H2, 10.00], whiteTile, { skipFaces: ["ny", "nx"] });
-    m.ceiling(5.80, 6.20, 13.40, 9.60, H2, whiteTile);
-    // Narrow vertical tiled portal piers flush inside corridor (exact 1.40 m = 7 tiles wide slot, zero Z-fighting!)
-    m.box([12.20, 0, 6.20], [13.40, H2, 7.20], whiteTile, { skipFaces: ["ny", "nz", "py"] });
-    m.box([12.20, 0, 8.60], [13.40, H2, 9.60], whiteTile, { skipFaces: ["ny", "pz", "py"] });
+    m.box([4.90, 0, 6.20], [13.40, H2, 6.60], whiteTile, { skipFaces: ["ny", "nx"], priority: 1.35 });
+    m.box([4.90, 0, 9.80], [13.40, H2, 10.20], whiteTile, { skipFaces: ["ny", "nx"], priority: 1.35 });
+    m.ceiling(4.90, 6.60, 13.40, 9.80, H2, whiteTile, { priority: 1.25 });
+    // Narrow vertical tiled portal piers flush inside corridor (1.40 m wide slot, zero Z-fighting!)
+    m.box([12.20, 0, 6.60], [13.40, H2, 7.50], whiteTile, { skipFaces: ["ny", "nz", "py"], priority: 1.35 });
+    m.box([12.20, 0, 8.90], [13.40, H2, 9.80], whiteTile, { skipFaces: ["ny", "pz", "py"], priority: 1.35 });
+    // Broad sunlit atrium bounce portal set well back inside the misty lightwell (x=15.80, 2.4 m east of piers)
+    // so portal jambs stay physically exposed while casting a silky soft raking daylight gradient down the corridor!
+    m.addAreaLight([15.80, 0.55, 4.40], [15.80, 0.55, 11.80], [15.80, 5.20, 4.40], [0.96, 0.99, 1.00], 1.65, { kind: 1 });
 
     // Fully enclosed misty lightwell atrium (sealed lower west wings behind corridor + full upper shaft!)
-    m.box([13.40, 0, 4.20], [13.80, H2, 6.20], whiteTile, { skipFaces: ["ny", "py"] });
-    m.box([13.40, 0, 9.60], [13.80, H2, 12.20], whiteTile, { skipFaces: ["ny", "py"] });
-    m.box([13.40, H2, 4.20], [13.80, H2Well, 12.20], whiteTile, { solid: false, priority: 0.6 });
-    m.box([21.60, 0, 4.20], [22.00, H2Well, 12.20], whiteTile, { skipFaces: ["ny"] });
-    m.box([13.40, 0, 3.80], [22.00, H2Well, 4.20], whiteTile, { skipFaces: ["ny"] });
+    m.box([13.40, 0, 4.00], [13.80, H2, 6.60], whiteTile, { skipFaces: ["ny", "py"] });
+    m.box([13.40, 0, 9.80], [13.80, H2, 12.20], whiteTile, { skipFaces: ["ny", "py"] });
+    m.box([13.40, H2, 4.00], [13.80, H2Well, 12.20], whiteTile, { solid: false, priority: 0.6 });
+    m.box([21.60, 0, 4.00], [22.00, H2Well, 12.20], whiteTile, { skipFaces: ["ny"] });
+    m.box([13.40, 0, 3.60], [22.00, H2Well, 4.00], whiteTile, { skipFaces: ["ny"] });
     m.box([13.40, 0, 12.20], [22.00, H2Well, 12.60], whiteTile, { skipFaces: ["ny"] });
-    m.skylight(13.80, 4.20, 21.60, 12.20, H2Well - 0.05, { color: [1.0, 0.95, 0.80], intensity: 4.6 });
-    // Raised far white tiled terrace (exact 1.00 m = 5 tiles tall) + stainless steel handrail
-    m.box([17.00, 0, 8.20], [21.60, 1.00, 12.20], whiteTile, { walkable: true, skipFaces: ["ny", "px", "pz"] });
-    m.handrail([17.12, 8.32], [21.40, 8.32], 1.00, 0.90, { material: steel, postSpacing: 1.15 });
+    m.skylight(13.80, 4.00, 21.60, 12.20, H2Well - 0.05, { color: [0.95, 0.98, 1.00], intensity: 4.6 });
+    // Raised far white tiled terrace + stainless steel handrail
+    m.box([17.00, 0, 8.40], [21.60, 1.00, 12.20], whiteTile, { walkable: true, skipFaces: ["ny", "px", "pz"] });
+    m.handrail([17.12, 8.52], [21.40, 8.52], 1.00, 0.90, { material: steel, postSpacing: 1.15 });
 
     // =========================================================================
-    // CHAMBER 3: SPIRAL COLUMN BASIN (x: -19.40..-5.80, z: 2.00..12.40, H3: 4.60 = 23 tiles)
-    // Sunlit tiled cylindrical column, cantilevered spiral stairs, turquoise tiled ceiling, dark arch!
+    // CHAMBER 3: SPIRAL COLUMN BASIN (x: -19.40..-5.80, z: 2.00..12.40, H3: 4.60 m)
+    // Sunlit tiled cylindrical column, grounded cantilevered spiral stairs, dark arch!
     // =========================================================================
     const H3 = 4.60;
     m.box([-19.80, 0, 1.40], [-19.40, H3, 12.40], whiteTile, { skipFaces: ["ny"] });
     m.box([-19.80, 0, 12.40], [-5.80, H3, 13.00], whiteTile, { skipFaces: ["ny"] });
-    // Semicircular dark arch on exact 0.20 m masonry datum (spring=0.80, radius=1.60, thick=0.60)
+    // Close small north/south transition above Ring Passage height
+    m.box([-5.80, H1, 2.00], [-5.40, H3, 12.40], whiteTile, { solid: false, skipFaces: ["ny"] });
+    // Semicircular dark arch
     m.wallWithArch([-19.40, 0, 1.40], [-5.80, H3, 2.00], {
       material: whiteTile,
-      tileModule: 0.20,
+      tileModule: 0.18,
       arches: [{ pos: -10.40, radius: 1.60, spring: 0.80 }],
     });
     // Pitch-black sealed chamber behind the low semicircular arch
@@ -155,58 +184,92 @@ export default {
     m.box([-7.40, 0, -2.40], [-7.00, H3, 1.40], whiteTile, { skipFaces: ["ny"] });
     m.ceiling(-14.20, -2.40, -7.40, 1.40, H3, whiteTile);
 
-    // Single flush tiled ceiling around a 4-wall enclosed skylight shaft (zero paper-thin floating edges!)
+    // Enclosed skylight shaft on the east side so +X sun slashes cleanly across the spiral column & basin!
     m.ceiling(-19.40, 2.00, -5.80, 12.40, H3, whiteTile, {
-      holes: [[-19.40, 4.20, -16.20, 11.80]],
+      holes: [[-9.80, 4.00, -6.20, 11.40]],
     });
-    m.box([-19.80, H3, 4.20], [-19.40, H3 + 2.00, 11.80], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-16.20, H3, 4.20], [-15.80, H3 + 2.00, 11.80], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-19.80, H3, 3.80], [-15.80, H3 + 2.00, 4.20], whiteTile, { solid: false, priority: 0.4 });
-    m.box([-19.80, H3, 11.80], [-15.80, H3 + 2.00, 12.20], whiteTile, { solid: false, priority: 0.4 });
-    m.skylight(-19.40, 4.20, -16.20, 11.80, H3 + 1.95, { color: [0.92, 0.96, 0.98], intensity: 2.3 });
+    m.box([-10.20, H3, 4.00], [-9.80, H3 + 1.80, 11.40], whiteTile, { solid: false, priority: 0.4 });
+    m.box([-6.20, H3, 4.00], [-5.80, H3 + 1.80, 11.40], whiteTile, { solid: false, priority: 0.4 });
+    m.box([-10.20, H3, 3.60], [-5.80, H3 + 1.80, 4.00], whiteTile, { solid: false, priority: 0.4 });
+    m.box([-10.20, H3, 11.40], [-5.80, H3 + 1.80, 11.80], whiteTile, { solid: false, priority: 0.4 });
+    m.skylight(-9.80, 4.00, -6.20, 11.40, H3 + 1.75, { color: [0.94, 0.97, 1.00], intensity: 3.4 });
 
-    // Seamless 48-segment cylindrical tiled column + non-overlapping 200 mm-course spiral stairs
-    m.cylinder(-13.40, 6.20, 0, H3, 1.20, whiteTile, { segments: 48, tileModule: 0.20 });
-    m.spiralStairs(-13.40, 6.20, 0.60, H3, 1.18, 2.78, Math.PI * 0.96, Math.PI * 1.42, 20, whiteTile, {
-      slabThickness: 0.20,
-      tileModule: 0.20,
+    // Seamless 48-segment cylindrical tiled column + grounded spiral stairs emerging cleanly from pool water
+    // (y0=0.28..4.60, 24 steps -> EXACT 0.180 m = 1 full tile per riser, zero floating gap & zero tile slivers!)
+    m.cylinder(-13.40, 6.20, 0, H3, 1.20, whiteTile, { segments: 48, tileModule: 0.18 });
+    m.spiralStairs(-13.40, 6.20, 0.28, H3, 1.18, 2.78, Math.PI * 0.90, Math.PI * 1.48, 24, whiteTile, {
+      slabThickness: 0.18,
+      tileModule: 0.18,
     });
 
     // =========================================================================
-    // CHAMBER 4: SLIDE & PORTHOLE HALL (x: -19.40..-5.80, z: -16.00..-3.60, H4: 5.80 = 29 tiles)
-    // Wet white deck + emerald dado + exact 3x3-tile columns + backlit pill windows & curved water slide!
+    // CHAMBER 4: SLIDE & PORTHOLE HALL (x: -19.40..-5.80, z: -16.00..-3.60, H4: 5.80 m)
+    // Wet white deck + emerald dado + columns + backlit pill windows & curved water slide!
     // =========================================================================
     const H4 = 5.80;
-    const deckY = 0.80; // exact 4 full tiles tall!
-    m.ceiling(-19.40, -16.00, -5.80, -3.60, H4, plasterMat);
+    const deckY = 0.72; // Exact 4 x 0.18 m full ceramic tile courses above pool floor!
+    // Deep baffled overcast natatorium lightwell (3.8 m tall east baffle blocks harsh noon glare,
+    // bathing the wet walkway, columns & emerald dado in soft cool humid Poolrooms twilight while
+    // letting the far glowing backlit pill windows & portholes dominate as the ethereal key light!)
+    const c4Sky = [-17.60, -7.00, -12.60, -4.20];
+    const c4WellH = 3.80;
+    // Keep the entire visible north ceiling (-16.00..-7.00) one seamless continuous UV2 sheet (zero chart seam!)
+    m.ceiling(-19.40, -16.00, -5.80, -7.00, H4, plasterMat, { priority: 1.55 });
+    m.ceiling(-19.40, -7.00, -5.80, -3.60, H4, plasterMat, { holes: [c4Sky], priority: 0.75 });
+    m.box([-18.00, H4, -7.00], [-17.60, H4 + c4WellH, -4.20], whiteTile, { solid: false, priority: 0.35 });
+    m.box([-12.60, H4, -7.00], [-12.20, H4 + c4WellH, -4.20], whiteTile, { solid: false, priority: 0.35 });
+    m.box([-18.00, H4, -7.40], [-12.20, H4 + c4WellH, -7.00], whiteTile, { solid: false, priority: 0.35 });
+    m.box([-18.00, H4, -4.20], [-12.20, H4 + c4WellH, -3.80], whiteTile, { solid: false, priority: 0.35 });
+    m.skylight(-17.60, -7.00, -12.60, -4.20, H4 + c4WellH - 0.05, { color: [0.88, 0.96, 1.00], intensity: 2.35 });
     m.box([-19.80, 0, -3.60], [-5.80, H4, -3.00], whiteTile, { skipFaces: ["ny"] });
-    m.box([-5.80, H1, -16.60], [-5.20, H4, -3.00], whiteTile, { solid: false, skipFaces: ["ny"] });
+    m.box([-5.80, H1, -16.60], [-5.40, H4, -3.00], whiteTile, { solid: false, skipFaces: ["ny"], priority: 1.25 });
     m.wallWithArch([-19.80, 0, -16.00], [-19.40, H4, -3.60], {
       material: whiteTile,
-      tileModule: 0.20,
+      tileModule: 0.18,
       arches: [{ pos: -8.60, radius: 1.00, spring: 2.20 }],
     });
-    // Real hollow dark alcove behind left arch (floor extends flush into arch reveal to x=-19.40!)
+    // Real hollow dark alcove behind left arch
     m.box([-22.00, 0, -10.20], [-21.60, 3.60, -7.00], whiteTile, { skipFaces: ["ny"] });
     m.box([-21.60, 0, -10.20], [-19.80, 3.60, -9.80], whiteTile, { skipFaces: ["ny"] });
     m.box([-21.60, 0, -7.40], [-19.80, 3.60, -7.00], whiteTile, { skipFaces: ["ny"] });
     m.ceiling(-21.60, -9.80, -19.80, -7.40, 3.60, plasterMat);
     m.floor(-21.60, -9.80, -19.40, -7.40, deckY, whiteTile, { walkable: true });
 
-    // Raised wet white-tiled walkway deck (exact 21 tiles wide) + flush pool-to-deck access stairs (out of bookmark FOV)
-    m.box([-19.40, 0, -16.00], [-15.20, deckY, -3.60], whiteTile, { walkable: true, skipFaces: ["nx", "ny", "nz", "pz"] });
-    m.stairs([-15.20, 0, -4.40], [-13.60, deckY, -3.60], "-x", 4, whiteTile);
+    // Exact 0.18 m-grid flush 3x3-tile columns (0.54 x 0.54 m, aligned cleanly to deck edge x=-15.12!)
+    // Cut out exact column footprints from the deck top quad so zero buried geometry bleeds across bases.
+    const colBands = [[-6.48, -5.94], [-9.36, -8.82], [-12.24, -11.70], [-14.58, -14.04]];
+    const colHoles = colBands.map(([z0, z1]) => [-15.66, z0, -15.11, z1]);
+    const groutSeamMat = m.material({ base: "plaster_warm", albedo: [0.055, 0.060, 0.058], roughness: 0.94, coat: 0.0 });
+
+    // Raised wet white-tiled walkway deck (flush cutout top + pool vertical wall + access stairs)
+    m.floor(-19.40, -16.00, -15.12, -3.60, deckY, whiteTile, { walkable: true, priority: 1.65, holes: colHoles });
+    m.addQuad([-15.12, 0, -3.60], [-15.12, 0, -16.00], [-15.12, deckY, -16.00], [-15.12, deckY, -3.60], whiteTile, {
+      u0: 3.60, v0: 0, u1: 16.00, v1: deckY, priority: 1.25,
+    });
+    m.stairs([-15.12, 0, -4.32], [-13.68, deckY, -3.60], "-x", 4, whiteTile);
     m.box([-19.40, deckY, -16.00], [-19.36, deckY + 0.80, -9.60], dadoGreen, { solid: false, skipFaces: ["nx", "ny"], priority: 0.9 });
     m.box([-19.40, deckY, -7.60], [-19.36, deckY + 0.80, -3.60], dadoGreen, { solid: false, skipFaces: ["nx", "ny"], priority: 0.9 });
 
-    // Row of architectural square columns: exact 0.60 x 0.60 m (3x3 full tiles on every face, flush with deck edge!)
-    for (const pz of [-6.30, -9.10, -11.90, -14.30]) {
-      m.box([-15.80, deckY, pz - 0.30], [-15.20, H4, pz + 0.30], whiteTile, { skipFaces: ["ny", "py"] });
+    // Flush straight 3x3-tile columns with razor-thin 6 mm dark mortar/silicone expansion seam at floor junction (no bulky plinth!)
+    for (const [z0, z1] of colBands) {
+      m.box([-15.66, deckY + 0.006, z0], [-15.12, H4, z1], whiteTile, {
+        skipFaces: ["ny", "py"],
+        priority: 1.35,
+      });
+      // Crisp 6 mm dark waterproof cement/caulk floor-to-column grout joint flush inside the column perimeter
+      m.box([-15.657, deckY, z0 + 0.003], [-15.12, deckY + 0.006, z1 - 0.003], groutSeamMat, {
+        solid: false,
+        skipFaces: ["ny", "py"],
+        priority: 0.35,
+      });
     }
+    m.handrail([-15.26, -8.78], [-15.26, -6.52], deckY, 0.88, { material: steel, postSpacing: 1.08 });
+    m.handrail([-15.26, -11.66], [-15.26, -9.40], deckY, 0.88, { material: steel, postSpacing: 1.08 });
+    m.handrail([-15.26, -14.00], [-15.26, -12.28], deckY, 0.88, { material: steel, postSpacing: 0.86 });
 
-    // Far backlit window wall (z = -16.60..-16.00 = 3 exact tiles deep, flush flanking piers with zero overlap!)
+    // Far glowing backlit milk-glass window wall (dominant ethereal Poolrooms key light!)
     const winX = [-14.80, -12.40, -10.00, -7.60];
-    m.box([-19.40, 0, -16.60], [-16.00, H4, -16.00], whiteTile, { skipFaces: ["ny", "py"] });
+    m.box([-19.40, 0, -16.60], [-16.00, H4, -16.00], whiteTile, { skipFaces: ["ny", "py"], priority: 1.35 });
     m.box([-6.40, 0, -16.60], [-5.80, H4, -16.00], whiteTile, { skipFaces: ["ny", "py"] });
     for (const wx of winX) {
       m.pillWindowBay([wx - 1.20, 0, -16.60], [wx + 1.20, 3.60, -16.00], {
@@ -216,9 +279,9 @@ export default {
         sillY: 0.80,
         headY: 3.20,
         facing: "+",
-        tileModule: 0.20,
-        lightColor: [1.0, 0.95, 0.82],
-        lightIntensity: 5.8,
+        tileModule: 0.18,
+        lightColor: [0.95, 0.99, 1.00],
+        lightIntensity: 18.5,
       });
       m.ringWall([wx - 1.20, 3.60, -16.60], [wx + 1.20, H4, -16.00], {
         material: whiteTile,
@@ -226,48 +289,62 @@ export default {
         centerY: 4.60,
         radius: 0.50,
         segments: 24,
-        tileModule: 0.20,
+        tileModule: 0.18,
         glassMaterial: frostedWin,
         glassFacing: "+",
-        lightColor: [1.0, 0.95, 0.82],
-        lightIntensity: 4.4,
+        lightColor: [0.95, 0.99, 1.00],
+        lightIntensity: 15.0,
       });
     }
 
-    // Smooth curved dark glossy fiberglass water slide tube anchored into ceiling and plunge floor with collision
+    // Engineered hollow aqua-teal fiberglass tube water slide emerging from the upper east tiled wall,
+    // sweeping smoothly down at a rideable ~24-28 deg curve, and leveling out into an open horizontal
+    // exit mouth skimming right above the turquoise splash pool with stainless-steel support stanchions!
+    const slideInner = m.material({ base: "fiberglass_slide", albedo: [0.58, 0.78, 0.80], roughness: 0.16, coat: 0.88 });
     m.curvedTube(
       [
-        [-12.6, 5.88, -8.4],
-        [-11.2, 4.95, -9.6],
-        [-9.8, 3.70, -10.6],
-        [-9.4, 2.10, -11.4],
-        [-9.4, 0.00, -11.6],
+        [-5.55, 4.35, -13.60],
+        [-7.50, 3.70, -13.55],
+        [-9.55, 2.75, -12.90],
+        [-10.90, 1.72, -11.65],
+        [-11.35, 1.06, -10.20],
+        [-11.45, 0.98, -9.10],
       ],
-      0.62,
+      0.48,
       slideMat,
-      { stepsPerSegment: 12, radialSegments: 24, flanges: true, solid: true },
+      {
+        stepsPerSegment: 10,
+        radialSegments: 24,
+        flanges: true,
+        flangeSpacing: 1.95,
+        hollow: true,
+        innerMaterial: slideInner,
+        wallThickness: 0.042,
+        priority: 0.95,
+        solid: true,
+      },
     );
-    // Grounded plunge catch basin walls (1.00 m = 5 tiles tall, 0.20 m = 1 tile thick, anchored to east wall!)
-    m.box([-11.60, 0, -13.20], [-5.80, 1.00, -13.00], whiteTile, { skipFaces: ["ny", "px"] });
-    m.box([-11.60, 0, -10.20], [-5.80, 1.00, -10.00], whiteTile, { skipFaces: ["ny", "px"] });
-    m.box([-11.60, 0, -13.00], [-11.40, 1.00, -10.20], whiteTile, { skipFaces: ["ny", "nz", "pz"] });
-    m.handrail([-11.50, -10.10], [-6.00, -10.10], 1.00, 0.80, { material: steel, postSpacing: 1.10 });
+    // Rigid stainless-steel vertical support stanchions + base plates anchoring the slide to the pool floor
+    for (const [sx, sy, sz] of [[-7.55, 3.28, -13.54], [-10.32, 1.76, -12.22], [-11.34, 0.56, -10.22]]) {
+      m.pipe([sx, 0.0, sz], [sx, sy, sz], 0.075, steel, { segments: 14 });
+      m.cylinder(sx, sz, 0.0, 0.12, 0.14, steel, { segments: 14, solid: false });
+      m.solids.push({ kind: "circle", x: sx, z: sz, radius: 0.14, minY: 0, maxY: sy });
+    }
 
     // =========================================================================
     // SINGLE CONTINUOUS PHYSICAL WATER BODY COVERING ALL FOUR HALLS
-    // Two-solver GPU water: Chebyshev finite-depth Neumann ripples + 256x256 FFT wading wake!
+    // Exact v1 optics: 44 cm shallow water, crystal aquamarine-emerald Beer-Lambert [0.34, 0.075, 0.040],
+    // lively 0.018 m finite-depth Neumann ripples + 256x256 FFT dispersive wading Kelvin V-wakes!
     // =========================================================================
-    m.water(-19.60, -16.20, 21.80, 12.60, 0.60, {
-      // Rich Poolrooms emerald-jade Beer-Lambert absorption:
-      // sunlit shallow floors glow vivid emerald-jade, shadowed corridors drop to deep dark emerald!
-      absorption: [1.05, 0.16, 0.28],
-      waveAmp: 0.020,
-      causticStrength: 1.22,
+    m.water(-19.60, -16.20, 21.80, 12.40, 0.44, {
+      absorption: [0.34, 0.075, 0.040],
+      waveAmp: 0.018,
+      causticStrength: 1.35,
     });
 
     // Four curated camera bookmarks matching each iconic Poolrooms composition:
-    m.bookmark("1 · Ring Passage", { x: 0.90, y: 1.66, z: 8.20, yaw: 0.14, pitch: -0.07 });
-    m.bookmark("2 · Misty Lightwell", { x: 9.00, y: 1.62, z: 7.90, yaw: -1.57, pitch: 0.01 });
+    m.bookmark("1 · Ring Passage", { x: 1.02, y: 1.56, z: 6.42, yaw: 0.14, pitch: -0.02 });
+    m.bookmark("2 · Misty Lightwell", { x: 8.80, y: 1.62, z: 8.20, yaw: -1.57, pitch: 0.01 });
     m.bookmark("3 · Spiral Column", { x: -11.30, y: 1.68, z: 11.30, yaw: 0.25, pitch: 0.02 });
     m.bookmark("4 · Slide & Portholes", { x: -16.00, y: 1.56, z: -4.20, yaw: -0.24, pitch: 0.01 });
   },

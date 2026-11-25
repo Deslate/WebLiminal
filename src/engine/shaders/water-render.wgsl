@@ -140,7 +140,7 @@ fn waterBicubicSample(wx: f32, wz: f32) -> vec3f {
   }
 
   if (winMask < 0.999) {
-    let farSlope = evalFarCapillarySlope(vec2f(wx, wz), frame.cameraPos.w, max(water.surface.x, 0.35), 0.045);
+    let farSlope = evalFarCapillarySlope(vec2f(wx, wz), frame.cameraPos.w, max(water.surface.x, 0.35), 0.038);
     dhdx = mix(farSlope.x, dhdx, winMask);
     dhdz = mix(farSlope.y, dhdz, winMask);
     hVal *= winMask;
@@ -305,10 +305,17 @@ fn shadeSurfaceHit(hit: RayHit, hitPos: vec3f, rayDir: vec3f, rayDist: f32, isSu
           let cPow = clamp(water.optics.w, 0.5, 1.6);
           sunFactor = pow(causticRaw, vec3f(cPow));
         } else {
+          // Far receding pool beyond local caustic window: 4-tap soft solar penumbra + subtle ripple focus
           let shadowPos = hitPos + hit.n * 0.015;
-          if (!traceShadowWater(shadowPos, sunDir, 150.0)) {
-            sunFactor = vec3f(1.0);
+          let sBasis = orthoBasis(sunDir);
+          var softVis = 0.0;
+          for (var si = 0; si < 4; si++) {
+            let ang = f32(si) * (PI * 0.5) + 0.4;
+            let sd = normalize(sBasis * vec3f(0.032 * cos(ang), 0.032 * sin(ang), 1.0));
+            if (!traceShadowWater(shadowPos, sd, 150.0)) { softVis += 0.25; }
           }
+          let farRip = 0.86 + 0.14 * sin(hitPos.x * 7.5 + frame.cameraPos.w * 2.1) * cos(hitPos.z * 6.8 - frame.cameraPos.w * 1.7);
+          sunFactor = vec3f(softVis * farRip);
         }
         col += albedo * kD * frame.sunColorInt.rgb * ndl * INV_PI * inTransmit * sunFactor;
       } else {
@@ -379,23 +386,16 @@ fn fsWater(i: VSOut) -> @location(0) vec4f {
   let hitCheck = ro + rd * tW;
   w = waterBicubicSample(hitCheck.x, hitCheck.z);
   let clearRay = tScene - tW;
-  if (clearRay <= 0.001) { discard; }
+  if (clearRay <= 0.002) { discard; }
 
   let wp = vec3f(hitCheck.x, wl + w.x, hitCheck.z);
   let V = -rd;
   let camDist = tW;
 
-  // Gentle Neumann slope relaxation + physical capillary meniscus curl right along wall contact (< 4.5 cm).
-  let contactCalm = mix(0.45, 1.0, smoothstep(0.0, 0.045, clearRay));
-  let clampedSlope = clamp(vec2f(w.y, w.z) * contactCalm, vec2f(-0.72), vec2f(0.72));
+  // Gentle Neumann slope relaxation near wall/step contact (zero artificial dark meniscus rim!).
+  let contactCalm = mix(0.28, 1.0, smoothstep(0.0, 0.075, clearRay));
+  let clampedSlope = clamp(vec2f(w.y, w.z) * contactCalm, vec2f(-0.62), vec2f(0.62));
   var N = normalize(vec3f(-clampedSlope.x, 1.0, -clampedSlope.y));
-
-  let meniscus = exp(-clearRay * 55.0) * 0.14;
-  let horizV = vec3f(V.x, 0.0, V.z);
-  let horizLen = length(horizV);
-  if (meniscus > 0.002 && horizLen > 1e-4) {
-    N = normalize(N + (horizV / horizLen) * meniscus);
-  }
 
   // Guarantee camera-facing normal hemisphere: prevents Snell refraction inversion and
   // bogus 99% dark grazing mirrors on steep wading bow waves and wall-hugging ripples!
@@ -409,7 +409,8 @@ fn fsWater(i: VSOut) -> @location(0) vec4f {
   let fresnel = exactDielectricFresnel(ndv, 1.333);
 
   // Safe wet-side ray origin backed slightly along +V so rays NEVER start inside solid walls/steps!
-  let safeP = ro + rd * max(0.05, tW - min(0.008, clearRay * 0.35));
+  let safeBack = min(0.014, clearRay * 0.45);
+  let safeP = ro + rd * max(0.05, tW - safeBack);
 
   // 2. TRUE Snell-Refracted BVH Transmission Ray!
   var T = refract(-V, N, 1.0 / 1.333);
@@ -418,25 +419,23 @@ fn fsWater(i: VSOut) -> @location(0) vec4f {
 
   let refrOrigin = safeP;
   let subHit = traceClosestWater(refrOrigin, T, 24.0);
-  var underwater = frame.fogColorDens.rgb + vec3f(0.012, 0.042, 0.032);
+  var underwater = vec3f(0.004, 0.014, 0.012);
   if (subHit.hit) {
     let subLen = subHit.t;
     let subPos = refrOrigin + T * subHit.t;
     let subCol = shadeSurfaceHit(subHit, subPos, T, camDist + subHit.t, true);
-    // Exact Beer-Lambert physical RGB water absorption
+    // Exact Beer-Lambert RGB water absorption + Snell solid-angle radiance factor (n1/n2)^2 = 1/1.333^2
+    // matching v1 camera.wgsl physical water clarity (crystal aquamarine-emerald tiles beneath glass water!).
     let transmit = exp(-water.optics.rgb * subLen);
-    // Light-proportional warm emerald-jade volume scattering (zero glow in shadowed pools!)
-    let subLuma = dot(subCol, vec3f(0.2126, 0.7152, 0.0722));
-    let inScatter = vec3f(0.008, 0.040, 0.028) * (1.0 - transmit) * min(subLuma * 0.72, 0.95);
-    underwater = subCol * transmit + inScatter;
+    underwater = (subCol * transmit) * (1.0 / (1.333 * 1.333));
   }
 
   // 3. TRUE Full-Scene BVH Mirror Reflection Ray!
   var R = reflect(-V, N);
-  if (R.y < 0.03) {
-    R = normalize(vec3f(R.x, 0.03, R.z));
+  if (R.y < 0.025) {
+    R = normalize(vec3f(R.x, 0.025, R.z));
   }
-  let reflOrigin = safeP + vec3f(0.0, 0.005, 0.0);
+  let reflOrigin = safeP + vec3f(0.0, 0.008, 0.0);
   let reflHit = traceClosestWater(reflOrigin, R, 90.0);
   var reflCol: vec3f;
   if (reflHit.hit) {
@@ -457,6 +456,8 @@ fn fsWater(i: VSOut) -> @location(0) vec4f {
     }
   }
 
-  let finalCol = underwater * (1.0 - fresnel) + reflCol * fresnel;
+  // Match v1 camera.wgsl gentle atmospheric transmittance along primary air path
+  let airTr = exp(-0.004 * camDist);
+  let finalCol = (underwater * (1.0 - fresnel) + reflCol * fresnel) * airTr;
   return vec4f(finalCol, 1.0);
 }

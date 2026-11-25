@@ -57,7 +57,7 @@ export const MATERIAL_PRESETS = {
   },
   wallpaper_yellow: {
     presetId: 4,
-    albedo: [0.86, 0.83, 0.59], // authentic 2002 HobbyTown Oshkosh pale cream-yellow wallpaper
+    albedo: [0.89, 0.85, 0.54], // authentic luminous warm mono-yellow Backrooms wallpaper
     roughness: 0.82,
     metallic: 0.0,
     coat: 0.0,
@@ -70,12 +70,12 @@ export const MATERIAL_PRESETS = {
   },
   carpet_damp: {
     presetId: 5,
-    albedo: [0.49, 0.39, 0.22], // warm camel-tan / mocha commercial broadloom cut-pile carpet
+    albedo: [0.54, 0.43, 0.21], // rich warm camel-tan / golden-ochre commercial broadloom cut-pile carpet
     roughness: 0.94,
     metallic: 0.0,
     coat: 0.0,
-    tileScale: 1.4,
-    pomDepth: 0.009,
+    tileScale: 1.5,
+    pomDepth: 0.0,
     emissive: [0, 0, 0],
     emissiveStrength: 0,
     wetness: 0.14,
@@ -239,10 +239,10 @@ export const MATERIAL_PRESETS = {
   },
   fiberglass_slide: {
     presetId: 18,
-    albedo: [0.032, 0.105, 0.095], // dark glossy molded fiberglass pool slide
-    roughness: 0.13,
+    albedo: [0.13, 0.38, 0.44], // clean molded aqua-teal natatorium fiberglass slide gelcoat
+    roughness: 0.16,
     metallic: 0.0,
-    coat: 0.96,
+    coat: 0.90,
     tileScale: 1.0,
     pomDepth: 0.001,
     emissive: [0, 0, 0],
@@ -250,8 +250,47 @@ export const MATERIAL_PRESETS = {
     wetness: 0.5,
     seed: 19.0,
   },
-  plaster_mud: {
+  corrugated_metal: {
     presetId: 19,
+    albedo: [0.66, 0.67, 0.65], // galvanized industrial corrugated sheet-metal partition (Aquila Sector!)
+    roughness: 0.36,
+    metallic: 0.56,
+    coat: 0.24,
+    tileScale: 1.0,
+    pomDepth: 0.012,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.08,
+    seed: 20.0,
+  },
+  moss_floor: {
+    presetId: 20,
+    albedo: [0.16, 0.30, 0.075], // lush sunlit emerald courtyard moss & ground-cover ivy carpet
+    roughness: 0.92,
+    metallic: 0.0,
+    coat: 0.0,
+    tileScale: 0.8,
+    pomDepth: 0.014,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.12,
+    seed: 21.0,
+  },
+  foliage_vine: {
+    presetId: 21,
+    albedo: [0.15, 0.31, 0.085], // hanging & climbing courtyard ivy foliage catching golden sunlight
+    roughness: 0.64,
+    metallic: 0.0,
+    coat: 0.12,
+    tileScale: 1.5,
+    pomDepth: 0.006,
+    emissive: [0, 0, 0],
+    emissiveStrength: 0,
+    wetness: 0.15,
+    seed: 22.0,
+  },
+  plaster_mud: {
+    presetId: 22,
     albedo: [0.34, 0.26, 0.18], // rural aged ochre mud-plaster with lower damp flaking stucco
     roughness: 0.91,
     metallic: 0.0,
@@ -261,10 +300,10 @@ export const MATERIAL_PRESETS = {
     emissive: [0, 0, 0],
     emissiveStrength: 0,
     wetness: 0.85,
-    seed: 20.0,
+    seed: 23.0,
   },
   stone_damp: {
-    presetId: 20,
+    presetId: 23,
     albedo: [0.055, 0.048, 0.040], // dark gritty damp stone/concrete floor catching candle reflections
     roughness: 0.62,
     metallic: 0.0,
@@ -274,10 +313,10 @@ export const MATERIAL_PRESETS = {
     emissive: [0, 0, 0],
     emissiveStrength: 0,
     wetness: 0.82,
-    seed: 21.0,
+    seed: 24.0,
   },
   wood_plank_aged: {
-    presetId: 21,
+    presetId: 24,
     albedo: [0.075, 0.068, 0.060], // weathered charcoal-timber vertical double-door planks
     roughness: 0.78,
     metallic: 0.0,
@@ -287,10 +326,10 @@ export const MATERIAL_PRESETS = {
     emissive: [0, 0, 0],
     emissiveStrength: 0,
     wetness: 0.2,
-    seed: 22.0,
+    seed: 25.0,
   },
   couplet_paper: {
-    presetId: 22,
+    presetId: 25,
     albedo: [0.44, 0.055, 0.075], // sun-bleached crimson/magenta paper with SDF brush calligraphy
     roughness: 0.88,
     metallic: 0.0,
@@ -303,7 +342,7 @@ export const MATERIAL_PRESETS = {
     seed: 1.0, // 1=left(富贵由天), 2=right(平安是福), 3=horizontal scroll, 4=left talisman, 5=right talisman
   },
   candle_wax: {
-    presetId: 23,
+    presetId: 26,
     albedo: [0.85, 0.73, 0.50], // warm translucent paraffin wax with subsurface wick glow
     roughness: 0.42,
     metallic: 0.0,
@@ -313,10 +352,10 @@ export const MATERIAL_PRESETS = {
     emissive: [1.0, 0.42, 0.08],
     emissiveStrength: 2.2,
     wetness: 0.0,
-    seed: 24.0,
+    seed: 26.0,
   },
   candle_flame: {
-    presetId: 24,
+    presetId: 27,
     albedo: [0.02, 0.02, 0.02], // incandescent candle flame / smoldering ember
     roughness: 0.95,
     metallic: 0.0,
@@ -326,7 +365,7 @@ export const MATERIAL_PRESETS = {
     emissive: [1.0, 0.62, 0.18],
     emissiveStrength: 26.0,
     wetness: 0.0,
-    seed: 25.0,
+    seed: 27.0,
   },
 };
 

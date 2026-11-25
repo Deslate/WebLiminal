@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
-const url = process.env.VERIFY_URL || "http://127.0.0.1:4173/v2.html";
+const url = process.env.VERIFY_URL || "http://127.0.0.1:4173/";
 const outDir = process.env.EVIDENCE_DIR || "/tmp/webliminal-captures";
 const targetSpp = Number(process.env.SPP || 40);
 const width = Number(process.env.WIDTH || 960);

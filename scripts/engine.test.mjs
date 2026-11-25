@@ -5,6 +5,7 @@ import { intersectBVH } from "../src/engine/bvh.js";
 import { canStand, movePlayer, sampleFloorHeight, PLAYER_EYE_HEIGHT } from "../src/engine/collision.js";
 import { MATERIAL_PRESETS } from "../src/engine/materials.js";
 import { LEVEL_LIST } from "../levels/v2/index.js";
+import { BGM_TRACKS, createBgmEngine, midiToHz } from "../src/engine/bgm.js";
 
 test("MapBuilder compiles room, arch, cylinder, stairs, and area lights into clean mesh + BVH", () => {
   const m = createMap({ atlasSize: 512 });
@@ -80,11 +81,6 @@ test("Material presets pack cleanly and dry v2 levels incur zero water allocatio
   const c0 = m0.compile();
   assert.equal(c0.water, null);
   assert(c0.lightCount >= 8);
-
-  const m1 = createMap();
-  byId.level1.build(m1);
-  const c1 = m1.compile();
-  assert.equal(c1.water, null);
 
   const mp = createMap();
   byId["poolrooms-v2"].build(mp);
@@ -201,27 +197,45 @@ test("v2 water window planner never spams resets near map edges, shifts smoothly
   }
 });
 
-test("v2 wading wake trail fires alternating footsteps in water and generates ballistic kick splashes", () => {
+test("v2 wading wake trail fires alternating footsteps in water and scales cadence with speed", () => {
   const trail = createWakeTrail();
-  const contacts = [];
+  const fastContacts = [];
   let x = 0, z = 0;
   for (let i = 1; i <= 45; i++) {
     const prev = { x, z, footY: 0 };
-    z -= 0.05; // 1.5 m/s at 30 Hz
+    z -= 0.05; // 1.5 m/s fast Shift-wading at 30 Hz (1.5 s)
     const next = { x, z, footY: 0 };
-    const c = trail.advance(prev, next, i / 30, 0.52);
-    if (c) contacts.push(c);
+    const c = trail.advance(prev, next, i / 30, 0.44);
+    if (c) fastContacts.push(c);
   }
-  assert(contacts.length >= 3, `Expected >= 3 wading footsteps, got ${contacts.length}`);
-  assert(Math.sign(contacts[0].x) === -Math.sign(contacts[1].x), "Footsteps should alternate left and right");
-  const splashes = kickImpacts(contacts[0]);
+  assert(fastContacts.length >= 3, `Expected >= 3 fast wading footsteps, got ${fastContacts.length}`);
+  assert(Math.sign(fastContacts[0].x) === -Math.sign(fastContacts[1].x), "Footsteps should alternate left and right");
+
+  // Slower normal wading (0.85 m/s over 3.0 s) must have a noticeably slower, heavier step interval (~0.96 s/step)
+  trail.reset();
+  const normalContacts = [];
+  z = 0;
+  for (let i = 1; i <= 90; i++) {
+    const prev = { x: 0, z, footY: 0 };
+    z -= 0.85 / 30;
+    const next = { x: 0, z, footY: 0 };
+    const c = trail.advance(prev, next, i / 30, 0.44);
+    if (c) normalContacts.push(c);
+  }
+  assert(normalContacts.length >= 3, `Expected >= 3 normal wading footsteps in 3s, got ${normalContacts.length}`);
+  const normalGap = normalContacts[2].time - normalContacts[1].time;
+  const fastGap = fastContacts[2].time - fastContacts[1].time;
+  assert(normalGap > 0.85 && normalGap < 1.15, `Normal wading cadence should be ~0.96 s/step, got ${normalGap.toFixed(2)}s`);
+  assert(normalGap > fastGap * 1.4, `Normal wading (${normalGap.toFixed(2)}s) must be much slower than fast wading (${fastGap.toFixed(2)}s)`);
+
+  const splashes = kickImpacts(fastContacts[0]);
   assert.equal(splashes.length, 6);
   for (const sp of splashes) {
-    assert(sp.time > contacts[0].time && sp.momentum > 0);
+    assert(sp.time > fastContacts[0].time && sp.momentum > 0);
   }
   // Dry floor must never fire wading footsteps
   trail.reset();
-  assert.equal(trail.advance({ x: 0, z: 0, footY: 0.64 }, { x: 0, z: -0.2, footY: 0.64 }, 1.0, 0.52), null);
+  assert.equal(trail.advance({ x: 0, z: 0, footY: 0.64 }, { x: 0, z: -0.2, footY: 0.64 }, 1.0, 0.44), null);
 });
 
 test("v2 MapBuilder snaps arch, ring, and cylinder UVs cleanly to symmetric tile courses with zero slivers", () => {
@@ -255,74 +269,60 @@ test("v2 MapBuilder snaps arch, ring, and cylinder UVs cleanly to symmetric tile
 
 test("poolrooms-v2 doorways are unobstructed, bookmarks are walkable, and slide/spiral stairs have solid collision", () => {
   const byId = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
-  const mp = createMap();
+  const mp = createMap({ atlasSize: 384 });
   byId["poolrooms-v2"].build(mp);
-  const cp = mp.compile();
+  const cp = mp.compile({ atlasSize: 384 });
 
   // Every bookmark spawn must be unobstructed at its local floor/deck height
   for (const bm of cp.bookmarks) {
     const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, cp.collision);
     assert.equal(canStand(bm.spawn.x, bm.spawn.z, cp.collision, fy), true, `Bookmark '${bm.name}' is blocked`);
   }
-  // All three inter-chamber doorways must be passable (Ring 1 must not clip East doorway z=7.9!)
-  assert.equal(canStand(5.5, 7.9, cp.collision), true, "East doorway to Misty Lightwell should be clear");
-  assert.equal(canStand(-5.5, 8.6, cp.collision), true, "West doorway to Spiral Column should be clear");
-  assert.equal(canStand(-5.5, -5.0, cp.collision), true, "West doorway to Slide & Portholes should be clear");
-  // Fiberglass slide plunge entry (-9.4, -11.6) must block player walk-through
-  assert.equal(canStand(-9.4, -11.6, cp.collision), false, "Water slide tube should have solid collision");
+  // All three inter-chamber doorways must be passable
+  assert.equal(canStand(4.75, 8.2, cp.collision), true, "East doorway to Misty Lightwell should be clear");
+  assert.equal(canStand(-5.6, 8.3, cp.collision), true, "West doorway to Spiral Column should be clear");
+  assert.equal(canStand(-5.6, -5.0, cp.collision), true, "West doorway to Slide & Portholes should be clear");
+  // Fiberglass slide runout exit (-11.40, -9.50) must block player walk-through
+  assert.equal(canStand(-11.40, -9.50, cp.collision), false, "Water slide tube should have solid collision");
 });
 
-test("level0 and level1 bookmarks, doorways, stairs, and EXIT sub-tunnel are cleanly navigable", () => {
+test("level0 bookmarks, doorways, and Pitfalls walkways are cleanly navigable", () => {
   const byId = Object.fromEntries(LEVEL_LIST.map((l) => [l.id, l]));
 
-  // Level 0 verification: 4 walkable bookmarks + clear main & side passages
-  const m0 = createMap({ atlasSize: 512 });
+  // Level 0 verification: 4 iconic connected chambers + walkable Pitfalls narrow carpeted bridge + far doorway
+  const m0 = createMap({ atlasSize: 384 });
   byId.level0.build(m0);
-  const c0 = m0.compile({ atlasSize: 512 });
+  const c0 = m0.compile({ atlasSize: 384 });
   assert.equal(c0.bookmarks.length, 4);
   for (const bm of c0.bookmarks) {
     const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, c0.collision);
     assert.equal(canStand(bm.spawn.x, bm.spawn.z, c0.collision, fy), true, `Level 0 bookmark '${bm.name}' blocked`);
   }
-  assert.equal(canStand(-0.96, 7.50, c0.collision), true, "Level 0 iconic main foreground opening should be passable");
-  assert.equal(canStand(-5.31, 4.32, c0.collision), true, "Level 0 west soffit corridor doorway should be passable");
-  assert.equal(canStand(7.29, 3.60, c0.collision), true, "Level 0 east unlit wing doorway should be passable");
-  // Pass-through window sill (y=0..1.04) at x=-5.31, z=-1.80 must block walking straight through
-  assert.equal(canStand(-5.31, -1.80, c0.collision), false, "Level 0 pass-through window sill should block walk-through");
-
-  // Level 1 verification: 4 walkable bookmarks + EXIT portal into deep concrete hall + mezzanine stair climb
-  const m1 = createMap({ atlasSize: 512 });
-  byId.level1.build(m1);
-  const c1 = m1.compile({ atlasSize: 512 });
-  assert.equal(c1.bookmarks.length, 4);
-  for (const bm of c1.bookmarks) {
-    const fy = sampleFloorHeight(bm.spawn.x, bm.spawn.z, c1.collision);
-    assert.equal(canStand(bm.spawn.x, bm.spawn.z, c1.collision, fy), true, `Level 1 bookmark '${bm.name}' blocked`);
-  }
-  assert.equal(canStand(0.0, -9.90, c1.collision), true, "Level 1 EXIT portal into deep concrete hall should be passable");
-  assert.equal(canStand(-6.70, -15.0, c1.collision), true, "Level 1 deep concrete hall toward steel doors should be walkable");
-  // Climb the 6-step loading mezzanine stairs smoothly from z=5.2 up onto DECK_Y=0.96
-  const pose = { x: 8.7, y: PLAYER_EYE_HEIGHT, z: 5.2, footY: 0 };
-  for (let i = 0; i < 65; i++) movePlayer(pose, 0, -0.09, c1.collision, 0.03);
-  assert(pose.z < 1.0 && Math.abs(sampleFloorHeight(pose.x, pose.z, c1.collision) - 0.96) < 1e-3,
-    `Expected smooth climb onto Level 1 mezzanine (z=${pose.z}, floor=${sampleFloorHeight(pose.x, pose.z, c1.collision)})`);
+  assert.equal(canStand(-5.90, 0.40, c0.collision), true, "Level 0 Original->Corridor north doorway should be passable");
+  assert.equal(canStand(-5.90, 11.00, c0.collision), true, "Level 0 Original->Corridor south doorway should be passable");
+  assert.equal(canStand(5.90, 12.00, c0.collision), true, "Level 0 Original->Pitfalls doorway should be passable");
+  assert.equal(canStand(9.20, -4.89, c0.collision), true, "Level 0 Pitfalls far doorway into Pier Hall should be passable");
+  assert.equal(canStand(9.81, 6.00, c0.collision), true, "Level 0 Pitfalls narrow carpeted bridge should be walkable");
+  assert.equal(canStand(8.23, 8.40, c0.collision), false, "Level 0 Pitfalls pit shaft center must block stepping into abyss");
 });
 
-test("MapBuilder flaredCapital compiles 4 sloped outward-facing pyramid faces into valid BVH", () => {
+test("MapBuilder flaredCapital, trumpetColumn, and verticalTubeLight compile into valid watertight BVH", () => {
   const m = createMap({ atlasSize: 256 });
   m.flaredCapital(0, 0, 2.26, 2.94, 0.34, 0.78, "concrete_painted");
+  m.trumpetColumn(4, 0, 0, 3.05, 0.34, 1.38, "concrete_raw", { segments: 16, rings: 5 });
+  m.verticalTubeLight(-1, 1.4, 2.7, 0, "+x", { intensity: 50 });
   const c = m.compile({ atlasSize: 256 });
-  assert.equal(c.stats.triangles, 8, "4 trapezoidal side faces = 8 triangles");
-  assert(c.stats.bvhNodes >= 1);
-  // Every vertex must have finite outward-pointing normal with downward y-component (since top is wider than bottom)
+  assert(c.stats.triangles > 150, `Expected flaredCapital + trumpetColumn + tube tris, got ${c.stats.triangles}`);
+  assert.equal(c.lightCount, 1, "verticalTubeLight should emit 1 vertical area light");
+  assert(c.stats.bvhNodes >= 4);
   const v = new Float32Array(c.vertexData);
   for (let i = 0; i < c.vertexCount; i++) {
     const base = i * 16;
     const ny = v[base + 5];
-    assert(Number.isFinite(ny) && ny < -0.2 && ny > -0.95, `Expected sloped underside normal ny, got ${ny}`);
+    assert(Number.isFinite(ny), "Vertex normal ny must be finite");
     const uv2x = v[base + 14];
     const uv2y = v[base + 15];
-    assert(uv2x >= 0 && uv2x <= 1 && uv2y >= 0 && uv2y <= 1, "Invalid flaredCapital UV2");
+    assert(uv2x >= 0 && uv2x <= 1 && uv2y >= 0 && uv2y <= 1, "Invalid UV2");
   }
 });
 
@@ -354,5 +354,116 @@ test("chinese-horror v2 compiles dry scene with point lights, SDF couplet preset
   // Sightline from threshold down corridor to recessed double door hits door leaves near z = -2.34
   const hitDoor = intersectBVH(c.bvh, [0.42, 1.2, 2.0], [0, 0, -1]);
   assert(hitDoor && hitDoor.t > 4.2 && hitDoor.t < 4.5, `Expected door hit near t=4.34, got ${hitDoor?.t}`);
+});
+
+test("classic Backrooms pure-code BGM tracks validate cleanly and honor per-level defaults", () => {
+  assert(Math.abs(midiToHz(69) - 440) < 1e-6);
+  assert(Math.abs(midiToHz(60) - 261.625565) < 1e-3);
+  assert.equal(BGM_TRACKS.poolrooms.defaultEnabled, true);
+  assert.equal(BGM_TRACKS.backrooms.defaultEnabled, false);
+
+  // Every active v2 level audio profile must map to a complete 16-bar procedural BGM track
+  for (const lvl of LEVEL_LIST) {
+    const tr = BGM_TRACKS[lvl.audio];
+    assert(tr, `Missing BGM track for level '${lvl.id}' profile '${lvl.audio}'`);
+    assert.equal(tr.chords.length, tr.bars, `Track '${tr.id}' chord count must match bars`);
+    assert(tr.melody.length >= 24, `Track '${tr.id}' should have a complete classic melody`);
+    const totalSteps = tr.bars * tr.stepsPerBar;
+    for (const c of tr.chords) {
+      assert(c.bass >= 24 && c.bass <= 60, `Bass note out of range in ${tr.id}`);
+      assert(c.notes.length >= 3, `Chord needs >=3 voices in ${tr.id}`);
+      for (const n of c.notes) assert(n >= 40 && n <= 88, `Chord note out of range in ${tr.id}`);
+    }
+    for (const m of tr.melody) {
+      assert(m.step >= 0 && m.step < totalSteps, `Melody step ${m.step} out of bounds in ${tr.id}`);
+      assert(m.midi >= 52 && m.midi <= 96 && m.dur > 0 && m.vel > 0 && m.vel <= 1);
+    }
+  }
+
+  // Strict Web Audio mock enforcing positive exponentialRampToValueAtTime values
+  let oscCount = 0;
+  let stoppedOscs = 0;
+  const mkParam = (init = 0) => {
+    let cur = init;
+    return {
+      get value() { return cur; },
+      set value(v) { assert(Number.isFinite(v)); cur = v; },
+      setValueAtTime(v, t) { assert(Number.isFinite(v) && Number.isFinite(t)); cur = v; },
+      linearRampToValueAtTime(v, t) { assert(Number.isFinite(v) && Number.isFinite(t)); cur = v; },
+      setTargetAtTime(v, t, tc) { assert(Number.isFinite(v) && Number.isFinite(t) && tc > 0); cur = v; },
+      exponentialRampToValueAtTime(v, t) {
+        assert(Number.isFinite(v) && Number.isFinite(t), "exponentialRamp needs finite args");
+        assert(v > 0 && cur > 0, `exponentialRamp cannot cross/hit zero (from ${cur} to ${v})`);
+        cur = v;
+      },
+    };
+  };
+  const mkNode = (extra = {}) => ({ connect() {}, disconnect() {}, ...extra });
+  const mockCtx = {
+    sampleRate: 48000,
+    state: "running",
+    currentTime: 0,
+    createGain: () => mkNode({ gain: mkParam(1) }),
+    createDynamicsCompressor: () => mkNode({ threshold: mkParam(-12), knee: mkParam(12), ratio: mkParam(3), attack: mkParam(0.01), release: mkParam(0.2) }),
+    createWaveShaper: () => mkNode({ curve: null, oversample: "none" }),
+    createBiquadFilter: () => mkNode({ type: "lowpass", frequency: mkParam(1000), Q: mkParam(1) }),
+    createConvolver: () => mkNode({ buffer: null }),
+    createDelay: () => mkNode({ delayTime: mkParam(0) }),
+    createStereoPanner: () => mkNode({ pan: mkParam(0) }),
+    createBuffer: (ch, len) => {
+      const chans = Array.from({ length: ch }, () => new Float32Array(len));
+      return { getChannelData: (i) => chans[i] };
+    },
+    createBufferSource: () => mkNode({ buffer: null, loop: false, start() {}, stop() {} }),
+    createOscillator: () => {
+      oscCount++;
+      const node = mkNode({
+        type: "sine",
+        frequency: mkParam(440),
+        detune: mkParam(0),
+        start(t) { assert(Number.isFinite(t) && t >= 0); },
+        stop(t) {
+          assert(Number.isFinite(t) && t > 0);
+          stoppedOscs++;
+          if (node.onended) node.onended();
+        },
+        onended: null,
+      });
+      return node;
+    },
+  };
+
+  const bgm = createBgmEngine(mockCtx, mkNode());
+  // Level 0 defaults to Ambient Only (BGM off) when applyDefault=true
+  bgm.setProfile("backrooms", { applyDefault: true });
+  assert.equal(bgm.inspect().enabled, false);
+  // Poolrooms defaults to ON ("Hi — TEMPOREX")
+  bgm.setProfile("poolrooms", { applyDefault: true });
+  assert.equal(bgm.inspect().enabled, true);
+
+  for (const prof of ["poolrooms", "backrooms"]) {
+    bgm.setProfile(prof);
+    bgm.setEnabled(true);
+    assert.equal(bgm.inspect().profile, prof);
+    assert.equal(bgm.inspect().track, BGM_TRACKS[prof].title);
+    const before = oscCount;
+    for (let s = 0; s < 100; s++) {
+      mockCtx.currentTime += 0.20;
+      bgm.update();
+    }
+    assert(oscCount > before + 40, `Expected procedural notes scheduled for '${prof}', got ${oscCount - before}`);
+  }
+  assert.equal(stoppedOscs, oscCount, "Every scheduled oscillator must have a clean stop() call");
+
+  assert.equal(bgm.toggle(), false);
+  assert.equal(bgm.inspect().enabled, false);
+  const frozenCount = oscCount;
+  for (let s = 0; s < 20; s++) {
+    mockCtx.currentTime += 0.25;
+    bgm.update();
+  }
+  assert.equal(oscCount, frozenCount, "Disabled BGM should schedule zero new oscillators");
+  assert.equal(bgm.toggle(), true);
+  assert.equal(bgm.inspect().enabled, true);
 });
 

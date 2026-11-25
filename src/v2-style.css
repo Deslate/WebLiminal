@@ -101,6 +101,23 @@ body {
   background: rgba(34, 48, 45, 0.85);
 }
 
+.hud-btn.active {
+  background: rgba(62, 114, 96, 0.42);
+  border-color: rgba(154, 219, 192, 0.62);
+  color: #f4fbf7;
+}
+
+#hud-fps {
+  min-width: 68px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+#btn-bgm {
+  min-width: 124px;
+  text-align: center;
+}
+
 .hud-bottom {
   position: fixed;
   left: 26px;
@@ -241,6 +258,14 @@ body {
   align-items: center;
   gap: 8px;
   cursor: pointer;
+}
+
+.insp-track {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #a4d9c4;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
 }
 
 .insp-stats {

@@ -21,6 +21,7 @@ import gbufferPbrWGSL from "./shaders/gbuffer-pbr.wgsl?raw";
 import ssrWGSL from "./shaders/ssr.wgsl?raw";
 import volumetricWGSL from "./shaders/volumetric.wgsl?raw";
 import postprocessWGSL from "./shaders/postprocess.wgsl?raw";
+import referencePtWGSL from "./shaders/reference-pt.wgsl?raw";
 import { createWaterModule } from "./water.js";
 
 function normalize3(v) {
@@ -483,6 +484,7 @@ export async function createRenderer(canvas, options = {}) {
         { binding: 4, resource: rt.depthView },
         { binding: 7, resource: { buffer: sceneRes.bvhNodeBuf } },
         { binding: 8, resource: { buffer: sceneRes.bvhTriBuf } },
+        { binding: 9, resource: { buffer: sceneRes.materialBuf } },
       ],
     });
     rt.ssrCompGroup1 = device.createBindGroup({
@@ -630,7 +632,8 @@ export async function createRenderer(canvas, options = {}) {
     f[20] = sceneRes.totalLightPower;
     f[21] = atm.bounceBoost ?? 1.15;
     f[22] = atm.aoRadius ?? 1.6;
-    f[23] = sceneRes.hasSkylights ? 1.0 : 0.0;
+    const perPixelLights = Boolean(atm.perPixelAreaLights ?? !atm.sun);
+    f[23] = (sceneRes.hasSkylights ? 1 : 0) | (perPixelLights ? 2 : 0);
     if (sceneRes.water) {
       f[24] = sceneRes.water.absorption[0];
       f[25] = sceneRes.water.absorption[1];
@@ -725,6 +728,7 @@ export async function createRenderer(canvas, options = {}) {
       ambientFloor: atmosphere.ambientFloor ?? 0.015,
       bounceBoost: atmosphere.bounceBoost ?? 1.15,
       aoRadius: atmosphere.aoRadius ?? 1.6,
+      perPixelAreaLights: atmosphere.perPixelAreaLights,
     };
     settings.exposure = activeAtmosphere.exposure;
     settings.fov = atmosphere.fov ?? 68;
@@ -889,11 +893,12 @@ export async function createRenderer(canvas, options = {}) {
     const lmDirAView = lmDirA.createView();
     const lmDirBView = lmDirB.createView();
 
-    device.queue.writeBuffer(resolveParamBuf, 0, new Uint32Array([atlasSize, 1, 0, 0]));
-    device.queue.writeBuffer(denoiseParamBufs[0].buf, 0, new Uint32Array([atlasSize, 1, 0, 0]));
-    device.queue.writeBuffer(denoiseParamBufs[1].buf, 0, new Uint32Array([atlasSize, 2, 0, 0]));
-    device.queue.writeBuffer(denoiseParamBufs[2].buf, 0, new Uint32Array([atlasSize, 4, 0, 0]));
-    device.queue.writeBuffer(denoiseParamBufs[3].buf, 0, new Uint32Array([atlasSize, 8, 0, 0]));
+    const indirectMode = activeAtmosphere.sun ? 1 : 0;
+    device.queue.writeBuffer(resolveParamBuf, 0, new Uint32Array([atlasSize, 1, indirectMode, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[0].buf, 0, new Uint32Array([atlasSize, 1, indirectMode, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[1].buf, 0, new Uint32Array([atlasSize, 2, indirectMode, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[2].buf, 0, new Uint32Array([atlasSize, 4, indirectMode, 0]));
+    device.queue.writeBuffer(denoiseParamBufs[3].buf, 0, new Uint32Array([atlasSize, 8, indirectMode, 0]));
 
     const lmBakeGroup = device.createBindGroup({
       layout: bakeLmPipe.getBindGroupLayout(0),
@@ -1108,7 +1113,8 @@ export async function createRenderer(canvas, options = {}) {
     const sunDir = sun ? normalize3(sun.direction) : [0, 1, 0];
     const sunCol = sun ? sun.color : [0, 0, 0];
     const sunInt = sun ? sun.intensity : 0;
-    const flags = (settings.vhsMode ? 1 : 0) | (settings.ssrEnabled ? 0 : 2);
+    const perPixelLights = Boolean(atm.perPixelAreaLights ?? !atm.sun);
+    const flags = (settings.vhsMode ? 1 : 0) | (settings.ssrEnabled ? 0 : 2) | (perPixelLights ? 4 : 0);
 
     const fBuf = new Float32Array(68);
     fBuf.set(vp, 0);
@@ -1311,6 +1317,258 @@ export async function createRenderer(canvas, options = {}) {
     device.queue.submit([enc.finish()]);
   }
 
+  let referencePtPipe = null;
+  let referencePtDenoisePipe = null;
+
+  // Lazy offline Ground-Truth Monte Carlo Path Tracer (0 bytes & 0 ms during normal gameplay).
+  // Renders the exact same BVH, analytic materials, area lights, depth fog, volumetric haze,
+  // bloom, and Filmic tone mapping + edge-preserving À-trous PT denoise for noise-free inspection.
+  async function renderReferencePT(view, elapsed = 0, { spp = 96, batchSpp = 8 } = {}) {
+    if (!rt || !sceneRes) return;
+    if (!referencePtPipe) {
+      const mod = await compileShader("reference-pt", bvhCommonWGSL + "\n" + referencePtWGSL);
+      referencePtPipe = await device.createComputePipelineAsync({
+        label: "reference-pt",
+        layout: "auto",
+        compute: { module: mod, entryPoint: "main" },
+      });
+      referencePtDenoisePipe = await device.createComputePipelineAsync({
+        label: "reference-pt-denoise",
+        layout: "auto",
+        compute: { module: mod, entryPoint: "denoisePT" },
+      });
+    }
+
+    const aspect = width / Math.max(1, height);
+    const vp = buildViewProj(view, aspect, settings.fov);
+    const invVp = invertMat4(vp);
+    const atm = activeAtmosphere;
+    const sun = atm.sun;
+    const sunDir = sun ? normalize3(sun.direction) : [0, 1, 0];
+    const sunCol = sun ? sun.color : [0, 0, 0];
+    const sunInt = sun ? sun.intensity : 0;
+    const flags = (settings.vhsMode ? 1 : 0) | (settings.ssrEnabled ? 0 : 2);
+
+    const fBuf = new Float32Array(68);
+    fBuf.set(vp, 0);
+    fBuf.set(invVp, 16);
+    fBuf.set([view.x, view.y, view.z, elapsed], 32);
+    fBuf.set([width, height, 1 / width, 1 / height], 36);
+    fBuf.set([sunDir[0], sunDir[1], sunDir[2], sun?.angularRadius ?? 0.025], 40);
+    fBuf.set([sunCol[0] * sunInt, sunCol[1] * sunInt, sunCol[2] * sunInt, sun ? 1 : 0], 44);
+    fBuf.set([atm.skyTop[0], atm.skyTop[1], atm.skyTop[2], settings.exposure], 48);
+    fBuf.set([atm.skyHorizon[0], atm.skyHorizon[1], atm.skyHorizon[2], sceneRes.lightCount], 52);
+    fBuf.set([atm.fogColor[0], atm.fogColor[1], atm.fogColor[2], atm.fogDensity], 56);
+    fBuf.set([
+      atm.heightFogFalloff,
+      settings.volumetricEnabled ? atm.volumetricStrength : 0,
+      settings.bloomEnabled ? atm.bloomStrength : 0,
+      atm.ambientFloor,
+    ], 60);
+    fBuf.set([sceneRes.water ? sceneRes.water.level : -100, sceneRes.water ? 1 : 0, 0, flags], 64);
+    device.queue.writeBuffer(frameUniformBuf, 0, fBuf);
+
+    // Populate depth buffer & volumetric buffer identically to real-time Pass 1 + Pass 4
+    {
+      const enc = device.createCommandEncoder({ label: "pt-prepass" });
+      const rpass = enc.beginRenderPass({
+        label: "pt-depth-gbuf",
+        colorAttachments: [
+          { view: rt.hdrRawView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" },
+          { view: rt.gNormalRoughView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" },
+          { view: rt.gAlbedoMetalView, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "store" },
+          { view: rt.sunDirectView, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "store" },
+        ],
+        depthStencilAttachment: {
+          view: rt.depthView,
+          depthClearValue: 1.0,
+          depthLoadOp: "clear",
+          depthStoreOp: "store",
+        },
+      });
+      rpass.setPipeline(pbrPipe);
+      rpass.setBindGroup(0, rt.pbrGroup);
+      rpass.setVertexBuffer(0, sceneRes.vertexBuf);
+      rpass.setIndexBuffer(sceneRes.indexBuf, "uint32");
+      rpass.drawIndexed(sceneRes.indexCount);
+      rpass.end();
+
+      let cpass = enc.beginComputePass({ label: "pt-vol-march" });
+      cpass.setPipeline(volMarchPipe);
+      cpass.setBindGroup(0, rt.volMarchGroup);
+      cpass.dispatchWorkgroups(Math.ceil(rt.halfW / 8), Math.ceil(rt.halfH / 8));
+      cpass.end();
+
+      cpass = enc.beginComputePass({ label: "pt-vol-blur" });
+      cpass.setPipeline(volBlurPipe);
+      cpass.setBindGroup(0, rt.volBlurGroup0);
+      cpass.setBindGroup(1, rt.volBlurGroup1);
+      cpass.dispatchWorkgroups(Math.ceil(rt.halfW / 8), Math.ceil(rt.halfH / 8));
+      cpass.end();
+
+      device.queue.submit([enc.finish()]);
+      await device.queue.onSubmittedWorkDone();
+    }
+
+    const ptParamBuf = device.createBuffer({
+      label: "pt-params",
+      size: 16,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    const ptAccumBuf = device.createBuffer({
+      label: "pt-accum",
+      size: width * height * 16,
+      usage: GPUBufferUsage.STORAGE,
+    });
+    const ptTempBuf = device.createBuffer({
+      label: "pt-temp",
+      size: width * height * 16,
+      usage: GPUBufferUsage.STORAGE,
+    });
+    const ptGuideBuf = device.createBuffer({
+      label: "pt-guide",
+      size: width * height * 16,
+      usage: GPUBufferUsage.STORAGE,
+    });
+
+    const ptBindGroup = device.createBindGroup({
+      layout: referencePtPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: frameUniformBuf } },
+        { binding: 1, resource: { buffer: ptParamBuf } },
+        { binding: 2, resource: { buffer: sceneRes.bvhNodeBuf } },
+        { binding: 3, resource: { buffer: sceneRes.bvhTriBuf } },
+        { binding: 4, resource: { buffer: sceneRes.materialBuf } },
+        { binding: 5, resource: { buffer: sceneRes.lightBuf } },
+        { binding: 6, resource: texSampler },
+        { binding: 7, resource: sceneRes.albedoRoughView },
+        { binding: 8, resource: sceneRes.normalHeightView },
+        { binding: 9, resource: sceneRes.metaView },
+        { binding: 10, resource: { buffer: ptAccumBuf } },
+        { binding: 11, resource: rt.hdrCompositeView },
+        { binding: 12, resource: { buffer: ptGuideBuf } },
+      ],
+    });
+    const ptDenoiseGroup0 = device.createBindGroup({
+      layout: referencePtDenoisePipe.getBindGroupLayout(0),
+      entries: [{ binding: 1, resource: { buffer: ptParamBuf } }],
+    });
+    const ptDenoiseA2B = device.createBindGroup({
+      layout: referencePtDenoisePipe.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: { buffer: ptAccumBuf } },
+        { binding: 1, resource: { buffer: ptTempBuf } },
+        { binding: 2, resource: rt.gNormalRoughView },
+        { binding: 3, resource: rt.depthView },
+        { binding: 4, resource: rt.hdrCompositeView },
+        { binding: 5, resource: { buffer: ptGuideBuf } },
+      ],
+    });
+    const ptDenoiseB2A = device.createBindGroup({
+      layout: referencePtDenoisePipe.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: { buffer: ptTempBuf } },
+        { binding: 1, resource: { buffer: ptAccumBuf } },
+        { binding: 2, resource: rt.gNormalRoughView },
+        { binding: 3, resource: rt.depthView },
+        { binding: 4, resource: rt.hdrCompositeView },
+        { binding: 5, resource: { buffer: ptGuideBuf } },
+      ],
+    });
+
+    const wgX = Math.ceil(width / 8);
+    const wgY = Math.ceil(height / 8);
+    const batches = Math.max(1, Math.ceil(spp / batchSpp));
+    let doneSpp = 0;
+
+    try {
+      for (let b = 0; b < batches; b++) {
+        const curSpp = Math.min(batchSpp, spp - doneSpp);
+        device.queue.writeBuffer(ptParamBuf, 0, new Uint32Array([b, curSpp, width, height]));
+        const enc = device.createCommandEncoder({ label: `pt-batch-${b}` });
+        const cpass = enc.beginComputePass({ label: "pt-trace" });
+        cpass.setPipeline(referencePtPipe);
+        cpass.setBindGroup(0, ptBindGroup);
+        cpass.dispatchWorkgroups(wgX, wgY);
+        cpass.end();
+        device.queue.submit([enc.finish()]);
+        await device.queue.onSubmittedWorkDone();
+        doneSpp += curSpp;
+      }
+
+      // 3-pass albedo-demodulated edge-preserving firefly-rejecting À-trous PT denoise (steps 1, 2, 4)
+      const denoiseSteps = [
+        { step: 1, writeHdr: 0, grp1: ptDenoiseA2B },
+        { step: 2, writeHdr: 0, grp1: ptDenoiseB2A },
+        { step: 4, writeHdr: 1, grp1: ptDenoiseA2B },
+      ];
+      for (const ds of denoiseSteps) {
+        device.queue.writeBuffer(ptParamBuf, 0, new Uint32Array([ds.step, ds.writeHdr, width, height]));
+        const enc = device.createCommandEncoder({ label: `pt-denoise-${ds.step}` });
+        const cpass = enc.beginComputePass({ label: `pt-denoise-${ds.step}` });
+        cpass.setPipeline(referencePtDenoisePipe);
+        cpass.setBindGroup(0, ptDenoiseGroup0);
+        cpass.setBindGroup(1, ds.grp1);
+        cpass.dispatchWorkgroups(wgX, wgY);
+        cpass.end();
+        device.queue.submit([enc.finish()]);
+        await device.queue.onSubmittedWorkDone();
+      }
+
+      // Run identical Bloom + Present (Filmic Tone Mapping + Fog + Vignette) onto canvas!
+      const enc = device.createCommandEncoder({ label: "pt-present" });
+      {
+        const bWgX = Math.ceil(rt.halfW / 8);
+        const bWgY = Math.ceil(rt.halfH / 8);
+        let cpass = enc.beginComputePass({ label: "pt-bloom-extract" });
+        cpass.setPipeline(bloomExtractPipe);
+        cpass.setBindGroup(0, bloomExtractSamplerGroup);
+        cpass.setBindGroup(1, rt.bloomExtractGroup1);
+        cpass.dispatchWorkgroups(bWgX, bWgY);
+        cpass.end();
+
+        cpass = enc.beginComputePass({ label: "pt-bloom-h" });
+        cpass.setPipeline(bloomHVPipesH);
+        cpass.setBindGroup(0, bloomHSamplerGroup);
+        cpass.setBindGroup(1, rt.bloomHGroup1);
+        cpass.dispatchWorkgroups(bWgX, bWgY);
+        cpass.end();
+
+        cpass = enc.beginComputePass({ label: "pt-bloom-v" });
+        cpass.setPipeline(bloomHVPipesV);
+        cpass.setBindGroup(0, bloomVSamplerGroup);
+        cpass.setBindGroup(1, rt.bloomVGroup1);
+        cpass.dispatchWorkgroups(bWgX, bWgY);
+        cpass.end();
+      }
+      {
+        const rpass = enc.beginRenderPass({
+          label: "pt-present-pass",
+          colorAttachments: [
+            {
+              view: context.getCurrentTexture().createView(),
+              clearValue: { r: 0, g: 0, b: 0, a: 1 },
+              loadOp: "clear",
+              storeOp: "store",
+            },
+          ],
+        });
+        rpass.setPipeline(presentPipe);
+        rpass.setBindGroup(0, rt.presentGroup);
+        rpass.draw(3);
+        rpass.end();
+      }
+      device.queue.submit([enc.finish()]);
+      await device.queue.onSubmittedWorkDone();
+    } finally {
+      ptParamBuf.destroy();
+      ptAccumBuf.destroy();
+      ptTempBuf.destroy();
+      ptGuideBuf.destroy();
+    }
+    return { spp: doneSpp, width, height };
+  }
+
   return {
     isSoftware,
     adapterInfo,
@@ -1319,6 +1577,7 @@ export async function createRenderer(canvas, options = {}) {
     bakeTo,
     resize,
     render,
+    renderReferencePT,
     stepWater,
     setBody(pose) {
       sceneRes?.water?.setBody(pose);

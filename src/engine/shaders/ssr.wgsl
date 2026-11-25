@@ -76,12 +76,14 @@ fn traceClosestRefl(ro: vec3f, rd: vec3f, maxT: f32) -> RayHit {
         if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
         if (t > 1e-4 && t < res.t) {
+          let hitUV = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
+          if (u32(materials[tri.matId].extra.x + 0.5) == 21u && evalFoliageShadowAlpha(hitUV) < 0.5) { continue; }
           res.t = t;
           res.n = select(tri.gn, -tri.gn, det < 0.0);
           res.matId = tri.matId;
           res.hit = true;
           res.lmUV = tri.lm0_dlm1.xy + u * tri.lm0_dlm1.zw + v * tri.dlm2_uv0.xy;
-          res.uv = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
+          res.uv = hitUV;
         }
       }
       if (sp == 0u) { break; }
@@ -135,7 +137,13 @@ fn traceShadowRefl(ro: vec3f, rd: vec3f, maxT: f32) -> bool {
         let v = dot(rd, qvec) * invDet;
         if (v < -1e-5 || u + v > 1.00001) { continue; }
         let t = dot(tri.e2, qvec) * invDet;
-        if (t > 1e-4 && t < maxT) { return true; }
+        if (t > 1e-4 && t < maxT) {
+          if (u32(materials[tri.matId].extra.x + 0.5) == 21u) {
+            let hitUV = tri.dlm2_uv0.zw + u * tri.duv1_duv2.xy + v * tri.duv1_duv2.zw;
+            if (evalFoliageShadowAlpha(hitUV) < 0.5) { continue; }
+          }
+          return true;
+        }
       }
       if (sp == 0u) { break; }
       sp -= 1u;
@@ -177,16 +185,18 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
   let kD = 1.0 - m.pbr.y * 0.85;
   var col = albedo * kD * lmI;
 
-  // Direct sunlight (Poolrooms) OR direct indoor area lights (Level 0 & Level 1) at reflected hit point
-  // so wet concrete puddles reflect brightly lit white columns, beams, and fluorescent light pools!
+  // Direct sunlight (Poolrooms / Level 1 Overgrown Courtyard) AND/OR per-pixel indoor area lights
+  // (Level 0 & Level 1 Aquila/Warehouse/Vaults) at reflected hit point so wet puddles mirror lit columns & tubes!
   if (frame.sunColorInt.w > 0.5) {
     let sunDir = frame.sunDirRad.xyz;
     let ndl = dot(hit.n, sunDir);
     if (ndl > 0.0 && !traceShadowRefl(hitPos + hit.n * 0.015, sunDir, 150.0)) {
       col += albedo * kD * frame.sunColorInt.rgb * ndl * INV_PI;
     }
-  } else {
-    let lc = min(u32(frame.skyHorizon.w + 0.5), 32u);
+  }
+  let perPixelLights = (u32(frame.waterInfo.w + 0.5) & 4u) != 0u;
+  if (perPixelLights) {
+    let lc = min(u32(frame.skyHorizon.w + 0.5), 64u);
     let roS = hitPos + hit.n * 0.015;
     var bestIdx = array<u32, 3>(0u, 0u, 0u);
     var bestSc = array<f32, 3>(0.0, 0.0, 0.0);
@@ -196,7 +206,7 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
       let lCenter = select(l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz), l.originArea.xyz, isPoint);
       let toL = lCenter - hitPos;
       let d2 = dot(toL, toL);
-      if (d2 > 140.0 || d2 < select(0.04, 0.001, isPoint)) { continue; }
+      if (d2 > 160.0 || d2 < select(0.04, 0.001, isPoint)) { continue; }
       let invD = inverseSqrt(d2);
       let wi = toL * invD;
       let cosS = dot(hit.n, wi);
@@ -226,7 +236,7 @@ fn shadeReflHit(hit: RayHit, hitPos: vec3f, rd: vec3f) -> vec3f {
       let lCenter = select(l.originArea.xyz + 0.5 * (l.edgeUPower.xyz + l.edgeVKind.xyz), l.originArea.xyz, isPoint);
       let toL = lCenter - hitPos;
       let d2 = max(dot(toL, toL), select(0.04, 0.002, isPoint));
-      let rFade = smoothstep(140.0, 64.0, d2) * smoothstep(0.004, 0.025, bestSc[k]);
+      let rFade = smoothstep(160.0, 64.0, d2) * smoothstep(0.004, 0.025, bestSc[k]);
       if (rFade <= 0.0) { continue; }
       let dist = sqrt(d2);
       let wi = toL / dist;
@@ -343,14 +353,17 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
   // Soft highlight knee keeps bright fluorescent tubes & windows luminous without single-pixel fireflies.
   sCol = min(sCol, vec3f(18.0));
 
-  // Physical Fresnel: glazed porcelain / water puddle dielectric (IOR 1.52 / 1.333) vs stainless metal.
+  // Physical Fresnel with GGX rough-surface grazing attenuation:
+  // Smooth glossy materials keep full Fresnel; satin-glazed ceramic (rough ~0.24..0.34) disperses
+  // grazing reflections across a wide microfacet cone instead of mirroring corridors like glass!
   let isMetal = step(0.85, reflMask) * step(0.02, length(ar.rgb - vec3f(1.0)));
-  let dielecF = exactDielectricFresnel(nv, 1.52);
+  let rawDielecF = exactDielectricFresnel(nv, 1.52);
+  let roughDielecF = mix(rawDielecF, min(rawDielecF, 0.056), smoothstep(0.10, 0.26, rough));
   let metalF = 0.74 + 0.26 * pow(1.0 - nv, 5.0);
-  let F = mix(dielecF, metalF, isMetal);
+  let F = mix(roughDielecF, metalF, isMetal);
 
-  // Energy-conserving grazing-roughness roll-off (matches GGX directional specular albedo).
-  let roughFade = (1.0 - smoothstep(0.26, 0.56, rough)) * (1.0 - rough * 0.32);
+  // Energy-conserving GGX single-ray specular peak roll-off (strong on glossy glass/steel, subtle satin sheen on tile).
+  let roughFade = pow(1.0 - smoothstep(0.08, 0.44, rough), 1.65);
   let reflRad = sCol * F * reflMask * roughFade;
 
   // Store hit distance in .a for physical roughness cone projection in filterSSRH/V!
@@ -358,8 +371,8 @@ fn traceSSR(@builtin(global_invocation_id) gid: vec3u) {
 }
 
 // Shared separable 1D roughness- & hit-distance-adaptive bilateral filter (half-res).
-// Projects the GGX angular lobe radius into half-res pixels so mirror wet puddles stay razor-sharp
-// while glazed ceramic tiles receive silky, view-coherent soft glossy reflections with zero noise.
+// Projects the GGX angular lobe radius into half-res pixels so glazed ceramic tiles receive soft,
+// satin-diffused porcelain sheen while glossy fiberglass/steel keep crisp window reflections!
 fn filterSSR1D(gid: vec3u, axis: vec2i) {
   let dims = textureDimensions(outSSR);
   if (gid.x >= dims.x || gid.y >= dims.y) { return; }
@@ -384,14 +397,19 @@ fn filterSSR1D(gid: vec3u, axis: vec2i) {
   let cRough = cNR.w;
   let cLinD = linearDepthSSR(cD);
 
-  // Physical GGX cone blur sigma in half-res pixels; a gentle 0.58 px AA floor smooths
-  // half-res stair-stepping on thin reflected fluorescent tubes inside mirror-glossy wet puddles!
+  // Physical GGX cone blur sigma in half-res pixels: tight crisp reflections on glossy fiberglass/steel (~0.14),
+  // broad soft satin blur on glazed ceramic tiles (~0.26) so walls never look like sharp flat mirrors!
   let alpha = cRough * cRough;
   let focalHalfPx = f32(dims.y) * 0.74;
   let coneFrac = min(center.a, 35.0) / max(cLinD + min(center.a, 35.0), 0.25);
-  let sigma = clamp(max(0.58, alpha * focalHalfPx * coneFrac * 0.72), 0.58, 5.0);
+  let glossyScale = mix(0.42, 1.65, smoothstep(0.15, 0.24, cRough));
+  let sigma = clamp(alpha * focalHalfPx * coneFrac * glossyScale, 0.35, 7.5);
+  if (sigma < 0.50) {
+    textureStore(outSSR, c, center);
+    return;
+  }
 
-  let radius = min(5, i32(ceil(sigma * 2.1)));
+  let radius = min(7, i32(ceil(sigma * 2.0)));
   let inv2Sig2 = 0.5 / (sigma * sigma);
   let invDepthScale = 1.0 / max(cLinD * 0.06, 0.08);
 
@@ -411,12 +429,11 @@ fn filterSSR1D(gid: vec3u, axis: vec2i) {
     let sNR = textureLoad(normalRoughTex, spx, 0);
     let sN = normalize(sNR.xyz);
     let nDot = dot(cN, sN);
-    // Stop cleanly at architectural corners/walls while integrating smoothly across flat tile faces!
-    if (nDot < 0.72) { continue; }
+    if (nDot < 0.80) { continue; }
     let relD = abs(linearDepthSSR(sD) - cLinD) * invDepthScale;
     let wDepth = exp(-relD * relD * 2.2);
-    let wNorm = pow(nDot, 8.0);
-    let wRough = exp(-abs(sNR.w - cRough) * 9.0);
+    let wNorm = pow(nDot, 14.0);
+    let wRough = exp(-abs(sNR.w - cRough) * 10.0);
     let wSpatial = exp(-f32(k * k) * inv2Sig2);
     let w = wDepth * wNorm * wRough * wSpatial;
 
@@ -559,8 +576,53 @@ fn compositeSSR(@builtin(global_invocation_id) gid: vec3u) {
     }
 
     let refl = select(vec3f(0.0), colSum / max(wSum, 1e-4), wSum > 1e-4);
-    finalCol += refl * ar.rgb;
+    // Multiply by full-res ar.a (1 - inGrout) so reflections stop dead on every matte mortar seam!
+    finalCol += refl * ar.rgb * ar.a;
   }
+
+  // 3. Deterministic Zero-Noise World-Space Contact GTAO (6 fixed directions x 3 radial steps, 0.42 m radius)
+  //    Grounds baseboards, wall-to-ceiling junctions, doorway jambs, fallen ceiling tiles & Pitfalls rims
+  //    to match unbiased Ground-Truth Path Tracing with ZERO screen-space crawl or camera-pan shimmer!
+  let wpCenter = reconstructWorldPos(uv, cD);
+  let pxRadius = clamp((0.42 * f32(dims.y) * 0.74) / max(cLinD, 0.25), 3.0, 26.0);
+  let aoDirs = array<vec2f, 6>(
+    vec2f( 0.9659,  0.2588),
+    vec2f( 0.2588,  0.9659),
+    vec2f(-0.7071,  0.7071),
+    vec2f(-0.9659, -0.2588),
+    vec2f(-0.2588, -0.9659),
+    vec2f( 0.7071, -0.7071),
+  );
+  let stepFracs = array<f32, 3>(0.30, 0.62, 1.00);
+  var occSum = 0.0;
+  for (var di = 0u; di < 6u; di++) {
+    var dirOcc = 0.0;
+    let dvec = aoDirs[di];
+    for (var si = 0u; si < 3u; si++) {
+      let spx = clamp(px + vec2i(round(dvec * (pxRadius * stepFracs[si]))), vec2i(0), fullMax);
+      let sD = textureLoad(depthTex, spx, 0);
+      if (sD >= 0.9999) { continue; }
+      let suv = (vec2f(spx) + 0.5) / vec2f(dims);
+      let swp = reconstructWorldPos(suv, sD);
+      let delta = swp - wpCenter;
+      let dist = length(delta);
+      if (dist > 0.014 && dist < 0.48) {
+        let h = dot(delta / dist, cN);
+        if (h > 0.14) {
+          let falloff = 1.0 - smoothstep(0.10, 0.48, dist);
+          dirOcc = max(dirOcc, ((h - 0.14) / 0.86) * falloff);
+        }
+      }
+    }
+    occSum += dirOcc;
+  }
+  let rawContactAO = clamp(1.0 - (occSum / 6.0) * 0.78, 0.36, 1.0);
+  // Protect HDR emissive panels & keep dry-interior contact shading subtle (overhead troffers illuminate floors
+  // right up to baseboards, so strong GTAO creates unnatural black floor creases compared to unbiased GTPT).
+  let cLuma = dot(finalCol, vec3f(0.2126, 0.7152, 0.0722));
+  let emissiveKeep = smoothstep(2.2, 6.0, cLuma);
+  let aoStrength = select(0.12, 0.24, frame.waterInfo.y > 0.5) * (1.0 - emissiveKeep);
+  finalCol *= mix(1.0, rawContactAO, aoStrength);
 
   textureStore(outHdr, px, vec4f(finalCol, 1.0));
 }

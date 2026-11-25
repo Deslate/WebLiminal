@@ -61,13 +61,13 @@ fn dilateGBuffer(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
-  // Search nearest valid neighbor within radius 2 texels.
+  // Search nearest valid neighbor within radius 1 texel (1-texel per-side gutter isolates adjacent charts).
   var bestDist = 1e6;
   var bestP = vec4f(0.0);
   var bestN = vec4f(0.0, 1.0, 0.0, 0.0);
   let sMax = i32(size) - 1;
-  for (var dy = -2; dy <= 2; dy++) {
-    for (var dx = -2; dx <= 2; dx++) {
+  for (var dy = -1; dy <= 1; dy++) {
+    for (var dx = -1; dx <= 1; dx++) {
       if (dx == 0 && dy == 0) { continue; }
       let q = clamp(c + vec2i(dx, dy), vec2i(0), vec2i(sMax));
       let np = textureLoad(rawPosTex, q, 0);
