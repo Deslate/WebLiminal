@@ -99,6 +99,11 @@ fn evalSunVisibility1(p: vec3f, nGeom: vec3f) -> f32 {
   return select(0.0, 1.0, !traceShadowPBR(origin, sunDir, 160.0));
 }
 
+// Fast 8-octave fracture field on pre-warped wall coordinates for crisp thin limewash peeling.
+fn plasterFlakeAt(q: vec2f) -> f32 {
+  return vFbm2(q * 4.2 + vec2f(11.4, 2.8)) * 0.72 + vFbm2(q * 24.0 - vec2f(3.2, 6.4)) * 0.28;
+}
+
 // --- Sky Backdrop Pass ---
 struct SkyVSOut {
   @builtin(position) clipPos: vec4f,
@@ -401,43 +406,59 @@ fn fsMain(i: VSOut) -> GBufferOut {
     texAO *= 0.78 + 0.22 * contour;
     rough = clamp(rough - contour * 0.12, 0.68, 0.98);
   } else if (preset == 22u) {
-    // Rural aged mud-plaster wall: smooth upper plaster, damp lower flaking stucco, ceiling soot, and optional vertical edge fissure.
+    // Rural aged mud-plaster wall: fine sand-plaster grain, natural thin limewash flaking near floor, and subtle ceiling soot.
     let wUV = select(i.worldPos.xy, i.worldPos.zy, abs(Ngeom.x) > 0.7);
     let broad = vFbm2(wUV * 0.92 + vec2f(2.3, 1.1));
-    let stain = vFbm2(vec2f(wUV.x * 2.2, wUV.y * 0.60) + vec2f(8.1, 4.7));
-    let fine = vFbm2(wUV * 11.5 - vec2f(3.7, 6.2));
-    albedo *= (0.76 + 0.42 * broad) * (1.0 - smoothstep(0.52, 0.82, stain) * 0.34);
+    let stain = vFbm2(vec2f(wUV.x * 1.9, wUV.y * 0.55) + vec2f(8.1, 4.7));
+    let fineSand = vFbm2(wUV * 36.0 - vec2f(3.7, 6.2));
+    let microSand = vFbm2(wUV * 88.0 + vec2f(1.4, 5.1));
+    albedo *= (0.78 + 0.36 * broad) * (1.0 - smoothstep(0.54, 0.84, stain) * 0.30) * (0.93 + 0.14 * (fineSand * 0.65 + microSand * 0.35));
 
     let dampAmt = clamp(m.extra.y, 0.0, 1.0);
-    let lowMask = (1.0 - smoothstep(0.04, 0.54, i.worldPos.y + (broad - 0.5) * 0.16)) * dampAmt;
+    // Rising damp discoloration near the base of the wall, transitioning organically upward.
+    let dampBand = (1.0 - smoothstep(0.02, 0.44, i.worldPos.y + (broad - 0.5) * 0.18)) * dampAmt;
+    albedo *= 1.0 - dampBand * 0.14;
+
+    let lowMask = (1.0 - smoothstep(0.05, 0.46, i.worldPos.y + (broad - 0.5) * 0.22)) * dampAmt;
     var peel = 0.0;
     var peelSlope = vec2f(0.0);
-    if (lowMask > 0.005) {
-      let peelField = vFbm2(wUV * 6.8 + vec2f(11.4, 2.8)) + 0.32 * vFbm2(wUV * 22.0);
-      peel = smoothstep(0.47, 0.60, peelField) * lowMask;
-      let peelEdge = smoothstep(0.41, 0.49, peelField) * (1.0 - smoothstep(0.55, 0.65, peelField)) * lowMask;
-      let underCol = albedo * 0.48 * (0.72 + 0.52 * fine);
-      albedo = mix(albedo, underCol, peel * 0.82);
-      albedo = mix(albedo, albedo * 1.42 + vec3f(0.04, 0.03, 0.02), peelEdge * 0.45);
-      let e = 0.012;
-      let px = wUV + vec2f(e, 0.0);
-      let py = wUV + vec2f(0.0, e);
-      let peelX = smoothstep(0.47, 0.60, vFbm2(px * 6.8 + vec2f(11.4, 2.8)) + 0.32 * vFbm2(px * 22.0)) * lowMask;
-      let peelY = smoothstep(0.47, 0.60, vFbm2(py * 6.8 + vec2f(11.4, 2.8)) + 0.32 * vFbm2(py * 22.0)) * lowMask;
-      peelSlope = vec2f((peel - peelX) / e, (peel - peelY) / e) * 0.018;
+    if (lowMask > 0.01) {
+      let warp = vec2f(
+        vFbm2(wUV * 3.8 + vec2f(4.1, 7.3)) - 0.5,
+        vFbm2(wUV * 3.8 + vec2f(12.7, 2.9)) - 0.5,
+      ) * 0.14;
+      let q = wUV + warp;
+      let f0 = plasterFlakeAt(q);
+      let thresh = mix(0.62, 0.545, lowMask);
+      peel = smoothstep(thresh - 0.014, thresh + 0.016, f0);
+      let peelRim = smoothstep(thresh - 0.032, thresh - 0.008, f0) * (1.0 - peel) * lowMask;
+      let mortarGrain = 0.78 + 0.40 * (fineSand * 0.6 + microSand * 0.4);
+      // Exposed earthen mortar undercoat blends naturally with the wall tone (matching right-wall spalling).
+      let underCol = albedo * vec3f(0.70, 0.67, 0.63) * mortarGrain;
+      albedo = mix(albedo, underCol, peel * 0.85);
+      albedo = mix(albedo, albedo * 1.09 + vec3f(0.008, 0.006, 0.004), peelRim * 0.38);
+
+      // Edge-only millimeter-thin chip step normal (~5% of lower wall pixels; zero blobby clay pillows!).
+      if (abs(f0 - thresh) < 0.032) {
+        let e = 0.0035;
+        let px = smoothstep(thresh - 0.014, thresh + 0.016, plasterFlakeAt(q + vec2f(e, 0.0)));
+        let py = smoothstep(thresh - 0.014, thresh + 0.016, plasterFlakeAt(q + vec2f(0.0, e)));
+        peelSlope = clamp(vec2f((peel - px) / e, (peel - py) / e) * 0.0018, vec2f(-0.18), vec2f(0.18));
+      }
     }
 
-    // Optional weathered vertical plaster fissure (activated when seed > 100 encodes local U position + 200).
+    // Subtle weathered vertical plaster fissure near protruding wall corner (worldPos.x ~ seed - 200).
     var crackBump = 0.0;
     if (m.extra.z > 100.0) {
-      let uCrack = m.extra.z - 200.0;
-      let edgeCrack = exp(-abs(i.uv.x - uCrack) / 0.085)
-        * smoothstep(0.35, 0.72, i.worldPos.y)
-        * smoothstep(2.45, 1.85, i.worldPos.y);
-      if (edgeCrack > 0.01) {
-        let crackTex = smoothstep(0.24, 0.66, vFbm2(wUV * 12.0 + vec2f(0.0, 3.5)));
+      let xCrack = m.extra.z - 200.0;
+      let meander = (vFbm2(vec2f(i.worldPos.y * 2.2, 3.1)) - 0.5) * 0.055;
+      let edgeCrack = exp(-abs(i.worldPos.x - (xCrack + meander)) / 0.022)
+        * smoothstep(0.55, 0.95, i.worldPos.y)
+        * smoothstep(2.40, 1.80, i.worldPos.y);
+      if (edgeCrack > 0.02) {
+        let crackTex = smoothstep(0.32, 0.70, vFbm2(wUV * 18.0 + vec2f(0.0, 3.5)));
         crackBump = edgeCrack * crackTex;
-        albedo *= 1.0 - crackBump * 0.62;
+        albedo *= 1.0 - crackBump * 0.42;
       }
     }
 
@@ -445,9 +466,10 @@ fn fsMain(i: VSOut) -> GBufferOut {
     let ceilSoot = smoothstep(1.90, 2.90, i.worldPos.y) * 0.68 * max(dampAmt, 0.5);
     albedo *= 1.0 - ceilSoot;
 
-    nXY = clamp(nXY * 0.42 + peelSlope + vec2f(crackBump * 0.46, 0.0), vec2f(-0.78), vec2f(0.78));
-    rough = clamp(mix(rough, 0.96, peel), 0.78, 0.98);
-    texAO *= (1.0 - peel * 0.24) * (1.0 - crackBump * 0.45);
+    let sandSlope = vec2f(fineSand - 0.5, microSand - 0.5) * 0.06;
+    nXY = clamp(nXY * 0.24 + sandSlope + peelSlope + vec2f(crackBump * 0.16, 0.0), vec2f(-0.42), vec2f(0.42));
+    rough = clamp(mix(rough, 0.97, peel), 0.80, 0.98);
+    texAO *= (1.0 - peel * 0.14) * (1.0 - crackBump * 0.28);
   } else if (preset == 23u) {
     // Dark gritty damp stone floor: broken rough-grit specular sparkles across dark damp stone (zero smooth plastic stripe!).
     let pXZ = i.worldPos.xz;
@@ -479,6 +501,11 @@ fn fsMain(i: VSOut) -> GBufferOut {
     let lowWear = smoothstep(0.40, 0.74, wear) * (1.0 - smoothstep(1.25, 2.05, i.worldPos.y));
     albedo = mix(albedo, vec3f(0.21, 0.205, 0.195), lowWear * 0.54);
     albedo *= 1.0 - smoothstep(1.30, 2.18, i.worldPos.y) * 0.74;
+  } else if (preset == 25u) {
+    // Fine Xuan-paper fiber modulation over the startup-baked hand-brushed calligraphy texture.
+    let fiber = vFbm2(i.worldPos.xy * 68.0 + vec2f(m.extra.z * 2.1, 4.7));
+    albedo *= 0.94 + 0.12 * fiber;
+    nXY = vec2f(fiber - 0.5, (fiber - 0.5) * 0.6) * 0.04;
   }
   var vineDiscard = false;
   if (preset == 21u) {

@@ -105,12 +105,22 @@ export default {
     const charredCeramic = m.material({
       base: "concrete_raw",
       name: "ch_charred_ceramic",
-      albedo: [0.013, 0.011, 0.010],
-      roughness: 0.44,
-      coat: 0.22,
+      albedo: [0.056, 0.049, 0.043],
+      roughness: 0.30,
+      coat: 0.52,
       pomDepth: 0.0,
       wetness: 0.0,
       seed: 27.0,
+    });
+    const incenseAsh = m.material({
+      base: "concrete_raw",
+      name: "ch_incense_ash",
+      albedo: [0.15, 0.14, 0.13],
+      roughness: 0.96,
+      coat: 0.0,
+      pomDepth: 0.0,
+      wetness: 0.0,
+      seed: 28.0,
     });
     const candleWax = m.material({
       base: "candle_wax",
@@ -129,14 +139,6 @@ export default {
       emissiveStrength: 28.0,
       seed: 0.4,
       flicker: 0.055,
-    });
-    const vigilEmber = m.material({
-      base: "candle_flame",
-      name: "ch_vigil_ember",
-      emissive: [1.0, 0.10, 0.012],
-      emissiveStrength: 4.5,
-      seed: 1.9,
-      flicker: 0.08,
     });
 
     // Five SDF calligraphy paper panels (baked cleanly into mipmapped PBR layers at startup).
@@ -281,21 +283,88 @@ export default {
       }
     }
 
-    // Stepped rounded dark charred ceramic offering vessel casting the dramatic
-    // diagonal shadow across the damp stone floor toward lower-left foreground.
-    const bx = -0.62;
-    const bz = 0.50;
-    const br = 0.145;
-    m.cylinder(bx, bz, 0.0, 0.125, br, charredCeramic, { segments: 24, caps: true, solid: false, priority: 0.5 });
-    m.cylinder(bx, bz, 0.125, 0.168, 0.115, charredCeramic, { segments: 24, caps: true, solid: false, priority: 0.5 });
-    m.cylinder(bx, bz, 0.168, 0.192, 0.072, charredCeramic, { segments: 20, caps: true, solid: false, priority: 0.4 });
-    m.solids.push({ kind: "circle", x: bx, z: bz, radius: br + 0.06, minY: 0, maxY: 0.22 });
+    // Smooth wheel-thrown dark stoneware offering bowl (narrow foot ring flaring to a
+    // rounded open rim with a concave interior filled with matte incense ash).
+    const addRevolvedSurface = (rx, rz, profile, mat, segs, chart) => {
+      // Precompute smooth outward/upward profile normals (dr, dy) -> radial dy, vertical -dr.
+      const profN = profile.map((_, idx) => {
+        const prev = profile[Math.max(0, idx - 1)];
+        const next = profile[Math.min(profile.length - 1, idx + 1)];
+        const dr = next.r - prev.r;
+        const dy = next.y - prev.y;
+        const len = Math.hypot(dy, -dr) || 1;
+        return { nr: dy / len, ny: -dr / len };
+      });
+      for (let r = 0; r < profile.length - 1; r++) {
+        const a = profile[r];
+        const b = profile[r + 1];
+        const na = profN[r];
+        const nb = profN[r + 1];
+        const v0 = r / (profile.length - 1);
+        const v1 = (r + 1) / (profile.length - 1);
+        for (let i = 0; i < segs; i++) {
+          const u0 = i / segs;
+          const u1 = (i + 1) / segs;
+          const t0 = u0 * Math.PI * 2;
+          const t1 = u1 * Math.PI * 2;
+          const c0 = Math.cos(t0);
+          const s0 = Math.sin(t0);
+          const c1 = Math.cos(t1);
+          const s1 = Math.sin(t1);
+          const p0 = [rx + c0 * a.r, a.y, rz + s0 * a.r];
+          const p1 = [rx + c1 * a.r, a.y, rz + s1 * a.r];
+          const p2 = [rx + c1 * b.r, b.y, rz + s1 * b.r];
+          const p3 = [rx + c0 * b.r, b.y, rz + s0 * b.r];
+          const n0 = [na.nr * c0, na.ny, na.nr * s0];
+          const n1 = [na.nr * c1, na.ny, na.nr * s1];
+          const n2 = [nb.nr * c1, nb.ny, nb.nr * s1];
+          const n3 = [nb.nr * c0, nb.ny, nb.nr * s0];
+          m.addQuad(p0, p3, p2, p1, mat, {
+            u0, v0, u1, v1,
+            normals: [n0, n3, n2, n1],
+            chart,
+            lu0: u0, lv0: v0, lu1: u1, lv1: v1,
+          });
+        }
+      }
+    };
 
-    // Smoldering crimson-orange vigil ember tucked right behind/above the dark bowl.
-    const ex = -0.60;
-    const ez = 0.24;
-    m.cylinder(ex, ez, 0.0, 0.160, 0.024, charredCeramic, { segments: 14, caps: true, solid: false, priority: 0.3 });
-    m.cylinder(ex, ez, 0.160, 0.204, 0.025, vigilEmber, { segments: 14, caps: true, solid: false, priority: 0.3 });
+    const bx = -0.60;
+    const bz = 0.46;
+    const bowlChart = m._beginChart(0.45, 0.28, 0.55);
+    addRevolvedSurface(
+      bx,
+      bz,
+      [
+        { y: 0.000, r: 0.056 }, // ceramic foot ring base
+        { y: 0.014, r: 0.058 }, // foot ring neck
+        { y: 0.030, r: 0.088 }, // curving lower belly
+        { y: 0.056, r: 0.114 }, // mid belly
+        { y: 0.086, r: 0.130 }, // upper bowl flare
+        { y: 0.108, r: 0.136 }, // outer lip
+        { y: 0.114, r: 0.132 }, // rounded rim crest
+        { y: 0.111, r: 0.123 }, // inner lip edge
+        { y: 0.086, r: 0.110 }, // concave inner wall
+        { y: 0.068, r: 0.094 }, // inner hollow floor junction
+      ],
+      charredCeramic,
+      24,
+      bowlChart,
+    );
+    const ashChart = m._beginChart(0.20, 0.20, 0.35);
+    addRevolvedSurface(
+      bx,
+      bz,
+      [
+        { y: 0.070, r: 0.096 }, // ash rim touching inner bowl wall
+        { y: 0.080, r: 0.056 }, // gently mounded incense ash bed
+        { y: 0.085, r: 0.003 }, // closed center cap
+      ],
+      incenseAsh,
+      24,
+      ashChart,
+    );
+    m.solids.push({ kind: "circle", x: bx, z: bz, radius: 0.19, minY: 0, maxY: 0.22 });
 
     // Low pitch-dark rounded foreground silhouette framing the lower-left corner.
     m.box([-3.6, 0.0, 2.05], [-1.26, 0.44, 2.55], sootDark, { solid: true, priority: 0.4 });
@@ -309,24 +378,14 @@ export default {
     // 1. Primary floor candle point light (omnidirectional, soft flame penumbra, organic flicker).
     m.pointLight([cx, 0.205, cz], {
       color: [1.0, 0.50, 0.14],
-      intensity: 3.25,
+      intensity: 3.65,
       radius: 0.020,
       shadowOffset: 0.048,
       flickerAmp: 0.055,
       flickerFreq: 7.3,
       flickerPhase: 0.4,
     });
-    // 2. Secondary smoldering crimson-orange vigil ember peeking behind the offering bowl.
-    m.pointLight([ex, 0.208, ez], {
-      color: [1.0, 0.16, 0.03],
-      intensity: 0.45,
-      radius: 0.024,
-      shadowOffset: 0.044,
-      flickerAmp: 0.08,
-      flickerFreq: 4.1,
-      flickerPhase: 1.9,
-    });
-    // 3. Concealed cool pale moonlight portal inside the hidden left exterior court.
+    // 2. Concealed cool pale moonlight portal inside the hidden left exterior court.
     //    Positioned behind the left wall opening (z in [-1.85, -0.60], y in [0.45, 2.08])
     //    so cool moonlight washes onto the far ash-grey wall, left couplet (富贵由天), and
     //    lower weathered wooden door planks while leaving the ceiling, horizontal scroll,

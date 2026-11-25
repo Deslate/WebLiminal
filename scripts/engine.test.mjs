@@ -336,9 +336,9 @@ test("chinese-horror v2 compiles dry scene with point lights, SDF couplet preset
 
   assert.equal(c.water, null, "chinese-horror must be a dry level with zero water allocation");
   assert.equal(c.bookmarks.length, 3);
-  assert(c.lightCount >= 3, `Expected candle, ember, and moonlight portal lights, got ${c.lightCount}`);
+  assert(c.lightCount >= 2, `Expected candle and moonlight portal lights, got ${c.lightCount}`);
   const pointLights = c.lights.filter((l) => l.kind === 2);
-  assert.equal(pointLights.length, 2, "Expected candle and vigil ember omnidirectional point lights (kind = 2)");
+  assert.equal(pointLights.length, 1, "Expected single floor candle omnidirectional point light (kind = 2)");
   // Packed AreaLight buffer must preserve kind = 2 at float offset +11
   for (let i = 0; i < c.lightCount; i++) {
     assert.equal(c.lightData[i * 16 + 11], c.lights[i].kind);
@@ -349,7 +349,7 @@ test("chinese-horror v2 compiles dry scene with point lights, SDF couplet preset
   }
   // Protruding left wall and dark offering bowl must block walk-through, while corridor center toward door is clear
   assert.equal(canStand(-1.5, -0.15, c.collision), false, "Protruding mud-plaster wall must block walk-through");
-  assert.equal(canStand(-0.62, 0.50, c.collision), false, "Offering bowl must block walk-through");
+  assert.equal(canStand(-0.60, 0.46, c.collision), false, "Offering bowl must block walk-through");
   assert.equal(canStand(0.42, -0.80, c.collision), true, "Corridor path toward double door must be walkable");
   // Sightline from threshold down corridor to recessed double door hits door leaves near z = -2.34
   const hitDoor = intersectBVH(c.bvh, [0.42, 1.2, 2.0], [0, 0, -1]);

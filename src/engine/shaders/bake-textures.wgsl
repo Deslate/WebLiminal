@@ -110,106 +110,146 @@ fn exitLetters(uv: vec2f) -> f32 {
   return 1.0 - smoothstep(th - 0.008, th + 0.008, d);
 }
 
-// Direct-evaluated SDF brush calligraphy for the 8 couplet glyphs (富贵由天平安是福).
-// Uses a static switch instead of dynamic const-array indexing so GPU/SwiftShader compilers
-// emit compact straight-line vector code with zero branch-table overhead.
-fn coupletGlyphDist(u: vec2f, id: u32) -> f32 {
+// Calligraphic brush stroke SDF: arched quadratic spine + press-lift-press width taper (顿笔-行笔-收笔).
+fn sdBrush(p: vec2f, a: vec2f, b: vec2f, bow: f32, w0: f32, wm: f32, w1: f32) -> f32 {
+  let ba = b - a;
+  let len2 = max(dot(ba, ba), 1e-5);
+  let dir = ba * inverseSqrt(len2);
+  let perp = vec2f(-dir.y, dir.x);
+  let t = clamp(dot(p - a, ba) / len2, 0.0, 1.0);
+  let c = a + ba * t + perp * (4.0 * t * (1.0 - t) * bow);
+  let u = 1.0 - t;
+  let w = u * u * w0 + 2.0 * u * t * wm + t * t * w1;
+  return length(p - c) - w;
+}
+
+// Hand-brushed Chinese calligraphy (行楷手写体) for the 8 couplet glyphs (富贵由天 / 平安是福).
+// Horizontals slant naturally upward left-to-right with curved arches and tapered brush entry/exit.
+fn coupletGlyphDist(uIn: vec2f, id: u32) -> f32 {
+  // Subtle organic hand posture tilt & slight brush-paper wobble
+  let tilt = select(-0.045, 0.045, (id & 1u) == 0u);
+  let p0 = uIn - vec2f(0.5);
+  let u = vec2f(p0.x - p0.y * tilt, p0.y + p0.x * tilt * 0.5) + vec2f(0.5);
   var d = 10.0;
   switch (id & 7u) {
     case 0u: { // 富
-      d = min(d, sdSegment(u, vec2f(0.50, 0.93), vec2f(0.50, 0.85)));
-      d = min(d, sdSegment(u, vec2f(0.18, 0.83), vec2f(0.82, 0.83)));
-      d = min(d, sdSegment(u, vec2f(0.18, 0.83), vec2f(0.15, 0.72)));
-      d = min(d, sdSegment(u, vec2f(0.82, 0.83), vec2f(0.85, 0.73)));
-      d = min(d, sdSegment(u, vec2f(0.28, 0.72), vec2f(0.72, 0.72)));
-      d = min(d, sdSegment(u, vec2f(0.30, 0.62), vec2f(0.70, 0.62)));
-      d = min(d, sdSegment(u, vec2f(0.30, 0.48), vec2f(0.70, 0.48)));
-      d = min(d, sdSegment(u, vec2f(0.30, 0.62), vec2f(0.30, 0.48)));
-      d = min(d, sdSegment(u, vec2f(0.70, 0.62), vec2f(0.70, 0.48)));
-      d = min(d, sdSegment(u, vec2f(0.22, 0.39), vec2f(0.78, 0.39)));
-      d = min(d, sdSegment(u, vec2f(0.22, 0.10), vec2f(0.78, 0.10)));
-      d = min(d, sdSegment(u, vec2f(0.22, 0.39), vec2f(0.22, 0.10)));
-      d = min(d, sdSegment(u, vec2f(0.78, 0.39), vec2f(0.78, 0.10)));
-      d = min(d, sdSegment(u, vec2f(0.22, 0.25), vec2f(0.78, 0.25)));
-      d = min(d, sdSegment(u, vec2f(0.50, 0.39), vec2f(0.50, 0.10)));
+      d = min(d, sdBrush(u, vec2f(0.45, 0.94), vec2f(0.54, 0.84), 0.015, 0.022, 0.048, 0.056));
+      d = min(d, sdBrush(u, vec2f(0.20, 0.82), vec2f(0.12, 0.69), -0.025, 0.042, 0.046, 0.022));
+      d = min(d, sdBrush(u, vec2f(0.20, 0.80), vec2f(0.84, 0.84), 0.028, 0.042, 0.030, 0.054));
+      d = min(d, sdBrush(u, vec2f(0.84, 0.84), vec2f(0.76, 0.72), 0.018, 0.050, 0.036, 0.016));
+      d = min(d, sdBrush(u, vec2f(0.30, 0.70), vec2f(0.71, 0.73), 0.018, 0.046, 0.028, 0.048));
+      d = min(d, sdBrush(u, vec2f(0.31, 0.61), vec2f(0.34, 0.47), -0.012, 0.044, 0.032, 0.040));
+      d = min(d, sdBrush(u, vec2f(0.32, 0.60), vec2f(0.70, 0.63), 0.020, 0.038, 0.028, 0.048));
+      d = min(d, sdBrush(u, vec2f(0.69, 0.62), vec2f(0.66, 0.49), 0.014, 0.046, 0.034, 0.040));
+      d = min(d, sdBrush(u, vec2f(0.34, 0.48), vec2f(0.67, 0.50), 0.012, 0.040, 0.026, 0.044));
+      d = min(d, sdBrush(u, vec2f(0.22, 0.40), vec2f(0.26, 0.11), -0.018, 0.048, 0.034, 0.046));
+      d = min(d, sdBrush(u, vec2f(0.23, 0.39), vec2f(0.79, 0.43), 0.026, 0.044, 0.028, 0.054));
+      d = min(d, sdBrush(u, vec2f(0.78, 0.42), vec2f(0.74, 0.11), 0.022, 0.052, 0.036, 0.048));
+      d = min(d, sdBrush(u, vec2f(0.26, 0.26), vec2f(0.74, 0.29), 0.016, 0.038, 0.024, 0.042));
+      d = min(d, sdBrush(u, vec2f(0.51, 0.40), vec2f(0.50, 0.13), -0.010, 0.046, 0.030, 0.042));
+      d = min(d, sdBrush(u, vec2f(0.25, 0.12), vec2f(0.76, 0.14), 0.015, 0.044, 0.030, 0.050));
     }
     case 1u: { // 贵
-      d = min(d, sdSegment(u, vec2f(0.26, 0.86), vec2f(0.74, 0.86)));
-      d = min(d, sdSegment(u, vec2f(0.26, 0.69), vec2f(0.74, 0.69)));
-      d = min(d, sdSegment(u, vec2f(0.26, 0.86), vec2f(0.26, 0.69)));
-      d = min(d, sdSegment(u, vec2f(0.74, 0.86), vec2f(0.74, 0.69)));
-      d = min(d, sdSegment(u, vec2f(0.50, 0.94), vec2f(0.50, 0.58)));
-      d = min(d, sdSegment(u, vec2f(0.14, 0.58), vec2f(0.86, 0.58)));
-      d = min(d, sdSegment(u, vec2f(0.26, 0.48), vec2f(0.74, 0.48)));
-      d = min(d, sdSegment(u, vec2f(0.26, 0.48), vec2f(0.26, 0.22)));
-      d = min(d, sdSegment(u, vec2f(0.74, 0.48), vec2f(0.74, 0.22)));
-      d = min(d, sdSegment(u, vec2f(0.50, 0.42), vec2f(0.47, 0.21)));
-      d = min(d, sdSegment(u, vec2f(0.44, 0.20), vec2f(0.20, 0.08)));
-      d = min(d, sdSegment(u, vec2f(0.56, 0.20), vec2f(0.82, 0.08)));
+      d = min(d, sdBrush(u, vec2f(0.26, 0.85), vec2f(0.29, 0.69), -0.014, 0.044, 0.032, 0.040));
+      d = min(d, sdBrush(u, vec2f(0.27, 0.84), vec2f(0.74, 0.88), 0.022, 0.040, 0.028, 0.050));
+      d = min(d, sdBrush(u, vec2f(0.73, 0.87), vec2f(0.69, 0.71), 0.016, 0.048, 0.034, 0.040));
+      d = min(d, sdBrush(u, vec2f(0.29, 0.70), vec2f(0.71, 0.73), 0.014, 0.040, 0.026, 0.044));
+      d = min(d, sdBrush(u, vec2f(0.50, 0.95), vec2f(0.49, 0.59), -0.012, 0.054, 0.034, 0.044));
+      d = min(d, sdBrush(u, vec2f(0.11, 0.56), vec2f(0.89, 0.62), 0.032, 0.050, 0.030, 0.056));
+      d = min(d, sdBrush(u, vec2f(0.27, 0.49), vec2f(0.28, 0.22), -0.016, 0.046, 0.032, 0.038));
+      d = min(d, sdBrush(u, vec2f(0.28, 0.48), vec2f(0.73, 0.52), 0.020, 0.040, 0.026, 0.050));
+      d = min(d, sdBrush(u, vec2f(0.72, 0.51), vec2f(0.71, 0.23), 0.018, 0.048, 0.034, 0.042));
+      d = min(d, sdBrush(u, vec2f(0.50, 0.43), vec2f(0.45, 0.21), -0.028, 0.044, 0.032, 0.028));
+      d = min(d, sdBrush(u, vec2f(0.45, 0.22), vec2f(0.17, 0.07), -0.040, 0.038, 0.032, 0.014));
+      d = min(d, sdBrush(u, vec2f(0.55, 0.22), vec2f(0.84, 0.08), 0.028, 0.026, 0.046, 0.058));
     }
     case 2u: { // 由
-      d = min(d, sdSegment(u, vec2f(0.50, 0.92), vec2f(0.50, 0.14)));
-      d = min(d, sdSegment(u, vec2f(0.20, 0.68), vec2f(0.80, 0.68)));
-      d = min(d, sdSegment(u, vec2f(0.20, 0.42), vec2f(0.80, 0.42)));
-      d = min(d, sdSegment(u, vec2f(0.20, 0.14), vec2f(0.80, 0.14)));
-      d = min(d, sdSegment(u, vec2f(0.20, 0.68), vec2f(0.20, 0.14)));
-      d = min(d, sdSegment(u, vec2f(0.80, 0.68), vec2f(0.80, 0.14)));
+      d = min(d, sdBrush(u, vec2f(0.49, 0.94), vec2f(0.50, 0.15), -0.018, 0.056, 0.034, 0.044));
+      d = min(d, sdBrush(u, vec2f(0.19, 0.68), vec2f(0.24, 0.14), -0.024, 0.050, 0.034, 0.048));
+      d = min(d, sdBrush(u, vec2f(0.20, 0.66), vec2f(0.81, 0.72), 0.030, 0.044, 0.028, 0.056));
+      d = min(d, sdBrush(u, vec2f(0.80, 0.71), vec2f(0.76, 0.14), 0.024, 0.054, 0.036, 0.048));
+      d = min(d, sdBrush(u, vec2f(0.24, 0.41), vec2f(0.76, 0.45), 0.020, 0.040, 0.026, 0.044));
+      d = min(d, sdBrush(u, vec2f(0.23, 0.15), vec2f(0.77, 0.18), 0.018, 0.046, 0.030, 0.052));
     }
     case 3u: { // 天
-      d = min(d, sdSegment(u, vec2f(0.22, 0.82), vec2f(0.78, 0.82)));
-      d = min(d, sdSegment(u, vec2f(0.16, 0.54), vec2f(0.84, 0.54)));
-      d = min(d, sdSegment(u, vec2f(0.50, 0.82), vec2f(0.48, 0.48)));
-      d = min(d, sdSegment(u, vec2f(0.48, 0.48), vec2f(0.18, 0.10)));
-      d = min(d, sdSegment(u, vec2f(0.48, 0.48), vec2f(0.84, 0.10)));
+      d = min(d, sdBrush(u, vec2f(0.21, 0.80), vec2f(0.79, 0.86), 0.028, 0.050, 0.032, 0.056));
+      d = min(d, sdBrush(u, vec2f(0.14, 0.52), vec2f(0.86, 0.58), 0.032, 0.050, 0.030, 0.058));
+      d = min(d, sdBrush(u, vec2f(0.51, 0.83), vec2f(0.46, 0.45), -0.025, 0.054, 0.036, 0.038));
+      d = min(d, sdBrush(u, vec2f(0.46, 0.46), vec2f(0.14, 0.09), -0.070, 0.042, 0.036, 0.014));
+      d = min(d, sdBrush(u, vec2f(0.47, 0.47), vec2f(0.87, 0.10), 0.068, 0.028, 0.046, 0.066));
     }
     case 4u: { // 平
-      d = min(d, sdSegment(u, vec2f(0.22, 0.84), vec2f(0.78, 0.84)));
-      d = min(d, sdSegment(u, vec2f(0.14, 0.46), vec2f(0.86, 0.46)));
-      d = min(d, sdSegment(u, vec2f(0.50, 0.84), vec2f(0.50, 0.08)));
-      d = min(d, sdSegment(u, vec2f(0.26, 0.72), vec2f(0.34, 0.56)));
-      d = min(d, sdSegment(u, vec2f(0.74, 0.72), vec2f(0.66, 0.56)));
+      d = min(d, sdBrush(u, vec2f(0.21, 0.82), vec2f(0.80, 0.88), 0.028, 0.050, 0.032, 0.056));
+      d = min(d, sdBrush(u, vec2f(0.24, 0.72), vec2f(0.35, 0.56), 0.022, 0.026, 0.044, 0.052));
+      d = min(d, sdBrush(u, vec2f(0.77, 0.74), vec2f(0.64, 0.55), -0.028, 0.050, 0.036, 0.016));
+      d = min(d, sdBrush(u, vec2f(0.11, 0.44), vec2f(0.89, 0.51), 0.034, 0.052, 0.030, 0.060));
+      d = min(d, sdBrush(u, vec2f(0.51, 0.84), vec2f(0.49, 0.07), -0.016, 0.056, 0.038, 0.014));
     }
     case 5u: { // 安
-      d = min(d, sdSegment(u, vec2f(0.50, 0.93), vec2f(0.50, 0.84)));
-      d = min(d, sdSegment(u, vec2f(0.18, 0.82), vec2f(0.82, 0.82)));
-      d = min(d, sdSegment(u, vec2f(0.18, 0.82), vec2f(0.15, 0.70)));
-      d = min(d, sdSegment(u, vec2f(0.82, 0.82), vec2f(0.85, 0.70)));
-      d = min(d, sdSegment(u, vec2f(0.48, 0.74), vec2f(0.34, 0.36)));
-      d = min(d, sdSegment(u, vec2f(0.34, 0.36), vec2f(0.74, 0.14)));
-      d = min(d, sdSegment(u, vec2f(0.66, 0.58), vec2f(0.22, 0.10)));
-      d = min(d, sdSegment(u, vec2f(0.14, 0.54), vec2f(0.86, 0.54)));
+      d = min(d, sdBrush(u, vec2f(0.46, 0.94), vec2f(0.54, 0.84), 0.014, 0.022, 0.048, 0.054));
+      d = min(d, sdBrush(u, vec2f(0.20, 0.81), vec2f(0.13, 0.67), -0.024, 0.044, 0.046, 0.020));
+      d = min(d, sdBrush(u, vec2f(0.20, 0.79), vec2f(0.84, 0.84), 0.028, 0.042, 0.030, 0.054));
+      d = min(d, sdBrush(u, vec2f(0.84, 0.84), vec2f(0.75, 0.70), 0.020, 0.050, 0.034, 0.016));
+      d = min(d, sdBrush(u, vec2f(0.49, 0.74), vec2f(0.33, 0.36), -0.042, 0.050, 0.036, 0.038));
+      d = min(d, sdBrush(u, vec2f(0.33, 0.36), vec2f(0.77, 0.12), 0.036, 0.034, 0.044, 0.058));
+      d = min(d, sdBrush(u, vec2f(0.67, 0.61), vec2f(0.20, 0.09), -0.080, 0.048, 0.038, 0.016));
+      d = min(d, sdBrush(u, vec2f(0.11, 0.51), vec2f(0.89, 0.57), 0.030, 0.048, 0.028, 0.056));
     }
     case 6u: { // 是
-      d = min(d, sdSegment(u, vec2f(0.28, 0.88), vec2f(0.72, 0.88)));
-      d = min(d, sdSegment(u, vec2f(0.28, 0.74), vec2f(0.72, 0.74)));
-      d = min(d, sdSegment(u, vec2f(0.28, 0.60), vec2f(0.72, 0.60)));
-      d = min(d, sdSegment(u, vec2f(0.28, 0.88), vec2f(0.28, 0.60)));
-      d = min(d, sdSegment(u, vec2f(0.72, 0.88), vec2f(0.72, 0.60)));
-      d = min(d, sdSegment(u, vec2f(0.14, 0.48), vec2f(0.86, 0.48)));
-      d = min(d, sdSegment(u, vec2f(0.50, 0.48), vec2f(0.50, 0.18)));
-      d = min(d, sdSegment(u, vec2f(0.50, 0.34), vec2f(0.76, 0.34)));
-      d = min(d, sdSegment(u, vec2f(0.30, 0.36), vec2f(0.18, 0.12)));
-      d = min(d, sdSegment(u, vec2f(0.28, 0.26), vec2f(0.84, 0.10)));
+      d = min(d, sdBrush(u, vec2f(0.28, 0.88), vec2f(0.31, 0.61), -0.014, 0.046, 0.032, 0.042));
+      d = min(d, sdBrush(u, vec2f(0.29, 0.87), vec2f(0.72, 0.91), 0.022, 0.042, 0.028, 0.050));
+      d = min(d, sdBrush(u, vec2f(0.71, 0.90), vec2f(0.68, 0.62), 0.018, 0.048, 0.034, 0.042));
+      d = min(d, sdBrush(u, vec2f(0.31, 0.74), vec2f(0.69, 0.77), 0.016, 0.036, 0.024, 0.040));
+      d = min(d, sdBrush(u, vec2f(0.31, 0.61), vec2f(0.69, 0.64), 0.016, 0.040, 0.026, 0.044));
+      d = min(d, sdBrush(u, vec2f(0.12, 0.47), vec2f(0.88, 0.53), 0.032, 0.050, 0.030, 0.058));
+      d = min(d, sdBrush(u, vec2f(0.50, 0.49), vec2f(0.49, 0.19), -0.012, 0.050, 0.034, 0.040));
+      d = min(d, sdBrush(u, vec2f(0.50, 0.34), vec2f(0.76, 0.38), 0.018, 0.040, 0.028, 0.046));
+      d = min(d, sdBrush(u, vec2f(0.32, 0.39), vec2f(0.16, 0.10), -0.042, 0.044, 0.034, 0.014));
+      d = min(d, sdBrush(u, vec2f(0.27, 0.27), vec2f(0.88, 0.10), 0.064, 0.026, 0.044, 0.064));
     }
     default: { // 7: 福
-      d = min(d, sdSegment(u, vec2f(0.24, 0.88), vec2f(0.28, 0.78)));
-      d = min(d, sdSegment(u, vec2f(0.12, 0.70), vec2f(0.34, 0.70)));
-      d = min(d, sdSegment(u, vec2f(0.34, 0.70), vec2f(0.12, 0.42)));
-      d = min(d, sdSegment(u, vec2f(0.24, 0.54), vec2f(0.24, 0.10)));
-      d = min(d, sdSegment(u, vec2f(0.24, 0.52), vec2f(0.36, 0.44)));
-      d = min(d, sdSegment(u, vec2f(0.44, 0.84), vec2f(0.86, 0.84)));
-      d = min(d, sdSegment(u, vec2f(0.48, 0.70), vec2f(0.82, 0.70)));
-      d = min(d, sdSegment(u, vec2f(0.48, 0.56), vec2f(0.82, 0.56)));
-      d = min(d, sdSegment(u, vec2f(0.48, 0.70), vec2f(0.48, 0.56)));
-      d = min(d, sdSegment(u, vec2f(0.82, 0.70), vec2f(0.82, 0.56)));
-      d = min(d, sdSegment(u, vec2f(0.44, 0.44), vec2f(0.86, 0.44)));
-      d = min(d, sdSegment(u, vec2f(0.44, 0.12), vec2f(0.86, 0.12)));
-      d = min(d, sdSegment(u, vec2f(0.44, 0.44), vec2f(0.44, 0.12)));
-      d = min(d, sdSegment(u, vec2f(0.86, 0.44), vec2f(0.86, 0.12)));
-      d = min(d, sdSegment(u, vec2f(0.44, 0.28), vec2f(0.86, 0.28)));
-      d = min(d, sdSegment(u, vec2f(0.65, 0.44), vec2f(0.65, 0.12)));
+      d = min(d, sdBrush(u, vec2f(0.20, 0.90), vec2f(0.29, 0.79), 0.015, 0.022, 0.046, 0.052));
+      d = min(d, sdBrush(u, vec2f(0.10, 0.69), vec2f(0.35, 0.73), 0.018, 0.042, 0.028, 0.046));
+      d = min(d, sdBrush(u, vec2f(0.34, 0.72), vec2f(0.10, 0.41), -0.048, 0.044, 0.034, 0.014));
+      d = min(d, sdBrush(u, vec2f(0.24, 0.56), vec2f(0.23, 0.10), -0.014, 0.048, 0.034, 0.036));
+      d = min(d, sdBrush(u, vec2f(0.25, 0.53), vec2f(0.37, 0.43), 0.014, 0.024, 0.040, 0.046));
+      d = min(d, sdBrush(u, vec2f(0.43, 0.82), vec2f(0.87, 0.87), 0.024, 0.046, 0.028, 0.052));
+      d = min(d, sdBrush(u, vec2f(0.48, 0.71), vec2f(0.50, 0.56), -0.010, 0.040, 0.028, 0.036));
+      d = min(d, sdBrush(u, vec2f(0.49, 0.70), vec2f(0.83, 0.73), 0.018, 0.036, 0.026, 0.044));
+      d = min(d, sdBrush(u, vec2f(0.82, 0.72), vec2f(0.80, 0.57), 0.012, 0.044, 0.032, 0.038));
+      d = min(d, sdBrush(u, vec2f(0.50, 0.56), vec2f(0.80, 0.59), 0.012, 0.036, 0.024, 0.040));
+      d = min(d, sdBrush(u, vec2f(0.44, 0.45), vec2f(0.47, 0.12), -0.016, 0.044, 0.032, 0.042));
+      d = min(d, sdBrush(u, vec2f(0.45, 0.44), vec2f(0.87, 0.48), 0.022, 0.040, 0.026, 0.050));
+      d = min(d, sdBrush(u, vec2f(0.86, 0.47), vec2f(0.83, 0.12), 0.018, 0.048, 0.034, 0.044));
+      d = min(d, sdBrush(u, vec2f(0.47, 0.28), vec2f(0.84, 0.31), 0.014, 0.036, 0.024, 0.038));
+      d = min(d, sdBrush(u, vec2f(0.66, 0.45), vec2f(0.65, 0.14), -0.010, 0.042, 0.028, 0.038));
+      d = min(d, sdBrush(u, vec2f(0.47, 0.13), vec2f(0.84, 0.16), 0.014, 0.040, 0.028, 0.046));
     }
   }
+  return d;
+}
+
+// Hand-scrawled Taoist door talisman / wild cursive strokes (狂草符箓) for the two small door strips.
+fn talismanCursiveDist(uv: vec2f, variant: f32) -> f32 {
+  let s = select(1.0, -1.0, variant > 4.5);
+  let p = vec2f(0.5 + (uv.x - 0.5) * s, uv.y);
+  var d = 10.0;
+  // Triple-flick talisman crown (三勾符头)
+  d = min(d, sdBrush(p, vec2f(0.24, 0.87), vec2f(0.42, 0.80), 0.05, 0.028, 0.020, 0.014));
+  d = min(d, sdBrush(p, vec2f(0.48, 0.90), vec2f(0.52, 0.77), -0.04, 0.034, 0.022, 0.016));
+  d = min(d, sdBrush(p, vec2f(0.76, 0.86), vec2f(0.58, 0.79), -0.05, 0.028, 0.020, 0.014));
+  // Wild sweeping cross-bars & continuous S-curve spine
+  d = min(d, sdBrush(p, vec2f(0.18, 0.74), vec2f(0.84, 0.78), 0.04, 0.034, 0.020, 0.036));
+  d = min(d, sdBrush(p, vec2f(0.78, 0.76), vec2f(0.24, 0.62), -0.09, 0.026, 0.018, 0.028));
+  d = min(d, sdBrush(p, vec2f(0.24, 0.62), vec2f(0.78, 0.54), 0.08, 0.030, 0.022, 0.034));
+  d = min(d, sdBrush(p, vec2f(0.76, 0.53), vec2f(0.26, 0.42), -0.10, 0.028, 0.020, 0.032));
+  d = min(d, sdBrush(p, vec2f(0.26, 0.42), vec2f(0.74, 0.34), 0.09, 0.032, 0.020, 0.030));
+  d = min(d, sdBrush(p, vec2f(0.68, 0.33), vec2f(0.32, 0.21), -0.08, 0.028, 0.022, 0.026));
+  // Piercing central cursive spine flicking downward
+  d = min(d, sdBrush(p, vec2f(0.52, 0.80), vec2f(0.46, 0.13), 0.06, 0.036, 0.022, 0.010));
+  // Lower coiled talisman tail & ink flicks
+  d = min(d, sdBrush(p, vec2f(0.20, 0.25), vec2f(0.82, 0.28), 0.05, 0.026, 0.018, 0.032));
+  d = min(d, sdBrush(p, vec2f(0.32, 0.20), vec2f(0.76, 0.14), 0.06, 0.024, 0.020, 0.012));
   return d;
 }
 
@@ -528,33 +568,33 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
       paper *= 0.64;
     }
     var d = 10.0;
+    let handWarp = vec2f(
+      pFbm(uv, vec2f(7.0, 14.0), seed + 17.3, 2) - 0.5,
+      pFbm(uv, vec2f(7.0, 14.0), seed + 29.1, 2) - 0.5,
+    ) * 0.042;
     if (!isScroll && !isTalisman) {
       let row = clamp(floor((1.0 - uv.y) * 4.0), 0.0, 3.0);
       let cell = vec2f((uv.x - 0.08) / 0.84, fract((1.0 - uv.y) * 4.0));
       if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
         let baseId = select(4u, 0u, seed < 1.5);
-        d = coupletGlyphDist(vec2f(cell.x, 1.0 - cell.y), baseId + u32(row));
+        d = coupletGlyphDist(vec2f(cell.x, 1.0 - cell.y) + handWarp, baseId + u32(row));
       }
     } else if (isScroll) {
       let colIdx = clamp(floor(uv.x * 4.0), 0.0, 3.0);
       let cell = vec2f(fract(uv.x * 4.0), (uv.y - 0.10) / 0.80);
       if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
-        d = coupletGlyphDist(cell, (u32(colIdx) * 2u + 1u) % 8u);
+        d = coupletGlyphDist(cell + handWarp, (u32(colIdx) * 2u + 1u) % 8u);
       }
     } else {
       let innerB = 1.0 - smoothstep(0.002, 0.006, abs(edgeM - 0.024));
       paper = mix(paper, vec3f(0.56, 0.42, 0.18), innerB * 0.56);
-      let row = clamp(floor((1.0 - uv.y) * 3.0), 0.0, 2.0);
-      let cell = vec2f((uv.x - 0.16) / 0.68, fract((1.0 - uv.y) * 3.0));
-      if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
-        let baseId = select(5u, 0u, seed < 4.5);
-        d = coupletGlyphDist(vec2f(cell.x, 1.0 - cell.y), (baseId + u32(row)) % 8u);
-      }
+      d = talismanCursiveDist(uv + handWarp * 0.45, seed);
     }
-    let brushN = (pFbm(uv, vec2f(24.0, 48.0), seed + 13.7, 2) - 0.5) * 0.022;
-    let ink = 1.0 - smoothstep(0.044, 0.072, d + brushN);
+    let bristle = (pFbm(uv, vec2f(28.0, 56.0), seed + 13.7, 2) - 0.5) * 0.024;
+    let ink = 1.0 - smoothstep(-0.006, 0.020, d + bristle);
+    let dryBrush = mix(0.76, 1.0, smoothstep(-0.026, -0.002, -d + bristle * 0.5));
     let inkCol = vec3f(0.020, 0.017, 0.019) * (0.80 + 0.40 * fade);
-    let col = mix(paper, inkCol, ink * 0.94);
+    let col = mix(paper, inkCol, ink * dryBrush * 0.94);
     let h = 0.52 + (age - 0.5) * 0.10 - ink * 0.04;
     return Sample(col, clamp(baseRough + (age - 0.5) * 0.08, 0.72, 0.96), h, 0.94 + 0.06 * frayed, 0.0, m.pbr.z, 0.0, 0.0, vec2f(0.0));
   }
