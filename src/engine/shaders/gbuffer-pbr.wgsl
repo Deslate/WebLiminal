@@ -99,6 +99,10 @@ fn evalSunVisibility1(p: vec3f, nGeom: vec3f) -> f32 {
   return select(0.0, 1.0, !traceShadowPBR(origin, sunDir, 160.0));
 }
 
+fn plasterFlakeAt(q: vec2f) -> f32 {
+  return vFbm2(q * 4.2 + vec2f(11.4, 2.8)) * 0.72 + vFbm2(q * 24.0 - vec2f(3.2, 6.4)) * 0.28;
+}
+
 // --- Sky Backdrop Pass ---
 struct SkyVSOut {
   @builtin(position) clipPos: vec4f,
@@ -401,77 +405,70 @@ fn fsMain(i: VSOut) -> GBufferOut {
     texAO *= 0.78 + 0.22 * contour;
     rough = clamp(rough - contour * 0.12, 0.68, 0.98);
   } else if (preset == 22u) {
-    // Rural aged mud-plaster wall: softly graded organic limewash weathering, damp seepage,
-    // mildew blotches, and gradual multi-scale crumbling near the floor (zero sharp stencil edges!).
+    // Rural aged mud-plaster wall: subtle damp seepage and razor-sharp, naturally blended flaking stucco near the floor.
     let wUV = select(i.worldPos.xy, i.worldPos.zy, abs(Ngeom.x) > 0.7);
-    let broad = vFbm2(wUV * 0.85 + vec2f(2.3, 1.1));
-    let mottle = vFbm2(wUV * 2.6 - vec2f(5.4, 3.2));
-    let streak = vFbm2(vec2f(wUV.x * 2.4, wUV.y * 0.48) + vec2f(8.1, 4.7));
+    let broad = vFbm2(wUV * 0.92 + vec2f(2.3, 1.1));
+    let stain = vFbm2(vec2f(wUV.x * 1.9, wUV.y * 0.55) + vec2f(8.1, 4.7));
     let fineSand = vFbm2(wUV * 36.0 - vec2f(3.7, 6.2));
     let microSand = vFbm2(wUV * 88.0 + vec2f(1.4, 5.1));
-    albedo *= (0.72 + 0.44 * broad) * (0.86 + 0.26 * mottle)
-      * (1.0 - smoothstep(0.48, 0.84, streak) * 0.38)
-      * (0.91 + 0.18 * (fineSand * 0.65 + microSand * 0.35));
+    albedo *= (0.78 + 0.36 * broad) * (1.0 - smoothstep(0.54, 0.84, stain) * 0.30) * (0.93 + 0.14 * (fineSand * 0.65 + microSand * 0.35));
 
     let dampAmt = clamp(m.extra.y, 0.0, 1.0);
-    // Rising damp & smoky corner mildew blotches near the floor, fading organically upward.
-    let dampBand = (1.0 - smoothstep(0.02, 0.62, i.worldPos.y + (broad - 0.5) * 0.34)) * max(dampAmt, 0.46);
-    let mildew = smoothstep(0.40, 0.82, vFbm2(wUV * 1.8 + vec2f(3.3, 6.1))) * dampBand;
-    albedo *= (1.0 - dampBand * 0.20) * (1.0 - mildew * 0.46);
+    // Rising damp discoloration near the base of the wall, transitioning organically upward.
+    let dampBand = (1.0 - smoothstep(0.02, 0.44, i.worldPos.y + (broad - 0.5) * 0.18)) * dampAmt;
+    albedo *= 1.0 - dampBand * 0.14;
 
-    // Subtle chalky limewash patches fading organically across the lower/mid wall.
-    let chalk = smoothstep(0.56, 0.88, mottle * 0.6 + broad * 0.4) * smoothstep(0.08, 0.48, i.worldPos.y) * (1.0 - smoothstep(0.95, 1.95, i.worldPos.y));
-    albedo = mix(albedo, albedo * vec3f(1.18, 1.15, 1.10) + vec3f(0.012), chalk * 0.30);
-
-    // Gradual, organic multi-scale plaster crumbling & powdery wear near the floor (NO sharp stencil outlines!).
-    let lowMask = (1.0 - smoothstep(0.04, 0.56, i.worldPos.y + (broad - 0.5) * 0.28 + (mottle - 0.5) * 0.14)) * dampAmt;
-    var wearTotal = 0.0;
-    var gritBump = vec2f(0.0);
+    let lowMask = (1.0 - smoothstep(0.05, 0.46, i.worldPos.y + (broad - 0.5) * 0.22)) * dampAmt;
+    var peel = 0.0;
+    var peelSlope = vec2f(0.0);
     if (lowMask > 0.01) {
       let warp = vec2f(
-        vFbm2(wUV * 3.4 + vec2f(4.1, 7.3)) - 0.5,
-        vFbm2(wUV * 3.4 + vec2f(12.7, 2.9)) - 0.5,
-      ) * 0.16;
+        vFbm2(wUV * 3.8 + vec2f(4.1, 7.3)) - 0.5,
+        vFbm2(wUV * 3.8 + vec2f(12.7, 2.9)) - 0.5,
+      ) * 0.14;
       let q = wUV + warp;
-      let fBroad = vFbm2(q * 3.8 + vec2f(11.4, 2.8));
-      let fMid = vFbm2(q * 14.0 - vec2f(3.2, 6.4));
-      let fFine = vFbm2(q * 38.0 + vec2f(7.1, 1.9));
-      // Wide, softly blended powdery decay + small scattered rough mortar pits
-      let softWear = smoothstep(0.38, 0.74, fBroad * 0.65 + fMid * 0.35) * lowMask;
-      let pits = smoothstep(0.54, 0.76, fMid * 0.55 + fFine * 0.45) * softWear;
-      let chalkDust = smoothstep(0.46, 0.74, fFine) * softWear * (1.0 - pits);
-      let mortarGrain = 0.72 + 0.48 * (fineSand * 0.55 + microSand * 0.45);
+      let f0 = plasterFlakeAt(q);
+      let thresh = mix(0.62, 0.545, lowMask);
+      peel = smoothstep(thresh - 0.014, thresh + 0.016, f0);
+      let peelRim = smoothstep(thresh - 0.032, thresh - 0.008, f0) * (1.0 - peel) * lowMask;
+      let mortarGrain = 0.78 + 0.40 * (fineSand * 0.6 + microSand * 0.4);
+      // Exposed earthen mortar undercoat blends naturally with the wall tone (matching right-wall spalling).
+      let underCol = albedo * vec3f(0.70, 0.67, 0.63) * mortarGrain;
+      albedo = mix(albedo, underCol, peel * 0.85);
+      albedo = mix(albedo, albedo * 1.09 + vec3f(0.008, 0.006, 0.004), peelRim * 0.38);
 
-      let dampPlaster = albedo * vec3f(0.76, 0.72, 0.68) * mortarGrain;
-      let rawEarth = albedo * vec3f(0.56, 0.52, 0.48) * mortarGrain;
-      albedo = mix(albedo, dampPlaster, softWear * 0.72);
-      albedo = mix(albedo, rawEarth, pits * 0.75);
-      albedo = mix(albedo, albedo * vec3f(1.22, 1.18, 1.12) + vec3f(0.010, 0.008, 0.006), chalkDust * 0.34);
-
-      wearTotal = clamp(softWear * 0.55 + pits * 0.45, 0.0, 1.0);
-      // Fine granular roughness micro-relief inside the crumbled zone (organic, never sharp-edged)
-      let e = 0.006;
-      let gX = vFbm2((q + vec2f(e, 0.0)) * 22.0) - vFbm2(q * 22.0);
-      let gY = vFbm2((q + vec2f(0.0, e)) * 22.0) - vFbm2(q * 22.0);
-      gritBump = clamp(vec2f(gX, gY) * (-3.2 * wearTotal), vec2f(-0.22), vec2f(0.22));
+      // Edge-only millimeter-thin chip step normal (~5% of lower wall pixels; zero blobby clay pillows!).
+      if (abs(f0 - thresh) < 0.032) {
+        let e = 0.0035;
+        let px = smoothstep(thresh - 0.014, thresh + 0.016, plasterFlakeAt(q + vec2f(e, 0.0)));
+        let py = smoothstep(thresh - 0.014, thresh + 0.016, plasterFlakeAt(q + vec2f(0.0, e)));
+        peelSlope = clamp(vec2f((peel - px) / e, (peel - py) / e) * 0.0018, vec2f(-0.18), vec2f(0.18));
+      }
     }
 
-    // Organic damp wall-base smudge on the far ash wall near the left floor corner
-    if (dampAmt < 0.45 && i.worldPos.y < 0.96 && i.worldPos.x < -0.38) {
-      let smudgeN = vFbm2(wUV * 2.8 + vec2f(5.3, 1.7)) * 0.60 + vFbm2(wUV * 8.5) * 0.40;
-      let cornerEnv = (1.0 - smoothstep(0.18, 0.90, i.worldPos.y)) * (1.0 - smoothstep(-0.94, -0.44, i.worldPos.x));
-      let smudge = smoothstep(0.22, 0.68, smudgeN) * cornerEnv;
-      albedo *= 1.0 - smudge * 0.72;
+    // Subtle weathered vertical plaster fissure near protruding wall corner (only when seed > 100).
+    var crackBump = 0.0;
+    if (m.extra.z > 100.0) {
+      let xCrack = m.extra.z - 200.0;
+      let meander = (vFbm2(vec2f(i.worldPos.y * 2.2, 3.1)) - 0.5) * 0.055;
+      let edgeCrack = exp(-abs(i.worldPos.x - (xCrack + meander)) / 0.022)
+        * smoothstep(0.55, 0.95, i.worldPos.y)
+        * smoothstep(2.40, 1.80, i.worldPos.y);
+      if (edgeCrack > 0.02) {
+        let crackTex = smoothstep(0.32, 0.70, vFbm2(wUV * 18.0 + vec2f(0.0, 3.5)));
+        crackBump = edgeCrack * crackTex;
+        albedo *= 1.0 - crackBump * 0.42;
+      }
     }
 
-    // Upper ceiling soot patina darkening smoothly into pitch night shadow above the doorway.
-    let ceilSoot = smoothstep(1.68, 2.58, i.worldPos.y) * 0.94;
+    // Subtle upper ceiling soot patina darkening gracefully into night shadow above the doorway.
+    let ceilSoot = smoothstep(1.92, 2.78, i.worldPos.y) * 0.88;
     albedo *= 1.0 - ceilSoot;
 
-    let sandSlope = vec2f(fineSand - 0.5, microSand - 0.5) * 0.08;
-    nXY = clamp(nXY * 0.24 + sandSlope + gritBump, vec2f(-0.42), vec2f(0.42));
-    rough = clamp(mix(rough, 0.98, wearTotal), 0.80, 0.98);
-    texAO *= 1.0 - wearTotal * 0.20;
+    let sandSlope = vec2f(fineSand - 0.5, microSand - 0.5) * 0.06;
+    nXY = clamp(nXY * 0.24 + sandSlope + peelSlope + vec2f(crackBump * 0.16, 0.0), vec2f(-0.42), vec2f(0.42));
+    rough = clamp(mix(rough, 0.97, peel), 0.80, 0.98);
+    texAO *= (1.0 - peel * 0.14) * (1.0 - crackBump * 0.28);
   } else if (preset == 23u) {
     // Dark gritty damp stone floor: broken rough-grit specular sparkles across dark damp stone (zero smooth plastic stripe!).
     let pXZ = i.worldPos.xz;
@@ -497,46 +494,17 @@ fn fsMain(i: VSOut) -> GBufferOut {
     rough = clamp(mix(0.60 + grit * 0.16, 0.16 + grit * 0.10, wet), 0.14, 0.92);
     coat = mix(0.14, 0.82, wet);
   } else if (preset == 24u) {
-    // Aged rural Chinese timber double doors: tactile vertical plank seams, mottled weathered ash
-    // lower grain catching cool moonlight, damp threshold grime, and deep soot toward the top rail.
+    // Aged dark Chinese timber planks: dry pale ash weathering on lower/mid boards, deep soot near top.
     let wUV = select(i.worldPos.xy, i.worldPos.zy, abs(Ngeom.x) > 0.7);
-    let wear = vFbm2(wUV * 3.4 + vec2f(9.1, 2.3));
-    let mottle = vFbm2(wUV * 7.8 - vec2f(4.2, 1.9));
-    let fiber = vFbm2(vec2f(wUV.x * 52.0, wUV.y * 4.8) + vec2f(2.7, 6.1));
-    let isDoorLeaf = m.extra.y > 0.1;
-    if (isDoorLeaf) {
-      let plankFreq = 7.6;
-      let pPhase = fract(wUV.x * plankFreq);
-      let pId = vHash2(vec2f(floor(wUV.x * plankFreq), 13.7));
-      let edgeD = min(pPhase, 1.0 - pPhase);
-      let groove = 1.0 - smoothstep(0.014, 0.048, edgeD);
-      let bevelDir = select(1.0, -1.0, pPhase < 0.5);
-      let bevelBand = smoothstep(0.015, 0.06, edgeD) * (1.0 - smoothstep(0.06, 0.14, edgeD));
-
-      let lowAsh = (0.42 + 0.58 * (wear * 0.6 + mottle * 0.4)) * (1.0 - smoothstep(1.06, 1.72, i.worldPos.y));
-      let boardTone = 0.76 + 0.44 * pId;
-      albedo *= boardTone * (0.76 + 0.48 * fiber);
-      albedo = mix(albedo, vec3f(0.24, 0.235, 0.225) * (0.68 + 0.58 * fiber) * (0.80 + 0.36 * mottle), lowAsh * 0.70);
-      albedo *= 1.0 - smoothstep(0.32, 0.10, i.worldPos.y) * (0.35 + 0.25 * mottle);
-      albedo *= 1.0 - smoothstep(1.24, 1.98, i.worldPos.y) * 0.86;
-      albedo *= 1.0 - groove * 0.74;
-
-      nXY = clamp(nXY * 0.42 + vec2f(bevelDir * bevelBand * 0.28 + (fiber - 0.5) * 0.18, (wear - 0.5) * 0.08), vec2f(-0.54), vec2f(0.54));
-      rough = clamp(mix(rough, 0.94, groove) + (fiber - 0.5) * 0.12, 0.52, 0.98);
-      texAO *= 1.0 - groove * 0.48;
-    } else {
-      let lowWear = smoothstep(0.42, 0.76, wear) * (1.0 - smoothstep(1.25, 2.05, i.worldPos.y));
-      albedo = mix(albedo, vec3f(0.14, 0.135, 0.13), lowWear * 0.34);
-      albedo *= 0.86 + 0.28 * fiber;
-      albedo *= 1.0 - smoothstep(1.40, 2.22, i.worldPos.y) * 0.65;
-    }
+    let wear = vFbm2(wUV * 3.6 + vec2f(9.1, 2.3));
+    let lowWear = smoothstep(0.40, 0.74, wear) * (1.0 - smoothstep(1.25, 2.05, i.worldPos.y));
+    albedo = mix(albedo, vec3f(0.21, 0.205, 0.195), lowWear * 0.54);
+    albedo *= 1.0 - smoothstep(1.30, 2.18, i.worldPos.y) * 0.74;
   } else if (preset == 25u) {
-    // Fine Xuan-paper fiber, fold micro-relief, and aged soot patina matching upper doorway darkness.
+    // Fine Xuan-paper fiber & subtle fold micro-relief over the patterned brocade & hand-brushed calligraphy texture.
     let fiber = vFbm2(i.worldPos.xy * 68.0 + vec2f(m.extra.z * 2.1, 4.7));
     let crinkle = vFbm2(i.worldPos.xy * 11.0 + vec2f(4.3, m.extra.z * 1.9));
-    let upperSoot = smoothstep(1.32, 2.38, i.worldPos.y) * 0.44;
-    let rightShadowPatina = select(1.0, 0.64, m.extra.z > 1.5 && m.extra.z < 2.5);
-    albedo *= (0.92 + 0.16 * fiber) * (1.0 - upperSoot) * rightShadowPatina;
+    albedo *= 0.92 + 0.16 * fiber;
     nXY = vec2f((fiber - 0.5) * 0.04 + (crinkle - 0.5) * 0.08, (crinkle - 0.5) * 0.07);
   }
   var vineDiscard = false;
@@ -769,6 +737,7 @@ fn fsMain(i: VSOut) -> GBufferOut {
 
       let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
       let sqrtArea = sqrt(l.originArea.w);
+      let focusExp = select(1.0, 1.0 + (l.edgeVKind.w - 1.0) * 60.0, l.edgeVKind.w > 1.01 && l.edgeVKind.w < 1.5);
 
       if (k < 2u && cDist2 < 160.0) {
         // Diagonal probe pair A: (0.24, 0.28) & (0.76, 0.72) — spans both rectangle axes in 2 rays
@@ -777,9 +746,10 @@ fn fsMain(i: VSOut) -> GBufferOut {
         let d20 = max(dot(to0, to0), 0.01);
         let d0 = sqrt(d20);
         let wi0 = to0 / d0;
-        let cL0 = dot(lNorm, -wi0);
+        let rawL0 = dot(lNorm, -wi0);
+        let cL0 = select(rawL0, pow(max(rawL0, 0.0), focusExp), focusExp > 1.01);
         let cS0 = max(dot(N, wi0), 0.0);
-        let vis0 = (cL0 > 0.01 && dot(Ngeom, wi0) > 0.0 && cS0 > 0.0)
+        let vis0 = (rawL0 > 0.01 && cL0 > 0.002 && dot(Ngeom, wi0) > 0.0 && cS0 > 0.0)
           && !traceShadowPBR(shadowOrigin, wi0, max(0.02, d0 - 0.05));
 
         let lp1 = l.originArea.xyz + l.edgeUPower.xyz * 0.76 + l.edgeVKind.xyz * 0.72;
@@ -787,9 +757,10 @@ fn fsMain(i: VSOut) -> GBufferOut {
         let d21 = max(dot(to1, to1), 0.01);
         let d1 = sqrt(d21);
         let wi1 = to1 / d1;
-        let cL1 = dot(lNorm, -wi1);
+        let rawL1 = dot(lNorm, -wi1);
+        let cL1 = select(rawL1, pow(max(rawL1, 0.0), focusExp), focusExp > 1.01);
         let cS1 = max(dot(N, wi1), 0.0);
-        let vis1 = (cL1 > 0.01 && dot(Ngeom, wi1) > 0.0 && cS1 > 0.0)
+        let vis1 = (rawL1 > 0.01 && cL1 > 0.002 && dot(Ngeom, wi1) > 0.0 && cS1 > 0.0)
           && !traceShadowPBR(shadowOrigin, wi1, max(0.02, d1 - 0.05));
 
         if (vis0 != vis1) {
@@ -813,9 +784,10 @@ fn fsMain(i: VSOut) -> GBufferOut {
             let d2P = max(dot(toP, toP), 0.01);
             let dP = sqrt(d2P);
             let wiP = toP / dP;
-            let cLP = dot(lNorm, -wiP);
+            let rawLP = dot(lNorm, -wiP);
+            let cLP = select(rawLP, pow(max(rawLP, 0.0), focusExp), focusExp > 1.01);
             let cSP = max(dot(N, wiP), 0.0);
-            if (cLP > 0.01 && dot(Ngeom, wiP) > 0.0 && cSP > 0.0 && !traceShadowPBR(shadowOrigin, wiP, max(0.02, dP - 0.05))) {
+            if (rawLP > 0.01 && cLP > 0.002 && dot(Ngeom, wiP) > 0.0 && cSP > 0.0 && !traceShadowPBR(shadowOrigin, wiP, max(0.02, dP - 0.05))) {
               let gf = (cLP * subA) / max(d2P, 0.14);
               let fIn = fresnelSchlick(cSP, f0);
               diffuse += kD * (vec3f(1.0) - fIn) * albedo * l.radianceCdf.rgb * (cSP * gf * INV_PI) * mix(0.68, 1.0, texAO);
@@ -841,9 +813,10 @@ fn fsMain(i: VSOut) -> GBufferOut {
         let dist2 = max(dot(toP, toP), 0.01);
         let dist = sqrt(dist2);
         let wi = toP / dist;
-        let cosL = dot(lNorm, -wi);
+        let rawL = dot(lNorm, -wi);
+        let cosL = select(rawL, pow(max(rawL, 0.0), focusExp), focusExp > 1.01);
         let cosS = max(dot(N, wi), 0.0);
-        if (cosL > 0.01 && dot(Ngeom, wi) > 0.0 && cosS > 0.0 && !traceShadowPBR(shadowOrigin, wi, max(0.02, dist - 0.05))) {
+        if (rawL > 0.01 && cosL > 0.002 && dot(Ngeom, wi) > 0.0 && cosS > 0.0 && !traceShadowPBR(shadowOrigin, wi, max(0.02, dist - 0.05))) {
           let gf = (cosL * l.originArea.w * lFade) / max(dist2, 0.14);
           let fIn = fresnelSchlick(cosS, f0);
           diffuse += kD * (vec3f(1.0) - fIn) * albedo * l.radianceCdf.rgb * (cosS * gf * INV_PI) * mix(0.68, 1.0, texAO);

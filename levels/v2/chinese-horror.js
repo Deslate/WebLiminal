@@ -45,14 +45,14 @@ export default {
       base: "plaster_mud",
       name: "ch_plaster_protruding_front",
       albedo: [0.36, 0.27, 0.18],
-      wetness: 0.94,
+      wetness: 0.96,
       seed: 25.0,
     });
     const plasterAshFar = m.material({
       base: "plaster_mud",
       name: "ch_plaster_ash_far",
       albedo: [0.36, 0.36, 0.35],
-      wetness: 0.28,
+      wetness: 0.22,
       seed: 24.0,
     });
     const stoneFloor = m.material({
@@ -80,13 +80,12 @@ export default {
       albedo: [0.105, 0.098, 0.090],
       roughness: 0.74,
       coat: 0.06,
-      wetness: 0.24,
       seed: 22.0,
     });
     const trimWood = m.material({
       base: "wood_plank_aged",
       name: "ch_trim_wood",
-      albedo: [0.036, 0.030, 0.025],
+      albedo: [0.036, 0.030, 0.024],
       roughness: 0.82,
       coat: 0.04,
       tileScale: 0.5,
@@ -165,19 +164,14 @@ export default {
     // Dark timber backing behind the recessed double door leaves.
     m.box([doorL - 0.1, 0.0, minZ - 0.38], [doorR + 0.1, doorH + 0.08, minZ - 0.26], trimWood, { solid: true, priority: 0.4 });
 
-    // --- Left Corridor Wall with Concealed Broken Hole (破洞) ---
+    // --- Left Corridor Wall with Tiny Concealed Broken Hole (小破洞) ---
     // Hidden behind the protruding left partition wall (x in [-3.8, -0.88], z in [-0.36, 0.0]).
-    // Opening spans z in [-1.18, -0.44], y in [0.42, 1.56] with stepped rough masonry edges so
-    // cool exterior moonlight enters naturally from the left side without spilling onto the right wall.
-    m.box([-1.38, 0.0, minZ], [-1.12, roof, -1.18], plasterAshFar, { solid: true, priority: 0.8 });
-    m.box([-1.38, 0.0, -0.44], [-1.12, roof, -0.36], plasterWarm, { solid: true, priority: 0.8 });
-    m.box([-1.38, 0.0, -1.18], [-1.12, 0.42, -0.44], plasterAshFar, { solid: true, priority: 0.8 });
-    m.box([-1.38, 1.56, -1.18], [-1.12, roof, -0.44], plasterAshFar, { solid: false, priority: 0.5 });
-    // Rough stepped plaster/brick corners softening the broken hole outline when inspected up close
-    m.box([-1.38, 1.40, -1.18], [-1.12, 1.56, -1.04], plasterAshFar, { solid: false, priority: 0.3 });
-    m.box([-1.38, 1.42, -0.58], [-1.12, 1.56, -0.44], plasterAshFar, { solid: false, priority: 0.3 });
-    m.box([-1.38, 0.42, -1.18], [-1.12, 0.56, -1.04], plasterAshFar, { solid: false, priority: 0.3 });
-    m.box([-1.38, 0.42, -0.56], [-1.12, 0.56, -0.44], plasterAshFar, { solid: false, priority: 0.3 });
+    // A small 22 cm x 24 cm breach (z in [-0.64, -0.42], y in [0.76, 1.00]) lets a tight,
+    // focused cool beam of night moonlight fall locally onto the lower couplet and doorway.
+    m.box([-1.38, 0.0, minZ], [-1.12, roof, -0.64], plasterAshFar, { solid: true, priority: 0.8 });
+    m.box([-1.38, 0.0, -0.42], [-1.12, roof, -0.36], plasterWarm, { solid: true, priority: 0.8 });
+    m.box([-1.38, 0.0, -0.64], [-1.12, 0.76, -0.42], plasterAshFar, { solid: true, priority: 0.8 });
+    m.box([-1.38, 1.00, -0.64], [-1.12, roof, -0.42], plasterAshFar, { solid: false, priority: 0.5 });
     // Keep player inside main corridor (cannot step into the concealed moonlight shaft).
     m.solids.push({ minX: -1.38, maxX: -1.12, minZ, maxZ: 0.0, minY: 0.0, maxY: roof });
     // Concealed outer court back wall (butts cleanly behind protruding wall at z = -0.36).
@@ -391,12 +385,12 @@ export default {
       flickerFreq: 7.3,
       flickerPhase: 0.4,
     });
-    // 2. Soft cool moonlight entering from the concealed left broken hole (破洞).
-    //    Both emitters are angled strictly toward -Z/-X so dot(N_L, dir_to_right_wall) <= 0
-    //    and dot(N_L, dir_to_mid_floor) <= 0: zero light spills onto the right wall or the
-    //    dark shadow gulf behind the candle, while creating a velvety, rounded cool highlight
-    //    wrapping the far-left ash wall, left couplet (富贵由天), and lower/mid double doors.
-    const addOrientedPortal = (center, uDir, vDir, hw, hh, color, intensity) => {
+    // 2. Single tiny baffled broken-hole moonlight aperture (14 cm x 14 cm, kind = 1.3125 -> focusExp = 19.75)
+    //    sitting right at the concealed 22 cm x 24 cm breach in the left wall [-1.04, 0.88, -0.50]
+    //    and aimed at [0.04, 0.78, -2.26]. Produces a tight, focused cool pool on the lower couplet
+    //    (由天) and lower-mid doorway planks while leaving the upper wall, ceiling, right wall, and
+    //    mid-corridor floor trough behind the candle in deep night shadow.
+    const addOrientedPortal = (center, uDir, vDir, hw, hh, color, intensity, kind = 1) => {
       const p0 = [
         center[0] - uDir[0] * hw - vDir[0] * hh,
         center[1] - uDir[1] * hw - vDir[1] * hh,
@@ -404,27 +398,17 @@ export default {
       ];
       const p1 = [p0[0] + uDir[0] * hw * 2, p0[1] + uDir[1] * hw * 2, p0[2] + uDir[2] * hw * 2];
       const p3 = [p0[0] + vDir[0] * hh * 2, p0[1] + vDir[1] * hh * 2, p0[2] + vDir[2] * hh * 2];
-      m.addAreaLight(p0, p1, p3, color, intensity, { kind: 1 });
+      m.addAreaLight(p0, p1, p3, color, intensity, { kind });
     };
-    // Primary broken-hole moonlight aperture sitting cleanly at the hidden left wall opening
     addOrientedPortal(
-      [-1.04, 1.05, -0.68],
-      [0.846, 0.0, -0.533],
-      [0.117, -0.975, 0.186],
-      0.22,
-      0.24,
+      [-1.04, 0.88, -0.50],
+      [0.852, 0.0, 0.523],
+      [-0.025, -0.999, 0.041],
+      0.07,
+      0.07,
       [0.82, 0.90, 1.0],
-      13.5,
-    );
-    // Soft diffused doorway scatter halo completing the rounded bright ring on the lower/mid door
-    addOrientedPortal(
-      [0.06, 0.86, -1.38],
-      [0.889, 0.0, -0.458],
-      [0.128, -0.960, 0.249],
-      0.26,
-      0.22,
-      [0.80, 0.88, 1.0],
-      7.6,
+      610.0,
+      1.3125,
     );
 
     // --- Curated Viewpoints ---

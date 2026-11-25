@@ -231,7 +231,9 @@ fn evalAreaLight(p: vec3f, n: vec3f, l: AreaLight, u1: f32, u2: f32, outDir: ptr
   if (cosLight <= 0.0) { return vec3f(0.0); }
   if (traceShadow(p, wi, max(0.01, dist - 0.03))) { return vec3f(0.0); }
   *outDir = wi;
-  let g = (cosSurf * cosLight * l.originArea.w) / max(dist2, 0.08);
+  let focusExp = select(1.0, 1.0 + (l.edgeVKind.w - 1.0) * 60.0, l.edgeVKind.w > 1.01 && l.edgeVKind.w < 1.5);
+  let lobe = select(cosLight, pow(cosLight, focusExp), focusExp > 1.01);
+  let g = (cosSurf * lobe * l.originArea.w) / max(dist2, 0.08);
   return l.radianceCdf.rgb * g;
 }
 

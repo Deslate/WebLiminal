@@ -186,8 +186,10 @@ fn marchVolumetric(@builtin(global_invocation_id) gid: vec3u) {
           }
         } else {
           let lNorm = normalize(cross(l.edgeUPower.xyz, l.edgeVKind.xyz));
-          let cone = max(0.0, dot(lNorm, -dirL));
-          if (!traceShadowVol(p, dirL, max(0.02, dist - 0.12))) {
+          let rawCone = max(0.0, dot(lNorm, -dirL));
+          let focusExp = select(1.0, 1.0 + (l.edgeVKind.w - 1.0) * 60.0, l.edgeVKind.w > 1.01 && l.edgeVKind.w < 1.5);
+          let cone = select(rawCone, pow(rawCone, focusExp), focusExp > 1.01);
+          if (cone > 0.005 && !traceShadowVol(p, dirL, max(0.02, dist - 0.12))) {
             let isSky = l.edgeVKind.w > 0.5;
             let phase = mix(0.28, hgPhase(dot(rd, dirL), 0.52), 0.58);
             let gain = select(0.11, 0.30, isSky);

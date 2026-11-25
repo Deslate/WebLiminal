@@ -536,20 +536,18 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let rough = clamp(baseRough + (grit - 0.5) * 0.18 + pit * 0.16, 0.30, 0.96);
     return Sample(col, rough, h, clamp(0.84 + 0.16 * broad - pit * 0.28, 0.35, 1.0), 0.0, m.pbr.z, 0.0, m.extra.y, vec2f(0.0));
   }
-  // 24: wood_plank_aged (aged charcoal-timber vertical double-door planks with deep joints & weathered split grain)
+  // 24: wood_plank_aged (aged charcoal-timber vertical double-door planks with grain & plank joints)
   if (preset == 24u) {
-    let grain = pFbm(uv, vec2f(32.0, 3.0), seed, 4);
-    let fine = pFbm(uv, vec2f(84.0, 9.0), seed + 6.3, 3);
-    let split = smoothstep(0.74, 0.90, pFbm(uv, vec2f(48.0, 2.5), seed + 14.1, 3));
-    let plankPhase = fract(uv.x * 8.0);
+    let grain = pFbm(uv, vec2f(28.0, 3.0), seed, 4);
+    let fine = pFbm(uv, vec2f(72.0, 8.0), seed + 6.3, 3);
+    let plankPhase = fract(uv.x * 7.8);
     let edgeD = min(plankPhase, 1.0 - plankPhase);
-    let seam = 1.0 - smoothstep(0.0, 0.056, edgeD);
-    let bevel = smoothstep(0.03, 0.14, edgeD);
-    let plankId = hash21(vec2f(floor(uv.x * 8.0), seed));
-    let col = baseCol * (0.66 + 0.58 * grain) * (0.86 + 0.28 * fine) * (0.82 + 0.34 * plankId) * (1.0 - seam * 0.88) * (1.0 - split * 0.42);
-    let h = clamp(0.56 + (grain - 0.5) * 0.22 + (fine - 0.5) * 0.10 - seam * 0.52 - split * 0.18 + (bevel - 0.5) * 0.08, 0.0, 1.0);
-    let rough = clamp(baseRough + (grain - 0.5) * 0.14 + seam * 0.18, 0.45, 0.96);
-    return Sample(col, rough, h, clamp(0.90 + 0.10 * grain - seam * 0.55 - split * 0.22, 0.22, 1.0), 0.0, m.pbr.z * (1.0 - seam), 0.0, m.extra.y, vec2f(0.0));
+    let seam = 1.0 - smoothstep(0.0, 0.048, edgeD);
+    let plankId = hash21(vec2f(floor(uv.x * 7.8), seed));
+    let col = baseCol * (0.72 + 0.52 * grain) * (0.90 + 0.20 * fine) * (0.88 + 0.24 * plankId) * (1.0 - seam * 0.80);
+    let h = clamp(0.56 + (grain - 0.5) * 0.18 + (fine - 0.5) * 0.08 - seam * 0.46, 0.0, 1.0);
+    let rough = clamp(baseRough + (grain - 0.5) * 0.12 + seam * 0.18, 0.45, 0.96);
+    return Sample(col, rough, h, clamp(0.92 + 0.08 * grain - seam * 0.45, 0.28, 1.0), 0.0, m.pbr.z * (1.0 - seam), 0.0, m.extra.y, vec2f(0.0));
   }
   // 25: couplet_paper (aged Chinese Spring Festival couplets with ornate fretwork border, auspicious floral/cloud brocade & gold flecks)
   // Variant selected by seed: 1=left(富贵由天), 2=right(平安是福), 3=horizontal scroll, 4=left talisman, 5=right talisman.
@@ -610,35 +608,49 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
     let handWarp = vec2f(
       pFbm(uv, vec2f(7.0, 14.0), seed + 17.3, 2) - 0.5,
       pFbm(uv, vec2f(7.0, 14.0), seed + 29.1, 2) - 0.5,
-    ) * 0.042;
+    ) * 0.036;
     if (!isScroll && !isTalisman) {
-      let row = clamp(floor((1.0 - uv.y) * 4.0), 0.0, 3.0);
-      let cell = vec2f((uv.x - 0.09) / 0.82, fract((1.0 - uv.y) * 4.0));
-      if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
-        // Circular floral/cloud auspicious medallion (团花暗纹) behind each couplet character!
-        let mc = cell - vec2f(0.5);
-        let mr = length(mc);
-        let ma = atan2(mc.y, mc.x);
-        let petalR = 0.37 + 0.042 * sin(ma * 8.0) + 0.018 * cos(ma * 16.0);
-        let ring1 = 1.0 - smoothstep(0.012, 0.036, abs(mr - petalR));
-        let ring2 = 1.0 - smoothstep(0.012, 0.034, abs(mr - (0.22 + 0.028 * cos(ma * 6.0))));
-        let medal = clamp(ring1 * 0.85 + ring2 * 0.55, 0.0, 1.0);
-        paper = mix(paper, vec3f(0.86, 0.68, 0.54), medal * 0.34);
+      // Generous top/bottom margins and wide inter-character spacing matching the reference couplets.
+      let vNorm = (1.0 - uv.y - 0.055) / 0.89;
+      if (vNorm >= 0.0 && vNorm <= 1.0) {
+        let row = clamp(floor(vNorm * 4.0), 0.0, 3.0);
+        let cell = vec2f((uv.x - 0.09) / 0.82, fract(vNorm * 4.0));
+        if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
+          // Circular floral/cloud auspicious medallion (团花暗纹) behind each couplet character!
+          let mc = cell - vec2f(0.5);
+          let mr = length(mc);
+          let ma = atan2(mc.y, mc.x);
+          let petalR = 0.35 + 0.038 * sin(ma * 8.0) + 0.016 * cos(ma * 16.0);
+          let ring1 = 1.0 - smoothstep(0.012, 0.036, abs(mr - petalR));
+          let ring2 = 1.0 - smoothstep(0.012, 0.034, abs(mr - (0.21 + 0.025 * cos(ma * 6.0))));
+          let medal = clamp(ring1 * 0.85 + ring2 * 0.55, 0.0, 1.0);
+          paper = mix(paper, vec3f(0.86, 0.68, 0.54), medal * 0.34);
 
-        let baseId = select(4u, 0u, seed < 1.5);
-        d = coupletGlyphDist(vec2f(cell.x, 1.0 - cell.y) + handWarp, baseId + u32(row));
+          // Smaller centered glyph inside each cell so wide red brocade spacing separates each character.
+          let g = (vec2f(cell.x, 1.0 - cell.y) - vec2f(0.5)) * vec2f(1.42, 1.56) + vec2f(0.5);
+          if (all(g >= vec2f(-0.08)) && all(g <= vec2f(1.08))) {
+            let baseId = select(4u, 0u, seed < 1.5);
+            d = coupletGlyphDist(g + handWarp, baseId + u32(row)) / 1.18;
+          }
+        }
       }
     } else if (isScroll) {
       paper *= 0.54;
-      let colIdx = clamp(floor(uv.x * 4.0), 0.0, 3.0);
-      let cell = vec2f(fract(uv.x * 4.0), (uv.y - 0.12) / 0.76);
-      if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
-        let mc = cell - vec2f(0.5);
-        let mr = length(mc);
-        let ma = atan2(mc.y, mc.x);
-        let ring = 1.0 - smoothstep(0.014, 0.038, abs(mr - (0.36 + 0.04 * sin(ma * 8.0))));
-        paper = mix(paper, vec3f(0.54, 0.38, 0.24), ring * 0.30);
-        d = coupletGlyphDist(cell + handWarp, (u32(colIdx) * 2u + 1u) % 8u);
+      let uNorm = (uv.x - 0.07) / 0.86;
+      if (uNorm >= 0.0 && uNorm <= 1.0) {
+        let colIdx = clamp(floor(uNorm * 4.0), 0.0, 3.0);
+        let cell = vec2f(fract(uNorm * 4.0), (uv.y - 0.12) / 0.76);
+        if (all(cell >= vec2f(0.0)) && all(cell <= vec2f(1.0))) {
+          let mc = cell - vec2f(0.5);
+          let mr = length(mc);
+          let ma = atan2(mc.y, mc.x);
+          let ring = 1.0 - smoothstep(0.014, 0.038, abs(mr - (0.34 + 0.036 * sin(ma * 8.0))));
+          paper = mix(paper, vec3f(0.54, 0.38, 0.24), ring * 0.30);
+          let g = (cell - vec2f(0.5)) * vec2f(1.46, 1.40) + vec2f(0.5);
+          if (all(g >= vec2f(-0.08)) && all(g <= vec2f(1.08))) {
+            d = coupletGlyphDist(g + handWarp, (u32(colIdx) * 2u + 1u) % 8u) / 1.18;
+          }
+        }
       }
     } else {
       // Ornate yellow-gold inner frame & seal medallion on the two small door talismans
@@ -646,11 +658,11 @@ fn evalMaterial(uv: vec2f, m: MaterialGPU) -> Sample {
       paper = mix(paper, vec3f(0.76, 0.58, 0.28), innerB * 0.62);
       d = talismanCursiveDist(uv + handWarp * 0.45, seed);
     }
-    let bristle = (pFbm(uv, vec2f(28.0, 56.0), seed + 13.7, 2) - 0.5) * 0.024;
-    let ink = 1.0 - smoothstep(-0.006, 0.020, d + bristle);
-    let dryBrush = mix(0.76, 1.0, smoothstep(-0.026, -0.002, -d + bristle * 0.5));
-    let inkCol = vec3f(0.018, 0.015, 0.017) * (0.80 + 0.40 * fade);
-    let col = mix(paper, inkCol, ink * dryBrush * 0.95);
+    let bristle = (pFbm(uv, vec2f(28.0, 56.0), seed + 13.7, 2) - 0.5) * 0.020;
+    let ink = 1.0 - smoothstep(-0.002, 0.022, d + bristle);
+    let dryBrush = mix(0.80, 1.0, smoothstep(-0.024, -0.002, -d + bristle * 0.5));
+    let inkCol = vec3f(0.016, 0.013, 0.015) * (0.80 + 0.40 * fade);
+    let col = mix(paper, inkCol, ink * dryBrush * 0.96);
     let h = 0.52 + (age - 0.5) * 0.10 - ink * 0.04 + crease * 0.05;
     let rough = clamp(baseRough + (age - 0.5) * 0.08 - goldFleck * 0.32, 0.48, 0.96);
     return Sample(col, rough, h, 0.94 + 0.06 * frayed, goldFleck * 0.35, m.pbr.z + goldFleck * 0.25, 0.0, 0.0, vec2f(0.0));
