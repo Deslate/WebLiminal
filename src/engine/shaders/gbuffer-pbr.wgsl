@@ -423,9 +423,11 @@ fn fsMain(i: VSOut) -> GBufferOut {
     let chalk = smoothstep(0.56, 0.88, mottle * 0.6 + broad * 0.4) * smoothstep(0.08, 0.48, i.worldPos.y) * (1.0 - smoothstep(0.95, 1.95, i.worldPos.y));
     albedo = mix(albedo, albedo * vec3f(1.18, 1.15, 1.10) + vec3f(0.012), chalk * 0.30);
 
-    // Gradual, organic multi-scale plaster crumbling & powdery wear near the floor (NO sharp stencil outlines!).
-    let lowMask = (1.0 - smoothstep(0.04, 0.56, i.worldPos.y + (broad - 0.5) * 0.28 + (mottle - 0.5) * 0.14)) * dampAmt;
+    // Gradual, organic multi-scale plaster crumbling, sparsely scattered recessed hollows,
+    // and dirty damp smudges along the lower wall (keeping the 708837c plaster base intact).
+    let lowMask = (1.0 - smoothstep(0.02, 0.72, i.worldPos.y + (broad - 0.5) * 0.30 + (mottle - 0.5) * 0.16)) * dampAmt;
     var wearTotal = 0.0;
+    var dentAO = 0.0;
     var gritBump = vec2f(0.0);
     if (lowMask > 0.01) {
       let warp = vec2f(vFbm2(wUV * 3.4 + vec2f(4.1, 7.3)) - 0.5, mottle - 0.5) * 0.16;
@@ -437,20 +439,31 @@ fn fsMain(i: VSOut) -> GBufferOut {
       let softWear = smoothstep(0.38, 0.74, fBroad * 0.65 + fMid * 0.35) * lowMask;
       let pits = smoothstep(0.54, 0.76, fMid * 0.55 + fFine * 0.45) * softWear;
       let chalkDust = smoothstep(0.46, 0.74, fFine) * softWear * (1.0 - pits);
+      // Sparsely distributed shallow recessed hollows & dirty wall-base grime smudges
+      let sparseGate = smoothstep(0.36, 0.74, mottle * 0.55 + broad * 0.45);
+      let sparseDent = smoothstep(0.58, 0.80, fBroad * 0.56 + fMid * 0.44) * sparseGate * lowMask;
+      let baseGrime = (1.0 - smoothstep(0.0, 0.42, i.worldPos.y + (broad - 0.5) * 0.22))
+        * smoothstep(0.34, 0.78, streak * 0.50 + fBroad * 0.50) * dampAmt;
       let mortarGrain = 0.72 + 0.48 * (fineSand * 0.55 + microSand * 0.45);
 
       let dampPlaster = albedo * vec3f(0.76, 0.72, 0.68) * mortarGrain;
       let rawEarth = albedo * vec3f(0.56, 0.52, 0.48) * mortarGrain;
       albedo = mix(albedo, dampPlaster, softWear * 0.72);
       albedo = mix(albedo, rawEarth, pits * 0.75);
+      albedo = mix(albedo, rawEarth * vec3f(0.76, 0.72, 0.68), sparseDent * 0.60);
+      albedo *= 1.0 - baseGrime * 0.44;
       albedo = mix(albedo, albedo * vec3f(1.22, 1.18, 1.12) + vec3f(0.010, 0.008, 0.006), chalkDust * 0.34);
 
-      wearTotal = clamp(softWear * 0.55 + pits * 0.45, 0.0, 1.0);
-      // Fine granular roughness micro-relief inside the crumbled zone (organic, never sharp-edged)
+      wearTotal = clamp(softWear * 0.55 + pits * 0.45 + sparseDent * 0.35, 0.0, 1.0);
+      dentAO = clamp(sparseDent * 0.34 + baseGrime * 0.18, 0.0, 0.46);
+      // Oriented 3D recessed-hollow & granular relief inside the lower crumbled/dented pockets
       let e = 0.006;
       let gX = vFbm2((q + vec2f(e, 0.0)) * 14.0 - vec2f(3.2, 6.4)) - fMid;
       let gY = vFbm2((q + vec2f(0.0, e)) * 14.0 - vec2f(3.2, 6.4)) - fMid;
-      gritBump = clamp(vec2f(gX, gY) * (-4.5 * wearTotal), vec2f(-0.22), vec2f(0.22));
+      let sU = select(select(-1.0, 1.0, T.x >= 0.0), select(-1.0, 1.0, T.z >= 0.0), abs(Ngeom.x) > 0.7);
+      let sV = select(-1.0, 1.0, B.y >= 0.0);
+      let dentRelief = wearTotal * 4.5 + sparseDent * 14.5;
+      gritBump = clamp(vec2f(gX * sU, gY * sV) * dentRelief, vec2f(-0.42), vec2f(0.42));
     }
 
     // Organic damp wall-base smudge on the far ash wall near the left floor corner
@@ -471,9 +484,9 @@ fn fsMain(i: VSOut) -> GBufferOut {
     albedo *= 1.0 - ceilSoot;
 
     let sandSlope = vec2f(fineSand - 0.5, microSand - 0.5) * 0.08;
-    nXY = clamp(nXY * 0.24 + sandSlope + gritBump, vec2f(-0.42), vec2f(0.42));
+    nXY = clamp(nXY * 0.24 + sandSlope + gritBump, vec2f(-0.48), vec2f(0.48));
     rough = clamp(mix(rough, 0.98, wearTotal), 0.80, 0.98);
-    texAO *= 1.0 - wearTotal * 0.20;
+    texAO *= 1.0 - wearTotal * 0.20 - dentAO;
   } else if (preset == 23u) {
     // Dark gritty damp stone floor: broken rough-grit specular sparkles across dark damp stone (zero smooth plastic stripe!).
     let pXZ = i.worldPos.xz;

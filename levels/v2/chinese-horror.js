@@ -200,8 +200,6 @@ export default {
     m.box([maxX, winY1, winZ0], [maxX + 0.24, roof, winZ1], plasterWarm, { solid: false, priority: 0.6 });
     // Dark night shutter/recess backing sealed cleanly behind the right wooden lattice window.
     m.box([maxX + 0.23, winY0 - 0.15, winZ0 - 0.15], [maxX + 0.45, winY1 + 0.15, winZ1 + 0.15], sootDark, { solid: false, priority: 0.3 });
-    // Slim dark timber skirting board along the base of the right corridor wall.
-    m.box([maxX - 0.025, 0.0, minZ], [maxX, 0.10, maxZ], trimWood, { solid: false, skipFaces: ["px", "ny"], priority: 0.5 });
 
     // Traditional Chinese wooden lattice window (outer frame + vertical mullions + horizontal transoms).
     const wf = 0.055;
